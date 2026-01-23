@@ -21,6 +21,8 @@ object FrameFlutterChannelContract {
         const val DISCONNECT = "disconnect"
         const val CAPTURE_PHOTO = "capturePhoto"
         const val DISPLAY_TEXT = "displayText"
+        const val START_MICROPHONE = "startMicrophone"
+        const val STOP_MICROPHONE = "stopMicrophone"
         // Flutter -> Android
         const val ON_EVENT = "onEvent"
     }
@@ -36,6 +38,12 @@ object FrameFlutterChannelContract {
         const val TEXT = "text"
         const val FORCE = "force"
         const val MODE = "mode" // "replace" | "append"
+
+        // microphone
+        const val AUDIO_ENCODING = "audioEncoding" // "pcm_s16_le" | "pcm_s8" | "opus"
+        const val AUDIO_SAMPLE_RATE_HZ = "sampleRateHz"
+        const val AUDIO_CHANNEL_COUNT = "channelCount"
+        const val AUDIO_VENDOR_MODE = "vendorMode"
     }
 
     object Events {
@@ -45,6 +53,7 @@ object FrameFlutterChannelContract {
         const val TYPE_WARNING = "warning"
         const val TYPE_TAP = "tap"
         const val TYPE_STATE = "state"
+        const val TYPE_AUDIO = "audio"
 
         // common fields
         const val MESSAGE = "message"
@@ -55,6 +64,14 @@ object FrameFlutterChannelContract {
         // state
         const val STATE_VALUE = "value" // "disconnected" | "connecting" | "connected" | "error"
         const val STATE_ERROR = "error" // string
+
+        // audio
+        const val AUDIO_BYTES = "bytes" // byte[]
+        const val AUDIO_ENCODING = "encoding"
+        const val AUDIO_SAMPLE_RATE_HZ = "sampleRateHz"
+        const val AUDIO_CHANNEL_COUNT = "channelCount"
+        const val AUDIO_SEQUENCE = "sequence"
+        const val AUDIO_EOS = "eos"
     }
 }
 

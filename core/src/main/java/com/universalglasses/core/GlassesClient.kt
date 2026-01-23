@@ -32,6 +32,15 @@ interface GlassesClient {
 
     /** Display text on the glasses. */
     suspend fun display(text: String, options: DisplayOptions = DisplayOptions()): Result<Unit>
+
+    /**
+     * Start microphone capture and return a session that streams audio chunks.
+     *
+     * Notes:
+     * - This is an "audio stream" primitive. Apps can choose to save to WAV/AAC or stream to ASR.
+     * - Implementations may require permissions (e.g. RECORD_AUDIO); the host app is responsible.
+     */
+    suspend fun startMicrophone(options: MicrophoneOptions = MicrophoneOptions()): Result<MicrophoneSession>
 }
 
 

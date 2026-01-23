@@ -21,14 +21,25 @@ class UniversalFrameBridge {
 
   static const int _msgCaptureSettings = 0x20;
   static const int _msgPlainText = 0x21;
+  static const int _msgMicControl = 0x22;
+
+  // Frame -> host audio flags (see audio.lua in Frame SDK)
+  static const int _audioDataNonFinal = 0x05;
+  static const int _audioDataFinal = 0x06;
 
   StreamSubscription<String>? _stringSubs;
   StreamSubscription<int>? _tapSubs;
+  StreamSubscription<List<int>>? _audioSubs;
 
   BrilliantDevice? _device;
   String _state = "disconnected";
 
   bool _started = false;
+
+  bool _micEnabled = false;
+  bool _micStopping = false;
+  int _audioSeq = 0;
+  Map<String, dynamic>? _micFormat; // encoding/sampleRateHz/channelCount
 
   void start() {
     if (_started) return;
@@ -52,6 +63,11 @@ class UniversalFrameBridge {
       case "displayText":
         await _displayText(call.arguments as Map?);
         return true;
+      case "startMicrophone":
+        return await _startMicrophone(call.arguments as Map?);
+      case "stopMicrophone":
+        await _stopMicrophone();
+        return true;
       default:
         throw PlatformException(code: "unimplemented", message: "Unknown method ${call.method}");
     }
@@ -72,6 +88,7 @@ class UniversalFrameBridge {
     await _device!.sendBreakSignal();
 
     _wireLogsAndTap();
+    _wireAudio();
 
     _emitLog("Frame: uploading Lua libs + app...");
     await _uploadLuaAndStartApp();
@@ -84,8 +101,10 @@ class UniversalFrameBridge {
     _setState("disconnected");
     await _stringSubs?.cancel();
     await _tapSubs?.cancel();
+    await _audioSubs?.cancel();
     _stringSubs = null;
     _tapSubs = null;
+    _audioSubs = null;
 
     try {
       await _device?.sendBreakSignal();
@@ -94,6 +113,10 @@ class UniversalFrameBridge {
       await _device?.disconnect();
     } catch (_) {}
     _device = null;
+
+    _micEnabled = false;
+    _micStopping = false;
+    _micFormat = null;
   }
 
   void _wireLogsAndTap() {
@@ -120,6 +143,54 @@ class UniversalFrameBridge {
       _emitTap(count);
     }, onError: (e) {
       _emitWarn("Frame tap stream error: $e");
+    });
+  }
+
+  void _wireAudio() {
+    final dev = _device!;
+    _audioSubs?.cancel();
+    _audioSubs = dev.dataResponse.listen((pkt) {
+      if (pkt.isEmpty) return;
+      final flag = pkt[0];
+
+      if (flag == _audioDataNonFinal) {
+        if (!_micEnabled && !_micStopping) return;
+        final fmt = _micFormat;
+        if (fmt == null) return;
+        final bytes = Uint8List.fromList(pkt.sublist(1));
+        if (bytes.isEmpty) return;
+        _audioSeq += 1;
+        _emitEvent({
+          "type": "audio",
+          "bytes": bytes,
+          "encoding": fmt["encoding"],
+          "sampleRateHz": fmt["sampleRateHz"],
+          "channelCount": fmt["channelCount"],
+          "sequence": _audioSeq,
+          "eos": false,
+        });
+        return;
+      }
+
+      if (flag == _audioDataFinal) {
+        final fmt = _micFormat;
+        if (fmt == null) return;
+        _audioSeq += 1;
+        _emitEvent({
+          "type": "audio",
+          "bytes": Uint8List(0),
+          "encoding": fmt["encoding"],
+          "sampleRateHz": fmt["sampleRateHz"],
+          "channelCount": fmt["channelCount"],
+          "sequence": _audioSeq,
+          "eos": true,
+        });
+        _micEnabled = false;
+        _micStopping = false;
+        _micFormat = null;
+      }
+    }, onError: (e) {
+      _emitWarn("Frame audio stream error: $e");
     });
   }
 
@@ -177,6 +248,45 @@ class UniversalFrameBridge {
     }
   }
 
+  Future<Map<String, dynamic>> _startMicrophone(Map? args) async {
+    final dev = _requireDevice();
+    final enc = (args?["audioEncoding"] as String?) ?? "pcm_s16_le";
+    final int reqSampleRate = (args?["sampleRateHz"] as int?) ?? 16000;
+    final int reqChannels = (args?["channelCount"] as int?) ?? 1;
+
+    // Frame supports 8k/16k, mono; we choose the closest supported values.
+    final int sampleRate = (reqSampleRate >= 12000) ? 16000 : 8000;
+    final int channelCount = 1; // Frame mic API is mono
+    final int bitDepth = (enc == "pcm_s8") ? 8 : 16;
+    final String encoding = (bitDepth == 8) ? "pcm_s8" : "pcm_s16_le";
+
+    // Host->Frame mic control message:
+    // [enable:1][rate:0|1][depth:8|16]
+    final rateCode = (sampleRate == 16000) ? 1 : 0;
+    final payload = Uint8List.fromList([1, rateCode, bitDepth]);
+    await dev.sendMessage(_msgMicControl, payload);
+
+    _micEnabled = true;
+    _micStopping = false;
+    _micFormat = {
+      "encoding": encoding,
+      "sampleRateHz": sampleRate,
+      "channelCount": channelCount,
+    };
+    return _micFormat!;
+  }
+
+  Future<void> _stopMicrophone() async {
+    final dev = _device;
+    if (dev == null) return;
+
+    // Send stop; continue emitting until final (0x06) is observed.
+    _micEnabled = false;
+    _micStopping = true;
+    final payload = Uint8List.fromList([0, 0, 0]);
+    await dev.sendMessage(_msgMicControl, payload);
+  }
+
   BrilliantDevice _requireDevice() {
     final dev = _device;
     if (dev == null) {
@@ -191,12 +301,14 @@ class UniversalFrameBridge {
     final dataMin = await rootBundle.loadString("assets/lua/data.min.lua");
     final cameraMin = await rootBundle.loadString("assets/lua/camera.min.lua");
     final plainTextMin = await rootBundle.loadString("assets/lua/plain_text.min.lua");
+    final audioMin = await rootBundle.loadString("assets/lua/audio.min.lua");
     final appLua = await rootBundle.loadString("assets/lua/ug_frame_app.lua");
 
     // Upload required libs. Use the exact filenames referenced by require() in ug_frame_app.lua
     await dev.uploadScript("data.min.lua", dataMin);
     await dev.uploadScript("camera.min.lua", cameraMin);
     await dev.uploadScript("plain_text.min.lua", plainTextMin);
+    await dev.uploadScript("audio.min.lua", audioMin);
     await dev.uploadScript("ug_frame_app.lua", appLua);
 
     // Start app loop (this will prevent further Lua REPL commands; use sendMessage afterwards).

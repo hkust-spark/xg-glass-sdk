@@ -15,6 +15,8 @@ import com.universalglasses.core.GlassesClient
 import com.universalglasses.core.GlassesError
 import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
+import com.universalglasses.core.MicrophoneOptions
+import com.universalglasses.core.MicrophoneSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -49,6 +51,7 @@ class RayNeoInstallerGlassesClient(
     override val capabilities: DeviceCapabilities = DeviceCapabilities(
         canCapturePhoto = false,
         canDisplayText = false,
+        canRecordAudio = false,
         supportsTapEvents = false,
         supportsStreamingTextUpdates = false,
     )
@@ -113,6 +116,12 @@ class RayNeoInstallerGlassesClient(
     override suspend fun display(text: String, options: DisplayOptions): Result<Unit> {
         return Result.failure(
             GlassesError.Unsupported("RayNeo display runs on-glasses. Install/open the glasses app and display there.")
+        )
+    }
+
+    override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> {
+        return Result.failure(
+            GlassesError.Unsupported("RayNeo microphone runs on-glasses. Install/open the glasses app and record there.")
         )
     }
 

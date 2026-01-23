@@ -75,6 +75,7 @@ internal object RayneoHostTemplate {
             <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
                 <uses-permission android:name="android.permission.CAMERA" />
+                <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
                 <application
                     android:name=".UgRayneoHostApplication"
@@ -225,10 +226,19 @@ internal object RayneoHostTemplate {
                     }
                 }
 
+                private val requestMicPermission = registerForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { granted ->
+                    if (!granted) {
+                        appendLog("Microphone permission denied")
+                    }
+                }
+
                 override fun onCreate(savedInstanceState: Bundle?) {
                     super.onCreate(savedInstanceState)
-                    // Request permission early; commands will no-op until permission is granted.
+                    // Request permissions early; commands will no-op until permissions are granted.
                     ensureCameraPermission()
+                    ensureMicPermission()
                     mBindingPair.updateView { tvTitle.text = "UG RayNeo Host" }
 
                     val entry = loadEntryOrNull()
@@ -307,8 +317,12 @@ internal object RayneoHostTemplate {
                     isRunningCommand = true
                     scope.launch {
                         try {
-                            if (!ensureCameraPermission()) {
+                            if (client.capabilities.canCapturePhoto && !ensureCameraPermission()) {
                                 appendLog("Grant camera permission first")
+                                return@launch
+                            }
+                            if (client.capabilities.canRecordAudio && !ensureMicPermission()) {
+                                appendLog("Grant microphone permission first")
                                 return@launch
                             }
                             val ctx = UniversalAppContext(
@@ -364,6 +378,16 @@ internal object RayneoHostTemplate {
                         android.content.pm.PackageManager.PERMISSION_GRANTED
                     if (!granted) {
                         requestCameraPermission.launch(Manifest.permission.CAMERA)
+                        return false
+                    }
+                    return true
+                }
+
+                private fun ensureMicPermission(): Boolean {
+                    val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (!granted) {
+                        requestMicPermission.launch(Manifest.permission.RECORD_AUDIO)
                         return false
                     }
                     return true

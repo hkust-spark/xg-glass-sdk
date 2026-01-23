@@ -10,6 +10,7 @@ enum class GlassesModel {
 data class DeviceCapabilities(
     val canCapturePhoto: Boolean = true,
     val canDisplayText: Boolean = true,
+    val canRecordAudio: Boolean = false,
     val supportsTapEvents: Boolean = false,
     val supportsStreamingTextUpdates: Boolean = false,
 )

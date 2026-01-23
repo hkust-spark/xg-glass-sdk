@@ -7,6 +7,8 @@ import com.universalglasses.core.DisplayOptions
 import com.universalglasses.core.GlassesClient
 import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
+import com.universalglasses.core.MicrophoneOptions
+import com.universalglasses.core.MicrophoneSession
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -30,6 +32,7 @@ class FrameGlassesClient(
     override val capabilities: DeviceCapabilities = DeviceCapabilities(
         canCapturePhoto = true,
         canDisplayText = true,
+        canRecordAudio = true,
         supportsTapEvents = true,
         supportsStreamingTextUpdates = true,
     )
@@ -61,6 +64,19 @@ class FrameGlassesClient(
     override suspend fun capturePhoto(options: CaptureOptions) = bridge.capturePhoto(options)
 
     override suspend fun display(text: String, options: DisplayOptions) = bridge.displayText(text, options)
+
+    override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> {
+        val fmtRes = bridge.startMicrophone(options)
+        return fmtRes.map { fmt ->
+            object : MicrophoneSession {
+                override val format = fmt
+                override val audio = bridge.microphone
+                override suspend fun stop() {
+                    bridge.stopMicrophone()
+                }
+            }
+        }
+    }
 }
 
 

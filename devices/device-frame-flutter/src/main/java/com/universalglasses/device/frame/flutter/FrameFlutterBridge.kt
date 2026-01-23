@@ -3,7 +3,10 @@ package com.universalglasses.device.frame.flutter
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.DisplayOptions
+import com.universalglasses.core.AudioChunk
+import com.universalglasses.core.AudioFormat
 import com.universalglasses.core.GlassesEvent
+import com.universalglasses.core.MicrophoneOptions
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -21,11 +24,17 @@ interface FrameFlutterBridge {
     /** Bridge-side events from Flutter (logs/tap/etc.). */
     val events: Flow<GlassesEvent>
 
+    /** Raw microphone audio chunks pushed from the embedded Flutter module. */
+    val microphone: Flow<AudioChunk>
+
     suspend fun connect(): Result<Unit>
     suspend fun disconnect()
 
     suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage>
     suspend fun displayText(text: String, options: DisplayOptions): Result<Unit>
+
+    suspend fun startMicrophone(options: MicrophoneOptions): Result<AudioFormat>
+    suspend fun stopMicrophone(): Result<Unit>
 }
 
 sealed class FrameFlutterState {

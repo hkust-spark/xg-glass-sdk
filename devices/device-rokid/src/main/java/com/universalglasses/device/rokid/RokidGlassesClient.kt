@@ -13,11 +13,15 @@ import android.os.Environment
 import android.os.ParcelUuid
 import androidx.appcompat.app.AppCompatActivity
 import com.rokid.cxr.client.extend.CxrApi
+import com.rokid.cxr.client.extend.listeners.AudioStreamListener
 import com.rokid.cxr.client.extend.callbacks.BluetoothStatusCallback
 import com.rokid.cxr.client.extend.callbacks.PhotoPathCallback
 import com.rokid.cxr.client.extend.callbacks.SyncStatusCallback
 import com.rokid.cxr.client.extend.callbacks.WifiP2PStatusCallback
 import com.rokid.cxr.client.utils.ValueUtil
+import com.universalglasses.core.AudioChunk
+import com.universalglasses.core.AudioEncoding
+import com.universalglasses.core.AudioFormat
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.ConnectionState
@@ -28,8 +32,13 @@ import com.universalglasses.core.GlassesClient
 import com.universalglasses.core.GlassesError
 import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
+import com.universalglasses.core.MicrophoneOptions
+import com.universalglasses.core.MicrophoneSession
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -40,6 +49,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -64,6 +75,7 @@ class RokidGlassesClient(
     override val capabilities: DeviceCapabilities = DeviceCapabilities(
         canCapturePhoto = true,
         canDisplayText = true,
+        canRecordAudio = true,
         supportsTapEvents = false,
         supportsStreamingTextUpdates = true, // custom view supports frequent updates; adapter still throttles
     )
@@ -89,6 +101,7 @@ class RokidGlassesClient(
 
     @Volatile private var wifiReady: Boolean = false
     @Volatile private var btReady: Boolean = false
+    @Volatile private var activeMic: MicrophoneSession? = null
 
     override suspend fun connect(): Result<Unit> {
         if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
@@ -118,6 +131,10 @@ class RokidGlassesClient(
 
     override suspend fun disconnect() {
         emitLog("Rokid: disconnecting...")
+        try {
+            activeMic?.stop()
+        } catch (_: Exception) {}
+        activeMic = null
         try {
             CxrApi.getInstance().deinitWifiP2P()
         } catch (_: Exception) {}
@@ -180,6 +197,100 @@ class RokidGlassesClient(
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(GlassesError.Transport("Rokid display failed: ${e.message}", e))
+        }
+    }
+
+    override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> {
+        if (_state.value !is ConnectionState.Connected || !btReady) return Result.failure(GlassesError.NotConnected)
+        if (activeMic != null) return Result.failure(GlassesError.Busy)
+
+        // Rokid supports PCM or OPUS streams. Sample rate/bit depth are not exposed here.
+        val encoding = when (options.preferredEncoding) {
+            AudioEncoding.OPUS -> AudioEncoding.OPUS
+            AudioEncoding.PCM_S8, AudioEncoding.PCM_S16_LE -> AudioEncoding.PCM_S16_LE
+        }
+        val codecType = when (encoding) {
+            AudioEncoding.OPUS -> 2
+            else -> 1 // pcm
+        }
+
+        val streamType = "universal_glasses"
+        val fmt = AudioFormat(encoding = encoding, sampleRateHz = null, channelCount = null)
+
+        return try {
+            val shared = MutableSharedFlow<AudioChunk>(
+                extraBufferCapacity = 128,
+                onBufferOverflow = BufferOverflow.DROP_OLDEST,
+            )
+            val running = AtomicBoolean(true)
+            val seq = AtomicLong(0)
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+            val listener = object : AudioStreamListener {
+                override fun onStartAudioStream(codecType: Int, streamType: String?) {
+                    // no-op
+                }
+
+                override fun onAudioStream(data: ByteArray?, offset: Int, length: Int) {
+                    if (!running.get()) return
+                    if (data == null) return
+                    if (length <= 0) return
+                    val start = offset.coerceAtLeast(0)
+                    val end = (offset + length).coerceAtMost(data.size)
+                    if (end <= start) return
+                    val bytes = data.copyOfRange(start, end)
+                    shared.tryEmit(
+                        AudioChunk(
+                            bytes = bytes,
+                            format = fmt,
+                            sequence = seq.incrementAndGet(),
+                        )
+                    )
+                }
+            }
+
+            // Register listener first to avoid losing the first chunks.
+            CxrApi.getInstance().setAudioStreamListener(listener)
+
+            val st = CxrApi.getInstance().openAudioRecord(codecType, streamType)
+            if (st == ValueUtil.CxrStatus.REQUEST_FAILED) {
+                CxrApi.getInstance().setAudioStreamListener(null)
+                return Result.failure(GlassesError.Transport("Rokid openAudioRecord REQUEST_FAILED"))
+            }
+            if (st == ValueUtil.CxrStatus.REQUEST_WAITING) {
+                CxrApi.getInstance().setAudioStreamListener(null)
+                return Result.failure(GlassesError.Busy)
+            }
+
+            val session = object : MicrophoneSession {
+                override val format: AudioFormat = fmt
+                override val audio: Flow<AudioChunk> = shared
+
+                override suspend fun stop() {
+                    if (!running.compareAndSet(true, false)) return
+                    try {
+                        CxrApi.getInstance().closeAudioRecord(streamType)
+                    } catch (_: Exception) {}
+                    try {
+                        CxrApi.getInstance().setAudioStreamListener(null)
+                    } catch (_: Exception) {}
+                    scope.cancel()
+                    activeMic = null
+                    shared.tryEmit(
+                        AudioChunk(
+                            bytes = ByteArray(0),
+                            format = fmt,
+                            sequence = seq.incrementAndGet(),
+                            endOfStream = true,
+                        )
+                    )
+                }
+            }
+
+            activeMic = session
+            Result.success(session)
+        } catch (e: Exception) {
+            Result.failure((e as? GlassesError) ?: GlassesError.Transport("Rokid startMicrophone failed: ${e.message}", e))
         }
     }
 
