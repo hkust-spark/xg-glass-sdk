@@ -21,7 +21,6 @@ class SimDisplayActivity : AppCompatActivity() {
         fun newIntent(context: Context, text: String): Intent {
             return Intent(context, SimDisplayActivity::class.java).apply {
                 putExtra(EXTRA_TEXT, text)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         }
     }

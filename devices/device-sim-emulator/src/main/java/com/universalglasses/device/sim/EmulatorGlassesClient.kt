@@ -4,6 +4,7 @@ import android.Manifest
 import android.graphics.BitmapFactory
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -182,6 +183,7 @@ class EmulatorGlassesClient(
     override suspend fun display(text: String, options: DisplayOptions): Result<Unit> {
         return try {
             withContext(Dispatchers.Main) {
+                Toast.makeText(activity, text, Toast.LENGTH_LONG).show()
                 activity.startActivity(SimDisplayActivity.newIntent(activity, text))
             }
             emitLog("Simulator: display => ok")

@@ -8,8 +8,6 @@
         <activity
             android:name="com.universalglasses.device.sim.SimDisplayActivity"
             android:exported="false"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTask"
             android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar" />
     </application>
 
