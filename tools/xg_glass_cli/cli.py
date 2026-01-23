@@ -29,12 +29,12 @@ def main(argv: list[str] | None = None) -> int:
     p_init.add_argument(
         "--template",
         default=str(DEFAULT_TEMPLATE),
-        help="Template project directory (default: universal_glasses/templates/kotlin-app).",
+        help="Template project directory (default: ./templates/kotlin-app).",
     )
     p_init.add_argument(
         "--sdk",
         default=str(DEFAULT_SDK),
-        help="Path to universal_glasses checkout (default: repo/universal_glasses).",
+        help="Path to the SDK repo root (default: this repo).",
     )
     p_init.add_argument(
         "--entry-class",

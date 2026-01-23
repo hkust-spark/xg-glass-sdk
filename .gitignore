@@ -56,11 +56,4 @@ third_party/frame/frame_module/.ios/
 # Optional: lockfile (commit if you want reproducible app-like builds; ignore to reduce churn)
 third_party/frame/frame_module/pubspec.lock
 
-# ----------------------------
-# RayNeo vendor AARs
-# ----------------------------
-
-MercuryAndroidSDK-v0.2.3-20260104184638_9002bcc8.aar
-RayNeoIPCSDK-For-Android-V0.1.0-20231128201840_9b41f025.aar
-
 

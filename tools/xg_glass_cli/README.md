@@ -2,20 +2,20 @@
 
 This is a minimal command-line tool for driving an Android host project based on `universal_glasses`:
 
-- `xg-glass init <dir>`: generate a developer project from a template (default template: `apps/auto_solver_app`, using `includeBuild`)
+- `xg-glass init <dir>`: generate a developer project from a template (default: `./templates/kotlin-app`, using `includeBuild`)
 - `xg-glass build`: build the phone host APK (for RayNeo, it will auto-generate and package the glasses host APK into assets before building)
 - `xg-glass install`: install onto the phone via `adb install`
 - `xg-glass run`: launch the app via `adb shell monkey`
 
 ## Typical usage (same repo)
 
-From the `universal_glasses/` repository root:
+From the repository root (where `./xg-glass` lives):
 
 - `./xg-glass init /path/to/myapp`
 - `cd /path/to/myapp`
-- `<path-to-universal_glasses>/xg-glass build`
-- `<path-to-universal_glasses>/xg-glass install`
-- `<path-to-universal_glasses>/xg-glass run`
+- `<path-to-sdk-repo>/xg-glass build`
+- `<path-to-sdk-repo>/xg-glass install`
+- `<path-to-sdk-repo>/xg-glass run`
 
 ## xg-glass.yaml (scalable)
 
@@ -42,7 +42,7 @@ Constraints:
 Optional:
 
 - `--entry-class <fqcn>`: skip inference and specify the entry class explicitly
-- `--sdk <path/to/universal_glasses>`: specify the SDK path
+- `--sdk <path/to/sdk-repo>`: specify the SDK path
 - `--save ./myapp`: persist the temporary project as a real project (so you can continue development)
 - `--keep-tmp`: keep the temporary directory for debugging
 - `--sim`: build an emulator-compatible APK (x86_64) and enable simulator backend
