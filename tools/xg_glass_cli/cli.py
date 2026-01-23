@@ -48,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     p_build.add_argument("--entry-class", help="Override entry class (optional).")
     p_build.add_argument("--sdk", help="Override sdkPath (optional).")
     p_build.add_argument("--rayneo-aar-dir", help="Override RayNeo mercuryAarDir (optional).")
+    p_build.add_argument("--sim", action="store_true", help="Build an emulator-compatible APK (enables x86_64 + simulator mode).")
 
     p_install = sub.add_parser("install", help="Install the phone-side APK via adb.")
     _add_common_project_args(p_install)
@@ -65,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--keep-tmp", action="store_true", help="Quick mode: keep the temporary project directory.")
     p_run.add_argument("--entry-class", help="Quick mode: override inferred entry class (optional).")
     p_run.add_argument("--sdk", help="Quick mode: override sdkPath (optional).")
+    p_run.add_argument("--sim", action="store_true", help="Build for Android Emulator (x86_64) and enable simulator backend.")
 
     args = parser.parse_args(argv)
 
@@ -206,6 +208,9 @@ def cmd_build(args: argparse.Namespace) -> int:
     _apply_cfg_to_project(project, cfg)
     _ensure_flutter_module_ready(project, cfg)
 
+    if bool(getattr(args, "sim", False)):
+        _apply_simulator_build_settings(project, enabled=True)
+
     variant = cfg.variant
     module = cfg.module
     gradlew = _gradlew_path(project)
@@ -269,6 +274,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         _init_project(dst=project_dir, template=DEFAULT_TEMPLATE, sdk=sdk, entry_class=entry_class)
         _copy_kt_into_project(project_dir, kt)
+
+        if bool(getattr(args, "sim", False)):
+            _apply_simulator_build_settings(project_dir, enabled=True)
 
         # One-shot: build + install + run.
         cmd_build(
@@ -379,6 +387,67 @@ def _read_application_id(project: Path, module: str) -> str | None:
     s = f.read_text(encoding="utf-8")
     m = re.search(r'applicationId\s*=\s*"([^"]+)"', s)
     return m.group(1) if m else None
+
+
+def _apply_simulator_build_settings(project: Path, *, enabled: bool) -> None:
+    """
+    Patch a generated (or existing) template-based project to run well on Android Emulator.
+
+    - Adds x86_64 ABI to splits (so Emulator can install the APK)
+    - Flips BuildConfig.XG_SIMULATOR, used by the template host app to select simulator backend
+    """
+
+    app_gradle = project / "app" / "build.gradle.kts"
+    if not app_gradle.exists():
+        return
+
+    s = app_gradle.read_text(encoding="utf-8")
+
+    # 1) Ensure x86_64 ABI is included for emulator installs.
+    if enabled and "\"x86_64\"" not in s:
+        # Prefer the exact template pattern first.
+        s2 = s.replace(
+            'include("arm64-v8a", "armeabi-v7a")',
+            'include("arm64-v8a", "armeabi-v7a", "x86_64")',
+        )
+        if s2 == s:
+            # Fallback: append to the first include(...) inside splits/abi block.
+            def _repl(m: re.Match[str]) -> str:
+                head = m.group(1)
+                inner = m.group(2).strip()
+                tail = m.group(3)
+                if "x86_64" in inner:
+                    return m.group(0)
+                if not inner:
+                    return f'{head}"x86_64"{tail}'
+                return f'{head}{inner}, "x86_64"{tail}'
+
+            s2 = re.sub(
+                r"(splits\s*\{[\s\S]*?abi\s*\{[\s\S]*?include\()([^)]*)(\))",
+                _repl,
+                s,
+                count=1,
+            )
+        s = s2
+
+    # 2) Flip BuildConfig flag used by the template host UI.
+    desired = "true" if enabled else "false"
+    s2 = re.sub(
+        r'buildConfigField\("boolean",\s*"XG_SIMULATOR",\s*"(true|false)"\)',
+        f'buildConfigField("boolean", "XG_SIMULATOR", "{desired}")',
+        s,
+    )
+    if s2 == s:
+        # Insert into defaultConfig if missing.
+        s2 = re.sub(
+            r"(defaultConfig\s*\{\s*)",
+            rf'\1\n        buildConfigField("boolean", "XG_SIMULATOR", "{desired}")\n',
+            s,
+            count=1,
+        )
+    s = s2
+
+    app_gradle.write_text(s, encoding="utf-8")
 
 
 def _replace_include_build(settings_text: str, path_regex: str, new_rel_path: str) -> str:

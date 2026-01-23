@@ -63,4 +63,7 @@ third_party/frame/frame_module/pubspec.lock
 MercuryAndroidSDK-v0.2.3-20260104184638_9002bcc8.aar
 RayNeoIPCSDK-For-Android-V0.1.0-20231128201840_9b41f025.aar
 
-
+# ----------------------------
+# Temporary files
+# ----------------------------
+.xg_glass_tmp

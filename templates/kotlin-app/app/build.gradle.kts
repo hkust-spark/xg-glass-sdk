@@ -14,6 +14,12 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.0.1"
+
+        buildConfigField("boolean", "XG_SIMULATOR", "false")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     // Keep APK size reasonable when Flutter is present (Frame integration).

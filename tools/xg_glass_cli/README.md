@@ -45,6 +45,7 @@ Optional:
 - `--sdk <path/to/universal_glasses>`: specify the SDK path
 - `--save ./myapp`: persist the temporary project as a real project (so you can continue development)
 - `--keep-tmp`: keep the temporary directory for debugging
+- `--sim`: build an emulator-compatible APK (x86_64) and enable simulator backend
 
 ### Options
 

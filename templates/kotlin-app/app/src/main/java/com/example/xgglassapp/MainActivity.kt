@@ -26,6 +26,7 @@ import com.universalglasses.device.rayneo.installer.RayNeoApkSource
 import com.universalglasses.device.rayneo.installer.RayNeoInstallerConfig
 import com.universalglasses.device.rayneo.installer.RayNeoInstallerGlassesClient
 import com.universalglasses.device.rokid.RokidGlassesClient
+import com.universalglasses.device.sim.EmulatorGlassesClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -80,10 +81,15 @@ class MainActivity : AppCompatActivity() {
         etRayNeoIp = findViewById(R.id.etRayNeoIp)
         llCommands = findViewById(R.id.llCommands)
 
+        val deviceItems = if (BuildConfig.XG_SIMULATOR) {
+            listOf("SIMULATOR")
+        } else {
+            listOf("SIMULATOR", "ROKID", "FRAME", "RAYNEO")
+        }
         spDevice.adapter = ArrayAdapter(
             this,
             android.R.layout.simple_spinner_dropdown_item,
-            listOf("ROKID", "FRAME", "RAYNEO"),
+            deviceItems,
         )
 
         spDevice.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
@@ -104,6 +110,7 @@ class MainActivity : AppCompatActivity() {
         btnConnect.setOnClickListener {
             val selected = spDevice.selectedItem?.toString() ?: "ROKID"
             val model = when (selected) {
+                "SIMULATOR" -> GlassesModel.SIMULATOR
                 "FRAME" -> GlassesModel.FRAME
                 "RAYNEO" -> GlassesModel.RAYNEO
                 else -> GlassesModel.ROKID
@@ -112,6 +119,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         renderCommandsForCurrentSelection(connected = false)
+
+        if (BuildConfig.XG_SIMULATOR) {
+            // Simulator builds are meant to run on an emulator; auto-connect.
+            ensurePermissionsThenConnect(GlassesModel.SIMULATOR)
+        }
     }
 
     private fun connect(model: GlassesModel) {
@@ -130,6 +142,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             val newClient = when (model) {
+                GlassesModel.SIMULATOR -> EmulatorGlassesClient(this@MainActivity)
                 GlassesModel.ROKID -> RokidGlassesClient(this@MainActivity)
                 GlassesModel.FRAME -> {
                 // SDK-owned Flutter engine + bridge
@@ -199,6 +212,10 @@ class MainActivity : AppCompatActivity() {
     private fun requiredPermissionsFor(model: GlassesModel): List<String> {
         val perms = mutableListOf<String>()
 
+        if (model == GlassesModel.SIMULATOR) {
+            perms += Manifest.permission.CAMERA
+        }
+
         // BLE permissions (Frame + Rokid only)
         if (model == GlassesModel.ROKID || model == GlassesModel.FRAME) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -225,6 +242,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCommandsForCurrentSelection(connected: Boolean) {
         val model = when (spDevice.selectedItem?.toString()) {
+            "SIMULATOR" -> GlassesModel.SIMULATOR
             "FRAME" -> GlassesModel.FRAME
             "RAYNEO" -> GlassesModel.RAYNEO
             else -> GlassesModel.ROKID
