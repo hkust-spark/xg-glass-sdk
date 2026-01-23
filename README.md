@@ -30,9 +30,19 @@ This is what xg.glass has extracted for you from tens of smart glasses SDKs. We 
 
 Currently we support:
 
-- **Rokid** (native Android SDK: Bluetooth + Wi‑Fi P2P media sync + custom view display)
-- **Frame** (via a **Flutter module** adapter)
-- **RayNeo** (split implementation: **phone-side installer** via ADB-over-TCP + **on-glasses runtime** client)
+- **Rokid**
+  - Rokid Glasses
+- **Brilliant Labs**
+  - Frame 
+- **RayNeo**
+  - x2 Glasses
+  - x3 Pro Glasses
+ 
+We're working on and will support soon:
+- **INMO**
+- **Omi**
+
+Welcome the contributions from the community on more glasses!
 
 ## Getting Started
 
