@@ -272,6 +272,10 @@ class RayNeoRuntimeGlassesClient(
         val cameraId = chooseCameraId(cameraManager)
             ?: throw GlassesError.Transport("No camera available")
 
+        // Camera2 requires the output size to be one of the supported sizes.
+        // Pick the supported JPEG size closest to the requested resolution.
+        val (actualWidth, actualHeight) = chooseBestSize(cameraManager, cameraId, width, height)
+
         val thread = HandlerThread("rayneo-camera").apply { start() }
         val handler = Handler(thread.looper)
 
@@ -279,7 +283,7 @@ class RayNeoRuntimeGlassesClient(
         var session: CameraCaptureSession? = null
         var reader: ImageReader? = null
 
-        reader = ImageReader.newInstance(width, height, android.graphics.ImageFormat.JPEG, 2)
+        reader = ImageReader.newInstance(actualWidth, actualHeight, android.graphics.ImageFormat.JPEG, 2)
 
         return suspendCancellableCoroutine { cont ->
             fun cleanup() {
@@ -368,6 +372,38 @@ class RayNeoRuntimeGlassesClient(
             if (facing == CameraCharacteristics.LENS_FACING_BACK) return id
         }
         return ids.firstOrNull()
+    }
+
+    /**
+     * Pick the supported JPEG output size closest to the requested [targetW]×[targetH].
+     *
+     * Camera2 requires ImageReader dimensions to match one of the sizes listed in
+     * [CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP]. Using an unsupported
+     * size will cause `createCaptureSession` → `onConfigureFailed`.
+     */
+    private fun chooseBestSize(
+        cameraManager: CameraManager,
+        cameraId: String,
+        targetW: Int,
+        targetH: Int,
+    ): Pair<Int, Int> {
+        val chars = cameraManager.getCameraCharacteristics(cameraId)
+        val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+        val sizes = map?.getOutputSizes(android.graphics.ImageFormat.JPEG)
+
+        if (sizes.isNullOrEmpty()) {
+            // Fallback: try a safe default that most cameras support.
+            return 1920 to 1080
+        }
+
+        val targetPixels = targetW.toLong() * targetH
+        // Pick the size whose total pixel count is closest to the target.
+        val best = sizes.minByOrNull {
+            val px = it.width.toLong() * it.height
+            kotlin.math.abs(px - targetPixels)
+        }!!
+
+        return best.width to best.height
     }
 }
 

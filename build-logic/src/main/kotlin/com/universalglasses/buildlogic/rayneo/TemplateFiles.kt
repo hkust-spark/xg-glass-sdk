@@ -7,7 +7,7 @@ internal data class TemplateFile(
 
 internal object RayneoHostTemplate {
     // Bump this if you change any template content so the generator knows when to refresh.
-    const val TEMPLATE_VERSION = 19
+    const val TEMPLATE_VERSION = 21
 
     fun files(): List<TemplateFile> = listOf(
         TemplateFile(
@@ -74,6 +74,7 @@ internal object RayneoHostTemplate {
             <?xml version="1.0" encoding="utf-8"?>
             <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+                <uses-permission android:name="android.permission.INTERNET" />
                 <uses-permission android:name="android.permission.CAMERA" />
                 <uses-permission android:name="android.permission.RECORD_AUDIO" />
                 <!-- Needed on some devices/ROMs for adjusting stream volume programmatically -->
@@ -202,6 +203,8 @@ internal object RayneoHostTemplate {
             import kotlinx.coroutines.SupervisorJob
             import kotlinx.coroutines.launch
             import kotlinx.coroutines.withContext
+            import org.json.JSONObject
+            import java.io.File
 
             class UgRayneoHostActivity : BaseMirrorActivity<ActivityUgRayneoHostBinding>() {
                 private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -221,6 +224,12 @@ internal object RayneoHostTemplate {
                 private var selectedIndex: Int = 0
                 private var commands: List<com.universalglasses.appcontract.UniversalCommand> = emptyList()
                 private var isRunningCommand: Boolean = false
+
+                /**
+                 * User settings pushed from the phone via ADB.
+                 * Read once in [onCreate] from the well-known file [SETTINGS_FILE_PATH].
+                 */
+                private var userSettings: Map<String, String> = emptyMap()
 
                 private val requestCameraPermission = registerForActivityResult(
                     ActivityResultContracts.RequestPermission()
@@ -251,6 +260,12 @@ internal object RayneoHostTemplate {
                     if (entry == null) {
                         appendLog("Missing UniversalAppEntry (check app_entry_class)")
                         return
+                    }
+
+                    // Load settings pushed from phone via ADB (if any).
+                    userSettings = loadSettingsFromFile()
+                    if (userSettings.isNotEmpty()) {
+                        appendLog("Loaded ${"$"}{userSettings.size} setting(s) from file")
                     }
 
                     val env = HostEnvironment(hostKind = HostKind.GLASSES, model = GlassesModel.RAYNEO)
@@ -336,6 +351,7 @@ internal object RayneoHostTemplate {
                                 client = client,
                                 scope = this@UgRayneoHostActivity.scope,
                                 log = { msg -> appendLog(msg) },
+                                settings = userSettings,
                             )
                             val r = cmd.run(ctx)
                             if (r.isFailure) {
@@ -413,6 +429,30 @@ internal object RayneoHostTemplate {
                     } catch (_: Exception) {
                         // ignore
                     }
+                }
+
+                /**
+                 * Read user settings from the well-known JSON file that the phone-side host pushed via ADB.
+                 *
+                 * The file is at [SETTINGS_FILE_PATH] (`/data/local/tmp/ug_user_settings.json`).
+                 * On most Android devices `/data/local/tmp/` is world-readable (mode 1777), so the
+                 * glasses-side app process can read files pushed there by ADB.
+                 */
+                private fun loadSettingsFromFile(): Map<String, String> {
+                    return try {
+                        val file = File(SETTINGS_FILE_PATH)
+                        if (!file.exists()) return emptyMap()
+                        val json = JSONObject(file.readText(Charsets.UTF_8))
+                        json.keys().asSequence().associateWith { json.getString(it) }
+                    } catch (e: Exception) {
+                        appendLog("Failed to load settings file: ${"$"}{e.message}")
+                        emptyMap()
+                    }
+                }
+
+                companion object {
+                    /** Well-known path where the phone pushes user settings via ADB. */
+                    private const val SETTINGS_FILE_PATH = "/data/local/tmp/ug_user_settings.json"
                 }
             }
             """.trimIndent(),

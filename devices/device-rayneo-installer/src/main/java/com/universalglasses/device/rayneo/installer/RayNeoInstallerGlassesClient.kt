@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -125,6 +126,46 @@ class RayNeoInstallerGlassesClient(
         )
     }
 
+    /**
+     * Push user settings to the glasses via ADB so the on-glasses app can read them at startup.
+     *
+     * The settings are written as a JSON file to [SETTINGS_REMOTE_PATH].
+     * The on-glasses host reads this file in `onCreate()` and passes the values
+     * to [com.universalglasses.appcontract.UniversalAppContext.settings].
+     */
+    suspend fun pushUserSettings(settings: Map<String, String>): Result<Unit> {
+        if (settings.isEmpty()) return Result.success(Unit)
+
+        return withContext(Dispatchers.IO) {
+            try {
+                val json = JSONObject(settings).toString()
+                val jsonBytes = json.toByteArray(Charsets.UTF_8)
+
+                val installer = AdbRemoteInstaller(context.applicationContext)
+                installer.pushFile(
+                    host = config.host,
+                    remotePath = SETTINGS_REMOTE_PATH,
+                    input = ByteArrayInputStream(jsonBytes),
+                    totalBytes = jsonBytes.size.toLong(),
+                    log = { msg -> _events.tryEmit(GlassesEvent.Log("RayNeo settings: $msg")) },
+                )
+
+                Result.success(Unit)
+            } catch (e: Exception) {
+                val err = GlassesError.Transport("Failed to push settings: ${e.message ?: e::class.java.simpleName}", e)
+                Result.failure(err)
+            }
+        }
+    }
+
+    companion object {
+        /**
+         * Well-known path on the glasses where the phone pushes user settings.
+         * `/data/local/tmp/` is world-readable on Android, so the glasses app process can read it.
+         */
+        const val SETTINGS_REMOTE_PATH = "/data/local/tmp/ug_user_settings.json"
+    }
+
     private data class OpenedApk(val input: InputStream, val totalBytes: Long?)
 
     private fun openApkSource(source: RayNeoApkSource): OpenedApk {
@@ -202,6 +243,29 @@ private class AdbRemoteInstaller(private val context: Context) {
 
                 log("Install: pm install -r $remotePath")
                 return ShellProtocol.run(connection, "pm install -r \"$remotePath\"", log).trim()
+            }
+        }
+    }
+
+    fun pushFile(
+        host: String,
+        remotePath: String,
+        input: InputStream,
+        totalBytes: Long?,
+        log: (String) -> Unit,
+    ) {
+        val (connection, socket) = connect(host, log)
+        connection.use {
+            socket.use {
+                log("Push file -> $remotePath")
+                SyncProtocol.push(
+                    connection = connection,
+                    remotePath = remotePath,
+                    input = input,
+                    totalBytes = totalBytes,
+                    log = log,
+                )
+                log("File pushed OK")
             }
         }
     }
