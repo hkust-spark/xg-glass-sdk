@@ -16,6 +16,14 @@ dependencyResolutionManagement {
         mavenCentral()
         // Flutter engine artifacts
         maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
+        // Meta Wearables DAT
+        maven {
+            url = uri("https://maven.pkg.github.com/facebook/meta-wearables-dat-android")
+            credentials {
+                username = "ignored"
+                password = System.getenv("GITHUB_TOKEN") ?: providers.gradleProperty("github_token").orNull
+            }
+        }
         // Rokid repo should be scoped to Rokid groups only to avoid hijacking AndroidX resolution.
         exclusiveContent {
             forRepository {
@@ -38,6 +46,7 @@ include(":device-rokid")
 include(":device-frame-flutter")
 include(":device-rayneo-installer")
 include(":device-rayneo-runtime")
+include(":device-meta-wearable")
 include(":device-sim-emulator")
 
 // Keep Gradle module names stable, but place implementations under a dedicated folder.
@@ -45,6 +54,7 @@ project(":device-rokid").projectDir = file("devices/device-rokid")
 project(":device-frame-flutter").projectDir = file("devices/device-frame-flutter")
 project(":device-rayneo-installer").projectDir = file("devices/device-rayneo-installer")
 project(":device-rayneo-runtime").projectDir = file("devices/device-rayneo-runtime")
+project(":device-meta-wearable").projectDir = file("devices/device-meta-wearable")
 project(":device-sim-emulator").projectDir = file("devices/device-sim-emulator")
 
 // Embed the generated Flutter module as an internal dependency when available.

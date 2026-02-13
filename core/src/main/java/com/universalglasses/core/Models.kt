@@ -5,6 +5,7 @@ enum class GlassesModel {
     ROKID,
     RAYNEO,
     SIMULATOR,
+    META,
 }
 
 data class DeviceCapabilities(

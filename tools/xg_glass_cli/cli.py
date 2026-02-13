@@ -1935,7 +1935,15 @@ def _write_local_properties(project: Path, sdk_dir: str | None = None) -> None:
             "## - Put sn_*.lc under app/src/main/res/raw/\n"
             "## - Set snRawName to the raw resource entry name (file name without extension)\n"
             "rokid.clientSecret=\n"
-            "rokid.snRawName=\n",
+            "rokid.snRawName=\n"
+            "\n"
+            "## Meta Ray-Ban (optional): Mobile Wearables SDK v0.4.0\n"
+            "## - Register at https://developers.facebook.com/apps/\n"
+            "## - Copy App ID from Dashboard\n"
+            "meta.applicationId=\n"
+            "## - Generate a Personal Access Token (Classic) with 'read:packages' scope\n"
+            "## - https://github.com/settings/tokens\n"
+            "github_token=\n",
             encoding="utf-8",
         )
     else:
@@ -1948,7 +1956,15 @@ def _write_local_properties(project: Path, sdk_dir: str | None = None) -> None:
             "## - Put sn_*.lc under app/src/main/res/raw/\n"
             "## - Set snRawName to the raw resource entry name (file name without extension)\n"
             "rokid.clientSecret=\n"
-            "rokid.snRawName=\n",
+            "rokid.snRawName=\n"
+            "\n"
+            "## Meta Ray-Ban (optional): Mobile Wearables SDK v0.4.0\n"
+            "## - Register at https://developers.facebook.com/apps/\n"
+            "## - Copy App ID from Dashboard\n"
+            "meta.applicationId=\n"
+            "## - Generate a Personal Access Token (Classic) with 'read:packages' scope\n"
+            "## - https://github.com/settings/tokens\n"
+            "github_token=\n",
             encoding="utf-8",
         )
 

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Runtime permissions used by DAT -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Required metadata for Meta Wearables SDK opt-out -->
+    <application>
+         <!-- Optional: Disable analytics -->
+        <meta-data android:name="com.meta.wearable.mwdat.APPLICATION_ID" android:value="${META_APPLICATION_ID}" />
+                
+    </application>
+</manifest>

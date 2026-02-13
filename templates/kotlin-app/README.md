@@ -25,6 +25,28 @@ The `settings.gradle.kts` / `app/build.gradle.kts` / `AndroidManifest.xml` in th
 
 These will be replaced with actual values by `xg-glass init`.
 
+### Meta Wearables (Ray-Ban Meta) Note
+
+To use Meta Wearables (e.g., Ray-Ban Meta glasses), you must authenticate with the Meta Wearables SDK repository.
+
+1.  **Get a GitHub Personal Access Token (classic)**:
+    *   Scope required: `read:packages`.
+2.  **Add the token to `local.properties`** in your project root (**do not commit it**):
+
+```properties
+github_token=YOUR_GITHUB_TOKEN
+```
+
+Alternatively, set the `GITHUB_TOKEN` environment variable.
+
+To publish your app or access distinct device features, you may need a **Meta Application ID**.
+Add it to `local.properties`:
+
+```properties
+meta.applicationId=YOUR_APP_ID
+```
+If not set, it defaults to `"0"` (Developer Mode).
+
 ### Rokid note (CXR-M v1.0.4)
 
 If you are connecting to **Rokid** glasses, CXR-M **v1.0.4** requires an SN authorization file (`.lc`) and your developer `clientSecret`.

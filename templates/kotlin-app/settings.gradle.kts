@@ -14,6 +14,14 @@ plugins {
     id("com.universalglasses.rayneo.settings")
 }
 
+// Ensure local.properties is loaded to access secrets (e.g. github_token)
+val localProperties = java.util.Properties().apply {
+    val localPropertiesFile = rootDir.resolve("local.properties")
+    if (localPropertiesFile.exists()) {
+        load(localPropertiesFile.inputStream())
+    }
+}
+
 dependencyResolutionManagement {
     // Prefer settings repositories so Flutter/Rokid/Android deps resolve consistently.
     // (Flutter's plugin may add project-level repos; Gradle will warn but settings repos win.)
@@ -22,6 +30,14 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
+        // Meta Wearables DAT
+        maven {
+            url = uri("https://maven.pkg.github.com/facebook/meta-wearables-dat-android")
+            credentials {
+                username = "ignored"
+                password = System.getenv("GITHUB_TOKEN") ?: localProperties.getProperty("github_token")
+            }
+        }
         // Keep Rokid repo scoped; it does not necessarily proxy all AndroidX artifacts.
         exclusiveContent {
             forRepository {

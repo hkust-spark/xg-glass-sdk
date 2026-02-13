@@ -22,14 +22,19 @@ fun _escapeForBuildConfig(s: String): String =
 
 val rokidClientSecret = _propOrEnv("rokid.clientSecret", "ROKID_CLIENT_SECRET")
 val rokidSnRawName = _propOrEnv("rokid.snRawName", "ROKID_SN_RAW_NAME")
+val metaAppId = _propOrEnv("meta.applicationId", "META_APPLICATION_ID")
 
 android {
     namespace = "com.example.xgglassapp"
     compileSdk = 34
 
     defaultConfig {
+        // Meta Wearables Application ID placeholder
+        // Defaults to "0" (Developer Mode) if not set.
+        val resolvedMetaAppId = if (metaAppId.isNotEmpty()) metaAppId else "0"
+        manifestPlaceholders["META_APPLICATION_ID"] = resolvedMetaAppId
         applicationId = "com.example.xgglassapp"
-        minSdk = 28
+        minSdk = 29
         targetSdk = 34
         versionCode = 1
         versionName = "0.0.1"
