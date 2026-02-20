@@ -30,7 +30,14 @@
         <!-- Developer entry class (loaded by phone host to render commands) -->
         <meta-data
             android:name="com.universalglasses.app_entry_class"
-            android:value="__XG_ENTRY_CLASS__" />
+            android:value="com.example.xgglassapp.logic.ExampleAppEntry" />
+
+        <!-- Meta Wearables Device Access Toolkit Application ID.
+             Use "0" for Developer Mode; production apps get a unique ID from
+             https://wearables.developer.meta.com/docs/manage-projects -->
+        <meta-data
+            android:name="com.meta.wearable.mwdat.APPLICATION_ID"
+            android:value="${META_APPLICATION_ID}" />
 
         <activity
             android:name=".MainActivity"

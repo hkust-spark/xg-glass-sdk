@@ -27,6 +27,7 @@ import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -35,7 +36,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 class MetaWearableGlassesClient(private val context: Context) : GlassesClient {
 
@@ -157,59 +160,79 @@ class MetaWearableGlassesClient(private val context: Context) : GlassesClient {
         if (_state.value !is ConnectionState.Connected) {
             return Result.failure(
                     IllegalStateException(
-                            "Device disconnected. Please ensure glasses are connected and authorized (State: ${_state.value})"
+                            "Not connected. Ensure glasses are registered and authorized (state: ${_state.value})"
                     )
             )
         }
+
         return try {
+            // Step 6 (DAT docs): get or create a StreamSession backed by AutoDeviceSelector.
             val session = getOrCreateSession()
-            var resultImage: CapturedImage? = null
 
-            val result = session.capturePhoto()
+            // Step 7 (DAT docs): capturePhoto() MUST be called on an active (STREAMING) session.
+            // Wait up to 30 s for the session to reach STREAMING state; camera initialisation
+            // takes several seconds after the session is first created.
+            if (session.state.value != StreamSessionState.STREAMING) {
+                emitLog("Waiting for stream session to reach STREAMING state...")
+                try {
+                    withTimeout(30_000L) {
+                        session.state.first { it == StreamSessionState.STREAMING }
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    return Result.failure(
+                            IllegalStateException(
+                                    "Stream session did not reach STREAMING within 30 s " +
+                                            "(current: ${session.state.value}). " +
+                                            "Check camera permission and device connectivity."
+                            )
+                    )
+                }
+            }
 
-            result
+            emitLog("Capturing photo from glasses...")
+            var capturedImage: CapturedImage? = null
+
+            // Official DAT pattern (StreamViewModel.capturePhoto, sample app):
+            //   session.capturePhoto()
+            //       .onSuccess { photoData -> ... }
+            //       .onFailure { err -> ... }
+            session.capturePhoto()
                     .onSuccess { photoData ->
-                        emitLog("Photo data received: $photoData")
+                        emitLog("Photo data received (type: ${photoData::class.simpleName}).")
                         val jpegBytes =
                                 when (photoData) {
                                     is PhotoData.Bitmap -> {
-                                        val stream = ByteArrayOutputStream()
-                                        photoData.bitmap.compress(
-                                                Bitmap.CompressFormat.JPEG,
-                                                90,
-                                                stream
-                                        )
-                                        stream.toByteArray()
+                                        // Bitmap variant — compress to JPEG in-memory.
+                                        ByteArrayOutputStream().use { out ->
+                                            photoData.bitmap.compress(
+                                                    Bitmap.CompressFormat.JPEG,
+                                                    90,
+                                                    out
+                                            )
+                                            out.toByteArray()
+                                        }
                                     }
                                     is PhotoData.HEIC -> {
+                                        // HEIC variant — return raw bytes; caller can decode as
+                                        // needed.
                                         val buffer = photoData.data
-                                        val bytes = ByteArray(buffer.remaining())
-                                        buffer.get(bytes)
-                                        bytes
+                                        ByteArray(buffer.remaining()).also { buffer.get(it) }
                                     }
                                 }
-
-                        resultImage =
+                        capturedImage =
                                 CapturedImage(
                                         jpegBytes = jpegBytes,
                                         sourceModel = model,
                                         width = options.targetWidth,
-                                        height = options.targetHeight
+                                        height = options.targetHeight,
                                 )
                     }
-                    .onFailure { e -> throw RuntimeException("Photo capture failed: $e") }
+                    .onFailure { err -> throw RuntimeException("capturePhoto failed: $err") }
 
-            if (resultImage != null) {
-                Result.success(resultImage!!)
-            } else {
-                Result.failure(RuntimeException("Photo capture returned no data"))
-            }
+            capturedImage?.let { Result.success(it) }
+                    ?: Result.failure(RuntimeException("capturePhoto returned no image data"))
         } catch (e: Exception) {
-            emitWarn("Capture exception: ${e.message}")
-            if (e is IllegalStateException && e.message?.contains("disconnected", true) == true) {
-                // Try to force state update if SDK thinks it's disconnected
-                scope.launch { _state.emit(ConnectionState.Disconnected) }
-            }
+            emitWarn("Photo capture exception: ${e.message}")
             Result.failure(e)
         }
     }
