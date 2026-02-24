@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Rokid needs BLE + Wi‑Fi permissions; request at runtime in real app. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Android 13+ Wi‑Fi P2P runtime permission -->
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
+
+    <application
+        android:allowBackup="true"
+        android:label="XgGlassApp"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.XgGlassApp">
+
+        <!-- Developer entry class (loaded by phone host to render commands) -->
+        <meta-data
+            android:name="com.universalglasses.app_entry_class"
+            android:value="com.example.xgglassapp.logic.ExampleAppEntry" />
+
+        <!-- Meta Wearables Device Access Toolkit Application ID.
+             Use "0" for Developer Mode; production apps get a unique ID from
+             https://wearables.developer.meta.com/docs/manage-projects -->
+        <meta-data
+            android:name="com.meta.wearable.mwdat.APPLICATION_ID"
+            android:value="${META_APPLICATION_ID}" />
+
+        <activity
+            android:name=".MainActivity"
+            android:theme="@style/Theme.XgGlassApp"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Meta Wearables Auth Callback (scheme must be "fb" + APPLICATION_ID) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="fb${META_APPLICATION_ID}" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
+
+

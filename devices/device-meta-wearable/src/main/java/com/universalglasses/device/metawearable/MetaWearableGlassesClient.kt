@@ -1,6 +1,5 @@
 package com.universalglasses.device.metawearable
 
-import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
@@ -26,6 +25,7 @@ import com.universalglasses.core.MicrophoneSession
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
@@ -48,6 +48,7 @@ class MetaWearableGlassesClient(private val context: Context) : GlassesClient {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var streamSession: StreamSession? = null
+    private var videoCollectionJob: Job? = null
 
     override val model: GlassesModel = GlassesModel.META
 
@@ -90,19 +91,16 @@ class MetaWearableGlassesClient(private val context: Context) : GlassesClient {
                         ConnectionState.Disconnected
                     }
                 }
-                        .collect { connState -> _state.emit(connState) }
+                        .collect { connState ->
+                            Log.d(TAG, "Connection state → $connState")
+                            _state.emit(connState)
+                        }
             }
 
-            if (context is Activity) {
-                Wearables.startRegistration(context)
-            } else {
-                Log.w(
-                        TAG,
-                        "Context is not an Activity. If app is not registered, connection may fail."
-                )
-            }
-
-            // We report success to the caller immediately; state flow updates asynchronously
+            // Registration is verified upstream (MainActivity.ensurePermissionsThenConnect)
+            // before connect() is ever called. Calling startRegistration() here would
+            // re-open the Meta AI app unnecessarily on every connect — intentionally omitted.
+            // Success is reported immediately; state updates asynchronously as devices appear.
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -117,6 +115,8 @@ class MetaWearableGlassesClient(private val context: Context) : GlassesClient {
     }
 
     private fun stopStreamSession() {
+        videoCollectionJob?.cancel()
+        videoCollectionJob = null
         streamSession?.close()
         streamSession = null
     }
@@ -130,26 +130,53 @@ class MetaWearableGlassesClient(private val context: Context) : GlassesClient {
     }
 
     private suspend fun getOrCreateSession(): StreamSession {
-        if (streamSession != null) return streamSession!!
+        if (streamSession != null) {
+            emitLog(
+                    "Meta: reusing existing stream session (state: ${streamSession!!.state.value})."
+            )
+            return streamSession!!
+        }
 
+        emitLog("Meta: starting new stream session (LOW / 15 fps)...")
         val session =
                 Wearables.startStreamSession(
                         context = context,
                         deviceSelector = AutoDeviceSelector(),
                         streamConfiguration =
                                 StreamConfiguration(
-                                        videoQuality = VideoQuality.MEDIUM,
-                                        frameRate = 24
+                                        videoQuality = VideoQuality.LOW,
+                                        frameRate = 15,
                                 )
                 )
         streamSession = session
 
+        // Per Step 6 of the DAT integration guide, an active consumer of `videoStream` is
+        // required to drive the session from STARTED → STREAMING. Without this collector
+        // the session stalls indefinitely at STARTED and capturePhoto() never becomes valid.
+        videoCollectionJob?.cancel()
+        videoCollectionJob =
+                scope.launch {
+                    try {
+                        session.videoStream
+                                .collect { /* frames drive STREAMING state; not displayed here */}
+                    } catch (_: Exception) {
+                        // Stream closed or cancelled — no action needed.
+                    }
+                }
+
+        // Log every state transition and clean up on terminal states.
         scope.launch {
             session.state.collect { s ->
-                if (s == StreamSessionState.STOPPED || s == StreamSessionState.CLOSED) {
-                    if (streamSession == session) {
-                        streamSession = null
+                emitLog("Meta: stream session state → $s")
+                when (s) {
+                    StreamSessionState.STOPPED, StreamSessionState.CLOSED -> {
+                        if (streamSession == session) {
+                            streamSession = null
+                            videoCollectionJob?.cancel()
+                            videoCollectionJob = null
+                        }
                     }
+                    else -> {}
                 }
             }
         }
@@ -169,21 +196,55 @@ class MetaWearableGlassesClient(private val context: Context) : GlassesClient {
             // Step 6 (DAT docs): get or create a StreamSession backed by AutoDeviceSelector.
             val session = getOrCreateSession()
 
-            // Step 7 (DAT docs): capturePhoto() MUST be called on an active (STREAMING) session.
-            // Wait up to 30 s for the session to reach STREAMING state; camera initialisation
-            // takes several seconds after the session is first created.
+            // Step 7 (DAT docs): capturePhoto() is only valid on an active (STREAMING) session.
+            // Wait for STREAMING, logging intermediate states so the user can see progress.
+            // Common reasons this is slow:
+            //  - First-time session start: camera initialisation takes several seconds.
+            //  - Known DAT issue (knownissues doc): streams started while glasses are doffed
+            //    are paused at the OS level when the glasses are donned. The session stalls at
+            //    STARTED/STOPPING. Workaround: have the user tap the side of the glasses.
             if (session.state.value != StreamSessionState.STREAMING) {
-                emitLog("Waiting for stream session to reach STREAMING state...")
+                emitLog(
+                        "Meta: waiting for STREAMING state " +
+                                "(current: ${session.state.value}) \u2014 make sure glasses are worn..."
+                )
                 try {
-                    withTimeout(30_000L) {
-                        session.state.first { it == StreamSessionState.STREAMING }
+                    withTimeout(45_000L) {
+                        session.state.first { state ->
+                            when (state) {
+                                StreamSessionState.STREAMING -> true
+                                // Terminal states \u2014 no point waiting further.
+                                StreamSessionState.STOPPED,
+                                StreamSessionState.CLOSED -> true
+                                else -> false
+                            }
+                        }
                     }
                 } catch (e: TimeoutCancellationException) {
+                    val cur = session.state.value
+                    val hint =
+                            when (cur) {
+                                StreamSessionState.STARTED ->
+                                        "Session reached STARTED but stalled before STREAMING. " +
+                                                "Glasses may have been doffed — tap the side of your " +
+                                                "Ray-Ban glasses, then try again."
+                                StreamSessionState.STOPPING ->
+                                        "Session began stopping before reaching STREAMING. " +
+                                                "Disconnect and reconnect."
+                                else ->
+                                        "Session is stuck at $cur after 45 s. " +
+                                                "Ensure glasses are worn and camera permission is granted."
+                            }
+                    return Result.failure(IllegalStateException("capturePhoto: $hint"))
+                }
+
+                val finalState = session.state.value
+                if (finalState != StreamSessionState.STREAMING) {
+                    // Reached a terminal non-STREAMING state.
                     return Result.failure(
                             IllegalStateException(
-                                    "Stream session did not reach STREAMING within 30 s " +
-                                            "(current: ${session.state.value}). " +
-                                            "Check camera permission and device connectivity."
+                                    "Stream session ended before reaching STREAMING " +
+                                            "(final: $finalState). Disconnect and reconnect."
                             )
                     )
                 }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Must extend an AppCompat theme because MainActivity is an AppCompatActivity. -->
+    <style name="Theme.XgGlassApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Customize if needed -->
+    </style>
+</resources>
+
+

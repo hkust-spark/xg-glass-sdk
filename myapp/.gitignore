@@ -1,0 +1,13 @@
+# Gradle
+.gradle/
+**/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Local SDK path / machine-specific config
+local.properties
+
+# Secrets (Rokid SN auth)
+app/src/main/res/raw/*.lc
