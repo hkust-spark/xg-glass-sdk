@@ -1,9 +1,0 @@
-# xg-glass config (generated/updated by xg-glass init)
-sdkPath: ".."
-entryClass: "com.example.xgglassapp.logic.ExampleAppEntry"
-rayneoMercuryAarDir: "../third_party/rayneo/aar"
-variant: "debug"
-module: "app"
-applicationId: "com.example.xgglassapp"
-
-

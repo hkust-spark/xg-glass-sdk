@@ -59,4 +59,6 @@ third_party/frame/frame_module/.ios/
 # Optional: lockfile (commit if you want reproducible app-like builds; ignore to reduce churn)
 third_party/frame/frame_module/pubspec.lock
 
+# ignore the test file
+myapp
 

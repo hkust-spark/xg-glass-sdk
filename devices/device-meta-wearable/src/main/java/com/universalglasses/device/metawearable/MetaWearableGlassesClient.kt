@@ -94,6 +94,44 @@ class MetaWearableGlassesClient(private val context: Context) : GlassesClient {
                         .collect { connState ->
                             Log.d(TAG, "Connection state → $connState")
                             _state.emit(connState)
+
+                            when (connState) {
+                                is ConnectionState.Connected -> {
+                                    // Proactively warm up the stream session as soon as the
+                                    // device is Connected, rather than lazily at capturePhoto()
+                                    // time.
+                                    //
+                                    // Root cause of the "works after restart" bug:
+                                    //   On first launch the BT Classic link (needed for video)
+                                    //   is not yet established. Starting the session lazily on
+                                    //   first capturePhoto() gives it no time to run through
+                                    //   STARTING → STARTED → STREAMING before the wait timeout.
+                                    //   After a restart the Meta AI app has a cached BT Classic
+                                    //   connection, so the session reaches STREAMING in < 1 s.
+                                    //
+                                    // Fix: start the session NOW. videoStream.collect {} drives
+                                    // the state machine through to STREAMING in the background.
+                                    // By the time the user taps Capture Photo the session will
+                                    // already be STREAMING (or close to it).
+                                    if (streamSession == null) {
+                                        Log.d(TAG, "Connected — warming up stream session eagerly.")
+                                        try {
+                                            getOrCreateSession()
+                                        } catch (e: Exception) {
+                                            Log.w(
+                                                    TAG,
+                                                    "Eager stream session start failed: ${e.message}"
+                                            )
+                                        }
+                                    }
+                                }
+                                is ConnectionState.Disconnected -> {
+                                    // Per lifecycle docs: release resources when connection drops.
+                                    Log.d(TAG, "Disconnected — stopping stream session.")
+                                    stopStreamSession()
+                                }
+                                else -> {}
+                            }
                         }
             }
 
