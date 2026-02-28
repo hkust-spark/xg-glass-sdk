@@ -21,6 +21,7 @@ build-logic/bin/
 
 # Local config (machine-specific)
 local.properties
+.vscode
 **/local.properties
 *.keystore
 *.jks
