@@ -19,8 +19,8 @@ dependencies {
     api(project(":device-rayneo-installer"))
     api(project(":device-rayneo-runtime"))
 
-    // Emulator/local-sim implementation
-    api(project(":device-sim-emulator"))
+    // Simulator implementation (virtual glasses for development/testing)
+    api(project(":device-simulator"))
 
     // Meta Wearables (Ray-Ban Meta)
     api(project(":device-meta-wearable"))
@@ -31,5 +31,3 @@ dependencies {
         api(project(":device-frame-embedded"))
     }
 }
-
-

@@ -15,5 +15,3 @@ dependencies {
     // which adds the :flutter project that provides Flutter runtime + GeneratedPluginRegistrant.
     implementation(project(":flutter"))
 }
-
-

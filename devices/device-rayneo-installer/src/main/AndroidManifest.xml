@@ -3,5 +3,3 @@
     <!-- Needed for ADB-over-TCP connection to the glasses (adbd:5555). -->
     <uses-permission android:name="android.permission.INTERNET" />
 </manifest>
-
-

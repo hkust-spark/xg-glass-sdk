@@ -34,6 +34,19 @@ interface GlassesClient {
     suspend fun display(text: String, options: DisplayOptions = DisplayOptions()): Result<Unit>
 
     /**
+     * Play audio on the glasses.
+     *
+     * - [AudioSource.Tts]: text → on-device TTS. Requires [DeviceCapabilities.canPlayTts].
+     * - [AudioSource.RawBytes]: encoded/PCM bytes → direct playback. Requires [DeviceCapabilities.canPlayAudioBytes].
+     *
+     * Returns [GlassesError.Unsupported] when the device does not support the requested source type.
+     */
+    suspend fun playAudio(
+        source: AudioSource,
+        options: PlayAudioOptions = PlayAudioOptions(),
+    ): Result<Unit>
+
+    /**
      * Start microphone capture and return a session that streams audio chunks.
      *
      * Notes:
@@ -42,5 +55,3 @@ interface GlassesClient {
      */
     suspend fun startMicrophone(options: MicrophoneOptions = MicrophoneOptions()): Result<MicrophoneSession>
 }
-
-

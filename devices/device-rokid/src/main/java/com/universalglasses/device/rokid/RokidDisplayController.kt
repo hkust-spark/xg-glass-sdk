@@ -128,5 +128,3 @@ internal class RokidDisplayController(
         return gson.toJson(updateArray)
     }
 }
-
-

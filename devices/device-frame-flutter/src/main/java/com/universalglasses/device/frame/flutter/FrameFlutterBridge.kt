@@ -43,5 +43,3 @@ sealed class FrameFlutterState {
     data object Connected : FrameFlutterState()
     data class Error(val message: String) : FrameFlutterState()
 }
-
-

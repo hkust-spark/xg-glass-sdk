@@ -5,5 +5,3 @@ rayneoMercuryAarDir: "__XG_SDK_PATH__/third_party/rayneo/aar"
 variant: "debug"
 module: "app"
 applicationId: "com.example.xgglassapp"
-
-

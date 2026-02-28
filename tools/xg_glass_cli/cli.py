@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     p_init.add_argument(
         "--sim",
         action="store_true",
-        help="Initialize the project in emulator mode (enables x86_64 + simulator backend).",
+        help="Initialize the project in simulator mode (enables x86_64 + simulator backend).",
     )
 
     p_build = sub.add_parser("build", help="Build the phone-side APK.")
@@ -352,7 +352,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 rayneo_aar_dir=None,
             )
         )
-        # When --sim, ensure an emulator is running before installing.
+        # When --sim, ensure an Android Emulator is running before installing.
         if bool(getattr(args, "sim", False)):
             _ensure_emulator_running(serial=args.serial)
         cmd_install(
@@ -640,10 +640,10 @@ def _ensure_emulator_running(serial: str | None = None) -> None:
 
 def _apply_simulator_build_settings(project: Path, *, enabled: bool) -> None:
     """
-    Patch a generated (or existing) template-based project to run well on Android Emulator.
+    Patch a generated (or existing) template-based project for simulator mode.
 
-    - Adds x86_64 ABI to splits (so Emulator can install the APK)
-    - Flips BuildConfig.XG_SIMULATOR, used by the template host app to select simulator backend
+    - Adds x86_64 ABI to splits (so Android Emulator can install the APK)
+    - Flips BuildConfig.XG_SIMULATOR, used by the template host app to select the simulator backend
     """
 
     app_gradle = project / "app" / "build.gradle.kts"

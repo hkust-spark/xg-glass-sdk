@@ -8,17 +8,20 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
+import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.AudioTrack
 import android.media.ImageReader
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.Looper
 import android.widget.Toast
 import com.universalglasses.core.AudioChunk
 import com.universalglasses.core.AudioEncoding
 import com.universalglasses.core.AudioFormat
+import com.universalglasses.core.AudioSource
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.ConnectionState
@@ -30,10 +33,13 @@ import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
+import com.universalglasses.core.PcmFormat
+import com.universalglasses.core.PlayAudioOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,10 +48,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.max
 
 /**
  * RayNeo (on-glasses) client.
@@ -68,6 +76,8 @@ class RayNeoRuntimeGlassesClient(
         canCapturePhoto = true,
         canDisplayText = true,
         canRecordAudio = true,
+        canPlayTts = false,
+        canPlayAudioBytes = true,
         supportsTapEvents = false,
         supportsStreamingTextUpdates = false,
     )
@@ -79,6 +89,7 @@ class RayNeoRuntimeGlassesClient(
     override val events: Flow<GlassesEvent> = _events
 
     @Volatile private var activeMic: MicrophoneSession? = null
+    @Volatile private var activePlayer: MediaPlayer? = null
 
     override suspend fun connect(): Result<Unit> {
         _state.value = ConnectionState.Connected
@@ -86,10 +97,10 @@ class RayNeoRuntimeGlassesClient(
     }
 
     override suspend fun disconnect() {
-        try {
-            activeMic?.stop()
-        } catch (_: Exception) {}
+        try { activeMic?.stop() } catch (_: Exception) {}
         activeMic = null
+        try { activePlayer?.release() } catch (_: Exception) {}
+        activePlayer = null
         _state.value = ConnectionState.Disconnected
     }
 
@@ -127,6 +138,158 @@ class RayNeoRuntimeGlassesClient(
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(GlassesError.Transport("RayNeo display failed: ${e.message ?: e::class.java.simpleName}", e))
+        }
+    }
+
+    override suspend fun playAudio(source: AudioSource, options: PlayAudioOptions): Result<Unit> {
+        if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
+
+        return when (source) {
+            is AudioSource.Tts -> Result.failure(
+                GlassesError.Unsupported(
+                    "RayNeo does not have a built-in TTS engine. " +
+                        "Convert text to audio bytes externally and use AudioSource.RawBytes instead."
+                )
+            )
+            is AudioSource.RawBytes -> playRawBytes(source, options)
+        }
+    }
+
+    private suspend fun playRawBytes(source: AudioSource.RawBytes, options: PlayAudioOptions): Result<Unit> {
+        val data = source.data
+        if (data.isEmpty()) return Result.success(Unit)
+
+        return try {
+            if (options.interrupt) {
+                try { activePlayer?.release() } catch (_: Exception) {}
+                activePlayer = null
+            }
+            ensureMusicVolumeNotZero()
+
+            val pcm = source.pcmFormat
+            if (pcm != null) {
+                playPcm(data, pcm)
+            } else {
+                playEncoded(data)
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(
+                (e as? GlassesError)
+                    ?: GlassesError.Transport("RayNeo playAudio failed: ${e.message}", e)
+            )
+        }
+    }
+
+    private suspend fun playPcm(data: ByteArray, pcm: PcmFormat) {
+        val sampleRate = pcm.sampleRateHz
+        val channels = pcm.channelCount
+        val channelMask = if (channels <= 1) {
+            android.media.AudioFormat.CHANNEL_OUT_MONO
+        } else {
+            android.media.AudioFormat.CHANNEL_OUT_STEREO
+        }
+        val enc = when (pcm.encoding) {
+            AudioEncoding.PCM_S16_LE -> android.media.AudioFormat.ENCODING_PCM_16BIT
+            AudioEncoding.PCM_S8 -> android.media.AudioFormat.ENCODING_PCM_8BIT
+            AudioEncoding.OPUS -> throw GlassesError.Unsupported("RayNeo playAudio: OPUS PCM not supported")
+        }
+
+        val minBuf = AudioTrack.getMinBufferSize(sampleRate, channelMask, enc).coerceAtLeast(0)
+        val bufSize = max(minBuf, 8 * 1024)
+
+        val track = runCatching {
+            AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setLegacyStreamType(AudioManager.STREAM_MUSIC)
+                        .build()
+                )
+                .setAudioFormat(
+                    android.media.AudioFormat.Builder()
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(channelMask)
+                        .setEncoding(enc)
+                        .build()
+                )
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .setBufferSizeInBytes(bufSize)
+                .build()
+        }.getOrElse {
+            @Suppress("DEPRECATION")
+            AudioTrack(
+                AudioManager.STREAM_MUSIC, sampleRate, channelMask, enc,
+                bufSize, AudioTrack.MODE_STREAM,
+            )
+        }
+
+        if (track.state != AudioTrack.STATE_INITIALIZED) {
+            track.release()
+            throw GlassesError.Transport("RayNeo AudioTrack not initialized")
+        }
+
+        try {
+            track.play()
+            var written = 0
+            while (written < data.size) {
+                val n = track.write(data, written, minOf(4096, data.size - written))
+                if (n <= 0) break
+                written += n
+            }
+            val bytesPerSecond = sampleRate.toLong() * channels * (if (enc == android.media.AudioFormat.ENCODING_PCM_16BIT) 2 else 1)
+            if (bytesPerSecond > 0) {
+                delay(data.size * 1000L / bytesPerSecond + 200L)
+            }
+        } finally {
+            runCatching { track.stop() }
+            track.release()
+        }
+    }
+
+    private suspend fun playEncoded(data: ByteArray) {
+        val tmpFile = File.createTempFile("ug_audio_", ".tmp", context.cacheDir)
+        try {
+            tmpFile.writeBytes(data)
+            withContext(Dispatchers.Main) {
+                suspendCancellableCoroutine<Unit> { cont ->
+                    val mp = MediaPlayer()
+                    activePlayer = mp
+                    mp.setDataSource(tmpFile.absolutePath)
+                    mp.setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    mp.setOnCompletionListener {
+                        mp.release()
+                        activePlayer = null
+                        tmpFile.delete()
+                        if (cont.isActive) cont.resume(Unit)
+                    }
+                    mp.setOnErrorListener { _, what, extra ->
+                        mp.release()
+                        activePlayer = null
+                        tmpFile.delete()
+                        if (cont.isActive) cont.resumeWithException(
+                            GlassesError.Transport("RayNeo MediaPlayer error: what=$what extra=$extra")
+                        )
+                        true
+                    }
+                    mp.prepare()
+                    mp.start()
+                    cont.invokeOnCancellation {
+                        mp.release()
+                        activePlayer = null
+                        tmpFile.delete()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            tmpFile.delete()
+            throw e
         }
     }
 
@@ -265,6 +428,22 @@ class RayNeoRuntimeGlassesClient(
 
     private fun hasRecordAudioPermission(): Boolean {
         return context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun ensureMusicVolumeNotZero() {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val stream = AudioManager.STREAM_MUSIC
+            val cur = am.getStreamVolume(stream)
+            val max = am.getStreamMaxVolume(stream)
+            if (cur <= 0 && max > 0) {
+                // Avoid blasting; set to a reasonable audible level.
+                val target = (max / 2).coerceAtLeast(1)
+                am.setStreamVolume(stream, target, 0)
+            }
+        } catch (_: Exception) {
+            // ignore (may fail without MODIFY_AUDIO_SETTINGS on some ROMs)
+        }
     }
 
     private suspend fun captureJpegOnce(width: Int, height: Int): ByteArray {
@@ -418,5 +597,3 @@ class ToastDisplaySink : RayNeoDisplaySink {
         }
     }
 }
-
-

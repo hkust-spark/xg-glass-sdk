@@ -43,5 +43,3 @@ class UniversalGlassesRayneoSettingsPlugin : Plugin<Settings> {
         marker.writeText(RayneoHostTemplate.TEMPLATE_VERSION.toString())
     }
 }
-
-

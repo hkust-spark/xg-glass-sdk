@@ -235,5 +235,3 @@ object UniversalCommandPolicy {
 fun UniversalAppEntry.commandsWithDefaults(env: HostEnvironment): List<UniversalCommand> {
     return UniversalCommandPolicy.filterCommands(env, commands(env))
 }
-
-

@@ -27,5 +27,3 @@ class ExampleAppEntry : UniversalAppEntrySimple {
         return emptyList()
     }
 }
-
-

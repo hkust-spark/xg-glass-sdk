@@ -15,8 +15,10 @@ import com.universalglasses.core.GlassesClient
 import com.universalglasses.core.GlassesError
 import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
+import com.universalglasses.core.AudioSource
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
+import com.universalglasses.core.PlayAudioOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -53,6 +55,8 @@ class RayNeoInstallerGlassesClient(
         canCapturePhoto = false,
         canDisplayText = false,
         canRecordAudio = false,
+        canPlayTts = false,
+        canPlayAudioBytes = false,
         supportsTapEvents = false,
         supportsStreamingTextUpdates = false,
     )
@@ -117,6 +121,12 @@ class RayNeoInstallerGlassesClient(
     override suspend fun display(text: String, options: DisplayOptions): Result<Unit> {
         return Result.failure(
             GlassesError.Unsupported("RayNeo display runs on-glasses. Install/open the glasses app and display there.")
+        )
+    }
+
+    override suspend fun playAudio(source: AudioSource, options: PlayAudioOptions): Result<Unit> {
+        return Result.failure(
+            GlassesError.Unsupported("RayNeo audio playback runs on-glasses. Install/open the glasses app and play there.")
         )
     }
 
@@ -470,5 +480,3 @@ private object ShellProtocol {
         }
     }
 }
-
-

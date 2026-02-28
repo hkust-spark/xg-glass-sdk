@@ -1,3 +1,1 @@
 local _M={}local a={'VOID','WHITE','GREY','RED','PINK','DARKBROWN','BROWN','ORANGE','YELLOW','DARKGREEN','GREEN','LIGHTGREEN','NIGHTBLUE','SEABLUE','SKYBLUE','CLOUDBLUE'}function _M.parse_plain_text(b)local c={}c.x=string.byte(b,1)<<8|string.byte(b,2)c.y=string.byte(b,3)<<8|string.byte(b,4)c.palette_offset=string.byte(b,5)c.color=a[c.palette_offset%16+1]c.spacing=string.byte(b,6)c.string=string.sub(b,7)return c end;return _M
-
-

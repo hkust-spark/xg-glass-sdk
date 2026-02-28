@@ -47,5 +47,3 @@ gradlePlugin {
         }
     }
 }
-
-

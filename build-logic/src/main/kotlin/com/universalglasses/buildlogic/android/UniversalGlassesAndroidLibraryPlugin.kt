@@ -19,5 +19,3 @@ class UniversalGlassesAndroidLibraryPlugin : Plugin<Project> {
         }
     }
 }
-
-

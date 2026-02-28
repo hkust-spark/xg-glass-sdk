@@ -11,5 +11,3 @@ dependencies {
     // Intentionally no direct Flutter dependency here.
     // The host app provides a FrameFlutterBridge implementation that talks to its embedded Flutter module.
 }
-
-

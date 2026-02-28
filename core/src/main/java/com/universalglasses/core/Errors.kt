@@ -8,5 +8,3 @@ sealed class GlassesError(message: String, cause: Throwable? = null) : Exception
     data class Transport(val detail: String, val raw: Throwable? = null) : GlassesError(detail, raw)
     data class Unsupported(val detail: String) : GlassesError("Unsupported: $detail")
 }
-
-

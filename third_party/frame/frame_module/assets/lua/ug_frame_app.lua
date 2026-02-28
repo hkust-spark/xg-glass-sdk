@@ -129,5 +129,3 @@ function app_loop()
 end
 
 app_loop()
-
-

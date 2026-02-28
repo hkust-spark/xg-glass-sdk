@@ -38,7 +38,7 @@ import com.universalglasses.device.rayneo.installer.RayNeoApkSource
 import com.universalglasses.device.rayneo.installer.RayNeoInstallerConfig
 import com.universalglasses.device.rayneo.installer.RayNeoInstallerGlassesClient
 import com.universalglasses.device.rokid.RokidGlassesClient
-import com.universalglasses.device.sim.EmulatorGlassesClient
+import com.universalglasses.device.sim.SimulatorGlassesClient
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -270,7 +270,7 @@ class MainActivity : AppCompatActivity() {
                     val newClient =
                             when (model) {
                                 GlassesModel.SIMULATOR ->
-                                        EmulatorGlassesClient(this@MainActivity) { text ->
+                                        SimulatorGlassesClient(this@MainActivity) { text ->
                                             tvDisplay.text = text
                                         }
                                 GlassesModel.META -> createMetaClient()

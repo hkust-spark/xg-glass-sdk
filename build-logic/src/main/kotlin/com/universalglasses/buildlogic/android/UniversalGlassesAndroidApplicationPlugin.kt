@@ -20,5 +20,3 @@ class UniversalGlassesAndroidApplicationPlugin : Plugin<Project> {
         }
     }
 }
-
-

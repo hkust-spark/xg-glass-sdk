@@ -12,6 +12,10 @@ data class DeviceCapabilities(
     val canCapturePhoto: Boolean = true,
     val canDisplayText: Boolean = true,
     val canRecordAudio: Boolean = false,
+    /** Device can render text-to-speech via a built-in TTS engine (e.g. Rokid). */
+    val canPlayTts: Boolean = false,
+    /** Device can play raw/encoded audio bytes on the glasses speaker. */
+    val canPlayAudioBytes: Boolean = false,
     val supportsTapEvents: Boolean = false,
     val supportsStreamingTextUpdates: Boolean = false,
 )
@@ -49,5 +53,3 @@ data class CapturedImage(
     val rotationDegrees: Int? = null,
     val sourceModel: GlassesModel,
 )
-
-

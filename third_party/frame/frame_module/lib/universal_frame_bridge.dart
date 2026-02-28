@@ -382,5 +382,3 @@ class UniversalFrameBridge {
     return base;
   }
 }
-
-

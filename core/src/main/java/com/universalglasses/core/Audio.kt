@@ -3,11 +3,13 @@ package com.universalglasses.core
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Unified audio models for microphone capture across different glasses.
+ * Unified audio models for microphone capture and playback across different glasses.
  *
  * Design notes:
- * - The SDK exposes "audio as a stream of chunks" (plus format metadata).
- * - Whether the app writes WAV/AAC files or streams to ASR is an application-level decision.
+ * - Microphone: SDK exposes "audio as a stream of chunks" (plus format metadata).
+ *   Whether the app writes WAV/AAC or streams to ASR is an application-level decision.
+ * - Playback: a single `playAudio(source, options)` method supports both TTS (text input)
+ *   and raw audio bytes. Devices declare `canPlayTts` / `canPlayAudioBytes` independently.
  */
 enum class AudioEncoding {
     /** Signed 16-bit little-endian PCM. */
@@ -17,6 +19,47 @@ enum class AudioEncoding {
     /** Opus frames (container-less). */
     OPUS,
 }
+
+/**
+ * Input for [GlassesClient.playAudio].
+ *
+ * - [Tts]: text → on-device TTS engine renders speech. Requires [DeviceCapabilities.canPlayTts].
+ * - [RawBytes]: pre-encoded audio bytes (WAV/MP3/PCM/etc.) → direct playback.
+ *   Requires [DeviceCapabilities.canPlayAudioBytes].
+ */
+sealed class AudioSource {
+    /** Text-to-speech. The glasses' built-in TTS engine converts [text] to audio. */
+    data class Tts(val text: String) : AudioSource()
+
+    /**
+     * Raw audio bytes.
+     *
+     * - When [pcmFormat] is null the implementation auto-detects the container (WAV/MP3/OGG …).
+     * - When [pcmFormat] is provided the bytes are treated as headerless PCM.
+     */
+    data class RawBytes(
+        val data: ByteArray,
+        val pcmFormat: PcmFormat? = null,
+    ) : AudioSource()
+}
+
+/** Format descriptor for headerless PCM data passed via [AudioSource.RawBytes]. */
+data class PcmFormat(
+    val sampleRateHz: Int = 16_000,
+    val channelCount: Int = 1,
+    val encoding: AudioEncoding = AudioEncoding.PCM_S16_LE,
+)
+
+data class PlayAudioOptions(
+    /**
+     * TTS speech rate multiplier (only meaningful for [AudioSource.Tts]).
+     * - Rokid local TTS: doc range is roughly [0.75, 4.0].
+     * Implementations may clamp/ignore if unsupported.
+     */
+    val speechRate: Float? = null,
+    /** If true, interrupt any in-progress playback where possible. */
+    val interrupt: Boolean = true,
+)
 
 data class AudioFormat(
     val encoding: AudioEncoding,
@@ -62,5 +105,3 @@ interface MicrophoneSession {
     val audio: Flow<AudioChunk>
     suspend fun stop()
 }
-
-

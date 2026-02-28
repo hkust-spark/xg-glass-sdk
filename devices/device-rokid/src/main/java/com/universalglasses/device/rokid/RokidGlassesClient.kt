@@ -19,9 +19,13 @@ import com.rokid.cxr.client.extend.callbacks.PhotoPathCallback
 import com.rokid.cxr.client.extend.callbacks.SyncStatusCallback
 import com.rokid.cxr.client.extend.callbacks.WifiP2PStatusCallback
 import com.rokid.cxr.client.utils.ValueUtil
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.AudioTrack
 import com.universalglasses.core.AudioChunk
 import com.universalglasses.core.AudioEncoding
 import com.universalglasses.core.AudioFormat
+import com.universalglasses.core.AudioSource
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.ConnectionState
@@ -34,6 +38,8 @@ import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
+import com.universalglasses.core.PcmFormat
+import com.universalglasses.core.PlayAudioOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -77,8 +83,10 @@ class RokidGlassesClient(
         canCapturePhoto = true,
         canDisplayText = true,
         canRecordAudio = true,
+        canPlayTts = true,
+        canPlayAudioBytes = true,
         supportsTapEvents = false,
-        supportsStreamingTextUpdates = true, // custom view supports frequent updates; adapter still throttles
+        supportsStreamingTextUpdates = true,
     )
 
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
@@ -198,6 +206,112 @@ class RokidGlassesClient(
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(GlassesError.Transport("Rokid display failed: ${e.message}", e))
+        }
+    }
+
+    override suspend fun playAudio(source: AudioSource, options: PlayAudioOptions): Result<Unit> {
+        if (_state.value !is ConnectionState.Connected || !btReady) return Result.failure(GlassesError.NotConnected)
+
+        return when (source) {
+            is AudioSource.Tts -> playTts(source, options)
+            is AudioSource.RawBytes -> playRawBytes(source, options)
+        }
+    }
+
+    private fun playTts(source: AudioSource.Tts, options: PlayAudioOptions): Result<Unit> {
+        val content = source.text.trim()
+        if (content.isEmpty()) return Result.success(Unit)
+
+        return try {
+            val rate = options.speechRate
+            if (rate != null) {
+                CxrApi.getInstance().setLocalTtsSpeed(rate.coerceIn(0.75f, 4.0f))
+            }
+
+            val st = CxrApi.getInstance().sendGlobalTtsContent(content)
+            when (st) {
+                ValueUtil.CxrStatus.REQUEST_SUCCEED -> Result.success(Unit)
+                ValueUtil.CxrStatus.REQUEST_WAITING -> Result.failure(GlassesError.Busy)
+                ValueUtil.CxrStatus.REQUEST_FAILED -> Result.failure(GlassesError.Transport("Rokid sendGlobalTtsContent REQUEST_FAILED"))
+                else -> Result.failure(GlassesError.Transport("Rokid sendGlobalTtsContent status=$st"))
+            }
+        } catch (e: Exception) {
+            Result.failure((e as? GlassesError) ?: GlassesError.Transport("Rokid playAudio(TTS) failed: ${e.message}", e))
+        }
+    }
+
+    /**
+     * Play raw audio bytes on Rokid glasses via BT audio routing.
+     *
+     * Approach: route phone audio to glasses via [CxrApi.setCommunicationDevice],
+     * play on the phone side with [AudioTrack], then restore routing.
+     * Only PCM with explicit [PcmFormat] is supported for now.
+     */
+    private suspend fun playRawBytes(source: AudioSource.RawBytes, options: PlayAudioOptions): Result<Unit> {
+        val data = source.data
+        if (data.isEmpty()) return Result.success(Unit)
+        val pcm = source.pcmFormat
+            ?: return Result.failure(GlassesError.Unsupported(
+                "Rokid playAudio(RawBytes) requires explicit PcmFormat (container auto-detect not supported)"
+            ))
+
+        val sampleRate = pcm.sampleRateHz
+        val channels = pcm.channelCount
+        val channelMask = if (channels <= 1)
+            android.media.AudioFormat.CHANNEL_OUT_MONO
+        else
+            android.media.AudioFormat.CHANNEL_OUT_STEREO
+        val enc = when (pcm.encoding) {
+            AudioEncoding.PCM_S16_LE -> android.media.AudioFormat.ENCODING_PCM_16BIT
+            AudioEncoding.PCM_S8 -> android.media.AudioFormat.ENCODING_PCM_8BIT
+            AudioEncoding.OPUS -> return Result.failure(GlassesError.Unsupported("Rokid playAudio: OPUS not supported"))
+        }
+
+        return try {
+            CxrApi.getInstance().setCommunicationDevice()
+
+            val minBuf = AudioTrack.getMinBufferSize(sampleRate, channelMask, enc).coerceAtLeast(1024)
+            val track = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAudioFormat(
+                    android.media.AudioFormat.Builder()
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(channelMask)
+                        .setEncoding(enc)
+                        .build()
+                )
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .setBufferSizeInBytes(minBuf)
+                .build()
+
+            try {
+                track.play()
+                var written = 0
+                while (written < data.size) {
+                    val n = track.write(data, written, minOf(4096, data.size - written))
+                    if (n <= 0) break
+                    written += n
+                }
+                val bytesPerSample = if (enc == android.media.AudioFormat.ENCODING_PCM_16BIT) 2 else 1
+                val bytesPerSecond = sampleRate.toLong() * channels * bytesPerSample
+                if (bytesPerSecond > 0) {
+                    kotlinx.coroutines.delay(data.size * 1000L / bytesPerSecond + 200L)
+                }
+            } finally {
+                runCatching { track.stop() }
+                track.release()
+                runCatching { CxrApi.getInstance().clearCommunicationDevice() }
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            runCatching { CxrApi.getInstance().clearCommunicationDevice() }
+            Result.failure((e as? GlassesError) ?: GlassesError.Transport("Rokid playAudio(RawBytes) failed: ${e.message}", e))
         }
     }
 
@@ -500,11 +614,11 @@ class RokidGlassesClient(
                 ) {
                     if (!socketUuid.isNullOrBlank() && !macAddress.isNullOrBlank()) {
                         if (done.compareAndSet(false, true)) {
-                            cont.resume(socketUuid to macAddress)
+                        cont.resume(socketUuid to macAddress)
                         }
                     } else {
                         if (done.compareAndSet(false, true)) {
-                            cont.resumeWithException(GlassesError.Transport("onConnectionInfo missing uuid/mac"))
+                        cont.resumeWithException(GlassesError.Transport("onConnectionInfo missing uuid/mac"))
                         }
                     }
                 }
@@ -514,7 +628,7 @@ class RokidGlassesClient(
 
                 override fun onFailed(errorCode: ValueUtil.CxrBluetoothErrorCode?) {
                     if (done.compareAndSet(false, true)) {
-                        cont.resumeWithException(GlassesError.Transport("initBluetooth failed: $errorCode"))
+                    cont.resumeWithException(GlassesError.Transport("initBluetooth failed: $errorCode"))
                     }
                 }
             })
@@ -535,20 +649,20 @@ class RokidGlassesClient(
 
                 override fun onConnected() {
                     if (done.compareAndSet(false, true)) {
-                        cont.resume(Unit)
+                    cont.resume(Unit)
                     }
                 }
 
                 override fun onDisconnected() {
                     if (done.compareAndSet(false, true)) {
-                        cont.resumeWithException(GlassesError.Transport("connectBluetooth disconnected"))
+                    cont.resumeWithException(GlassesError.Transport("connectBluetooth disconnected"))
                     }
                 }
 
                 override fun onFailed(errorCode: ValueUtil.CxrBluetoothErrorCode?) {
                     if (done.compareAndSet(false, true)) {
-                        cont.resumeWithException(GlassesError.Transport("connectBluetooth failed: $errorCode"))
-                    }
+                    cont.resumeWithException(GlassesError.Transport("connectBluetooth failed: $errorCode"))
+                }
                 }
             }, snLc, clientSecret)
         }
@@ -620,5 +734,3 @@ class RokidGlassesClient(
         const val PREF_KEY_MAC_ADDRESS = "mac_address"
     }
 }
-
-

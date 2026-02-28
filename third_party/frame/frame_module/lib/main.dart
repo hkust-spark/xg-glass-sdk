@@ -9,5 +9,3 @@ void main() {
   UniversalFrameBridge.instance.start();
   runApp(const SizedBox.shrink());
 }
-
-

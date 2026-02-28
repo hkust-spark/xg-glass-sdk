@@ -135,5 +135,3 @@ class UniversalGlassesRayneoAppPlugin : Plugin<Project> {
         }
     }
 }
-
-

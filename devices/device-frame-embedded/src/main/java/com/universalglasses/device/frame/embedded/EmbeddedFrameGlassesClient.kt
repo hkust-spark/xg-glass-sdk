@@ -15,5 +15,3 @@ import com.universalglasses.device.frame.flutter.FrameGlassesClient
 class EmbeddedFrameGlassesClient(context: Context) : GlassesClient by FrameGlassesClient(
     bridge = EmbeddedFrameFlutterBridge(context.applicationContext)
 )
-
-

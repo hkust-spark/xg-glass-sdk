@@ -16,5 +16,3 @@ android {
 dependencies {
     // Intentionally empty: this is an internal host stub module required by Flutter's Gradle plugin.
 }
-
-

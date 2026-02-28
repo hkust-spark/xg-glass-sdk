@@ -8,5 +8,3 @@ allprojects {
     group = "com.universalglasses"
     version = "0.0.1"
 }
-
-

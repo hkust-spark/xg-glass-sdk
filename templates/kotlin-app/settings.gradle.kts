@@ -57,5 +57,3 @@ include(":ug_app_logic")
 // Use universal_glasses as a composite build (no publishing step required).
 // Replaced by xg-glass init: __XG_SDK_PATH__
 includeBuild("__XG_SDK_PATH__")
-
-

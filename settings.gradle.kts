@@ -47,7 +47,7 @@ include(":device-frame-flutter")
 include(":device-rayneo-installer")
 include(":device-rayneo-runtime")
 include(":device-meta-wearable")
-include(":device-sim-emulator")
+include(":device-simulator")
 
 // Keep Gradle module names stable, but place implementations under a dedicated folder.
 project(":device-rokid").projectDir = file("devices/device-rokid")
@@ -55,7 +55,7 @@ project(":device-frame-flutter").projectDir = file("devices/device-frame-flutter
 project(":device-rayneo-installer").projectDir = file("devices/device-rayneo-installer")
 project(":device-rayneo-runtime").projectDir = file("devices/device-rayneo-runtime")
 project(":device-meta-wearable").projectDir = file("devices/device-meta-wearable")
-project(":device-sim-emulator").projectDir = file("devices/device-sim-emulator")
+project(":device-simulator").projectDir = file("devices/device-simulator")
 
 // Embed the generated Flutter module as an internal dependency when available.
 // This avoids requiring app developers to manually include the Flutter module.
@@ -68,5 +68,3 @@ if (flutterInclude.exists()) {
     include(":device-frame-embedded")
     project(":device-frame-embedded").projectDir = file("devices/device-frame-embedded")
 }
-
-

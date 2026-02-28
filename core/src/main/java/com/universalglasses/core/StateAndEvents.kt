@@ -12,5 +12,3 @@ sealed class GlassesEvent {
     data class Warning(val message: String) : GlassesEvent()
     data class Tap(val count: Int) : GlassesEvent()
 }
-
-
