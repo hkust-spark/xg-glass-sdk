@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "xg-glass SDK CLI"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["yt-dlp"]
 
 [project.scripts]
 xg-glass = "tools.xg_glass_cli.cli:main"

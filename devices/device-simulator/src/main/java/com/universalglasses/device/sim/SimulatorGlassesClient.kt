@@ -1,11 +1,13 @@
 package com.universalglasses.device.sim
 
 import android.Manifest
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.speech.tts.TextToSpeech
@@ -50,7 +52,9 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
@@ -62,12 +66,18 @@ import kotlin.coroutines.resumeWithException
  *
  * Behavior:
  * - connect()/disconnect(): no physical glasses, so it's effectively a no-op lifecycle.
- * - capturePhoto(): uses Android camera (on Android Emulator this can be backed by host webcam).
+ * - capturePhoto(): uses Android camera (on Android Emulator this can be backed by host webcam),
+ *   OR reads frames from a local video file when [videoPath] is set (see --local_video / --url).
  * - display(): shows text in the host UI via a sink provided by the host app.
+ *
+ * When [videoPath] is non-null the video is played back at its original frame rate in an
+ * infinite loop. Each call to [capturePhoto] returns the frame that the virtual playback
+ * head is currently at.
  */
 class SimulatorGlassesClient(
     private val activity: AppCompatActivity,
     private val displaySink: ((String) -> Unit)? = null,
+    private val videoPath: String? = null,
 ) : GlassesClient {
 
     override val model: GlassesModel = GlassesModel.SIMULATOR
@@ -98,6 +108,18 @@ class SimulatorGlassesClient(
     @Volatile private var tts: TextToSpeech? = null
     @Volatile private var activePlayer: MediaPlayer? = null
 
+    // ── Video-file playback state (used when videoPath != null) ────────
+    /** The retriever used to extract frames from the video file. */
+    private var videoRetriever: MediaMetadataRetriever? = null
+    /** App-private copy of the video (copied from /data/local/tmp). */
+    private var videoCacheFile: File? = null
+    /** Total duration of the video in milliseconds. */
+    private var videoDurationMs: Long = 0L
+    /** System.currentTimeMillis() when the virtual playback started. */
+    private var videoStartTimeMs: Long = 0L
+
+    private val useVideoSource: Boolean get() = videoPath != null
+
     override suspend fun connect(): Result<Unit> {
         if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
             return Result.success(Unit)
@@ -107,7 +129,11 @@ class SimulatorGlassesClient(
         emitLog("Simulator: connect (no-op)")
 
         return try {
-            ensureCameraUseCase(jpegQuality = 90)
+            if (useVideoSource) {
+                initVideoSource()
+            } else {
+                ensureCameraUseCase(jpegQuality = 90)
+            }
             _state.value = ConnectionState.Connected
             Result.success(Unit)
         } catch (ce: CancellationException) {
@@ -130,6 +156,12 @@ class SimulatorGlassesClient(
         try { tts?.shutdown() } catch (_: Exception) {}
         tts = null
 
+        // Release video retriever if active.
+        try { videoRetriever?.release() } catch (_: Exception) {}
+        videoRetriever = null
+        try { videoCacheFile?.delete() } catch (_: Exception) {}
+        videoCacheFile = null
+
         withContext(Dispatchers.Main) {
             cameraProvider?.unbindAll()
             imageCapture = null
@@ -138,6 +170,12 @@ class SimulatorGlassesClient(
     }
 
     override suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage> {
+        // ── Video-file mode: extract the frame at the current virtual playback position ──
+        if (useVideoSource) {
+            return capturePhotoFromVideo(options)
+        }
+
+        // ── Camera mode (original behavior) ──
         if (!hasCameraPermission()) {
             emitWarn("Simulator: CAMERA permission missing")
             return Result.failure(GlassesError.PermissionDenied)
@@ -536,6 +574,126 @@ class SimulatorGlassesClient(
             Result.failure((e as? GlassesError) ?: GlassesError.Transport("Simulator startMicrophone failed: ${e.message}", e))
         }
     }
+
+    // ── Video-file source helpers ──────────────────────────────────────
+
+    /**
+     * Initialise the [MediaMetadataRetriever] for [videoPath] and record the
+     * video duration so we can compute the looping playback position later.
+     *
+     * The video file lives on the device filesystem (pushed there by the CLI
+     * via `adb push`).  Because `/data/local/tmp/` may not be directly
+     * readable by the app process (SELinux / file-mode restrictions), we first
+     * copy the file into the app's private cache directory, then open it from
+     * there.
+     */
+    private fun initVideoSource() {
+        val path = videoPath ?: throw GlassesError.Transport("videoPath is null")
+        val srcFile = File(path)
+        emitLog("Simulator: initVideoSource – srcFile=$path exists=${srcFile.exists()} " +
+                "canRead=${srcFile.canRead()} length=${srcFile.length()}")
+
+        // Copy to app-private cache so we are guaranteed read access.
+        val cacheFile = File(activity.cacheDir, "xg_sim_video.mp4")
+        try {
+            if (srcFile.exists() && srcFile.canRead()) {
+                srcFile.copyTo(cacheFile, overwrite = true)
+                emitLog("Simulator: copied video to cache: ${cacheFile.absolutePath} (${cacheFile.length()} bytes)")
+            } else {
+                // Fallback: try reading via FileInputStream (sometimes canRead() lies
+                // on certain SELinux contexts while the actual read still works).
+                FileInputStream(srcFile).use { fis ->
+                    cacheFile.outputStream().use { out -> fis.copyTo(out) }
+                }
+                emitLog("Simulator: stream-copied video to cache: ${cacheFile.absolutePath} (${cacheFile.length()} bytes)")
+            }
+        } catch (e: Exception) {
+            throw GlassesError.Transport(
+                "Cannot read video file: $path – ${e.message}. " +
+                "Make sure the file was pushed with: adb push <video> $path", e
+            )
+        }
+
+        if (cacheFile.length() == 0L) {
+            throw GlassesError.Transport("Video file is empty after copy: $path")
+        }
+
+        val retriever = MediaMetadataRetriever()
+        try {
+            // Use the app-private cache path – guaranteed readable by our process.
+            retriever.setDataSource(cacheFile.absolutePath)
+        } catch (e: Exception) {
+            retriever.release()
+            throw GlassesError.Transport(
+                "MediaMetadataRetriever.setDataSource failed for ${cacheFile.absolutePath}: ${e.message}", e
+            )
+        }
+
+        val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+        emitLog("Simulator: METADATA_KEY_DURATION raw = '$durationStr'")
+        videoDurationMs = durationStr?.toLongOrNull() ?: 0L
+        if (videoDurationMs <= 0L) {
+            retriever.release()
+            throw GlassesError.Transport("Cannot determine video duration for: $path (raw='$durationStr')")
+        }
+
+        videoRetriever = retriever
+        videoCacheFile = cacheFile
+        videoStartTimeMs = System.currentTimeMillis()
+        emitLog("Simulator: video source initialised – ${videoDurationMs}ms, path=$path")
+    }
+
+    /**
+     * Capture a frame from the looping video.
+     *
+     * The "virtual playback head" is:
+     *   elapsed = (now - videoStartTimeMs) mod videoDurationMs
+     * so the video effectively loops at its original speed.
+     */
+    private suspend fun capturePhotoFromVideo(options: CaptureOptions): Result<CapturedImage> {
+        return try {
+            val retriever = videoRetriever
+                ?: return Result.failure(GlassesError.Transport("Video source not initialised"))
+
+            val elapsed = System.currentTimeMillis() - videoStartTimeMs
+            val positionMs = if (videoDurationMs > 0) elapsed % videoDurationMs else 0L
+            // MediaMetadataRetriever uses microseconds.
+            val positionUs = positionMs * 1000L
+
+            val bitmap: Bitmap = withContext(Dispatchers.IO) {
+                retriever.getFrameAtTime(
+                    positionUs,
+                    MediaMetadataRetriever.OPTION_CLOSEST,
+                ) ?: throw GlassesError.Transport("Failed to extract frame at ${positionMs}ms")
+            }
+
+            val quality = (options.quality ?: 90).coerceIn(1, 100)
+            val baos = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos)
+            val jpegBytes = baos.toByteArray()
+            val w = bitmap.width
+            val h = bitmap.height
+            bitmap.recycle()
+
+            val result = Result.success(
+                CapturedImage(
+                    jpegBytes = jpegBytes,
+                    width = w,
+                    height = h,
+                    rotationDegrees = null,
+                    sourceModel = model,
+                )
+            )
+            emitLog("Simulator: capturePhoto (video @${positionMs}ms) => ${result.isSuccess}")
+            result
+        } catch (e: Exception) {
+            Result.failure(
+                (e as? GlassesError) ?: GlassesError.Transport("capturePhoto(video) failed: ${e.message}", e)
+            )
+        }
+    }
+
+    // ── Camera helpers ─────────────────────────────────────────────────
 
     private suspend fun ensureCameraUseCase(jpegQuality: Int) {
         if (_state.value is ConnectionState.Error) return

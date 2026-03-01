@@ -42,6 +42,7 @@ android {
         versionName = "0.0.1"
 
         buildConfigField("boolean", "XG_SIMULATOR", "false")
+        buildConfigField("String", "XG_SIM_VIDEO_PATH", "\"\"")
         buildConfigField("String", "ROKID_CLIENT_SECRET", "\"${_escapeForBuildConfig(rokidClientSecret)}\"")
         buildConfigField("String", "ROKID_SN_RAW_NAME", "\"${_escapeForBuildConfig(rokidSnRawName)}\"")
     }

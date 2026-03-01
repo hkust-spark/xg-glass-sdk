@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -87,8 +88,16 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--entry-class", help="Quick mode: override inferred entry class (optional).")
     p_run.add_argument("--sdk", help="Quick mode: override sdkPath (optional).")
     p_run.add_argument("--sim", action="store_true", help="Build for Android Emulator (x86_64) and enable simulator backend.")
+    p_run.add_argument("--local_video", help="(sim mode) Local video file path to use as capturePhoto source.")
+    p_run.add_argument("--video_url", help="(sim mode) Video URL (YouTube/Bilibili) to download and use as capturePhoto source.")
 
     args = parser.parse_args(argv)
+
+    # Validate: --local_video and --video_url require --sim.
+    if args.cmd == "run":
+        has_video = getattr(args, "local_video", None) or getattr(args, "video_url", None)
+        if has_video and not getattr(args, "sim", False):
+            parser.error("--local_video and --video_url require --sim mode.")
 
     try:
         if args.cmd == "init":
@@ -340,6 +349,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         if bool(getattr(args, "sim", False)):
             _apply_simulator_build_settings(project_dir, enabled=True)
 
+        # Resolve video source for sim mode (--local_video or --video_url).
+        sim_video: Path | None = None
+        if bool(getattr(args, "sim", False)):
+            sim_video = _resolve_sim_video(args)
+            if sim_video is not None:
+                _apply_sim_video_build_setting(project_dir, _DEVICE_VIDEO_PATH)
+
         # One-shot: build + install + run.
         cmd_build(
             argparse.Namespace(
@@ -355,6 +371,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         # When --sim, ensure an Android Emulator is running before installing.
         if bool(getattr(args, "sim", False)):
             _ensure_emulator_running(serial=args.serial)
+
+        # Push video to device before installing the app (so the app can find it on launch).
+        if sim_video is not None:
+            _push_video_to_device(sim_video, serial=args.serial)
+
         cmd_install(
             argparse.Namespace(
                 project=str(project_dir),
@@ -691,6 +712,37 @@ def _apply_simulator_build_settings(project: Path, *, enabled: bool) -> None:
         s2 = re.sub(
             r"(defaultConfig\s*\{\s*)",
             rf'\1\n        buildConfigField("boolean", "XG_SIMULATOR", "{desired}")\n',
+            s,
+            count=1,
+        )
+    s = s2
+
+    app_gradle.write_text(s, encoding="utf-8")
+
+
+def _apply_sim_video_build_setting(project: Path, device_video_path: str) -> None:
+    """
+    Add a BuildConfig.XG_SIM_VIDEO_PATH string field so that the simulator
+    knows to read frames from a video file instead of the camera.
+    """
+    app_gradle = project / "app" / "build.gradle.kts"
+    if not app_gradle.exists():
+        return
+
+    s = app_gradle.read_text(encoding="utf-8")
+
+    # Replace existing field if present.
+    # The value in the gradle file looks like: buildConfigField("String", "XG_SIM_VIDEO_PATH", "\"...\"")
+    s2 = re.sub(
+        r'buildConfigField\("String",\s*"XG_SIM_VIDEO_PATH",\s*"[^)]*"\)',
+        f'buildConfigField("String", "XG_SIM_VIDEO_PATH", "\\"{device_video_path}\\"")',
+        s,
+    )
+    if s2 == s:
+        # Insert into defaultConfig if missing.
+        s2 = re.sub(
+            r"(defaultConfig\s*\{\s*)",
+            rf'\1\n        buildConfigField("String", "XG_SIM_VIDEO_PATH", "\\"{device_video_path}\\"")\n',
             s,
             count=1,
         )
@@ -1326,6 +1378,134 @@ def _find_flutter_cmd() -> str | None:
         _ensure_flutter_executables()
         return str(managed)
     return None
+
+
+# ── Video source helpers (--local_video / --video_url for sim mode) ─────
+
+# Well-known path on the emulator/device where the CLI pushes the video file.
+_DEVICE_VIDEO_PATH = "/data/local/tmp/xg_glass_sim_video.mp4"
+
+
+def _is_youtube_url(url: str) -> bool:
+    return any(h in url for h in ("youtube.com", "youtu.be"))
+
+
+def _is_bilibili_url(url: str) -> bool:
+    return "bilibili.com" in url or "b23.tv" in url
+
+
+def _find_yt_dlp() -> str:
+    """Locate yt-dlp on PATH; raise with install instructions if missing."""
+    p = shutil.which("yt-dlp")
+    if p:
+        return p
+    raise RuntimeError(
+        "yt-dlp is required to download videos from YouTube/Bilibili but was not found on PATH.\n"
+        "Install it with:  pip install yt-dlp\n"
+        "Or visit: https://github.com/yt-dlp/yt-dlp#installation"
+    )
+
+
+def _download_video_from_url(url: str, dest: Path) -> Path:
+    """
+    Download a video from a YouTube or Bilibili URL to *dest* directory.
+
+    Returns the path of the downloaded file (always converted to mp4).
+    Uses a hash of the URL as filename so different URLs are cached separately.
+    """
+    yt_dlp = _find_yt_dlp()
+    dest.mkdir(parents=True, exist_ok=True)
+
+    # Derive a short hash from the URL to uniquely identify the video.
+    url_hash = hashlib.sha256(url.encode()).hexdigest()[:12]
+    output_template = str(dest / f"video_{url_hash}.%(ext)s")
+    expected_mp4 = dest / f"video_{url_hash}.mp4"
+
+    # If the file already exists, reuse it (yt-dlp would also skip).
+    if expected_mp4.exists() and expected_mp4.stat().st_size > 0:
+        print(f"Using cached video: {expected_mp4}")
+        return expected_mp4
+
+    cmd = [yt_dlp]
+
+    if _is_bilibili_url(url):
+        # Bilibili needs a referer header; prefer mp4 container directly.
+        cmd += [
+            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "--merge-output-format", "mp4",
+            "--referer", "https://www.bilibili.com",
+            "-o", output_template,
+            url,
+        ]
+    elif _is_youtube_url(url):
+        cmd += [
+            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "--merge-output-format", "mp4",
+            "-o", output_template,
+            url,
+        ]
+    else:
+        # Generic: try yt-dlp with mp4 preference.
+        cmd += [
+            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "--merge-output-format", "mp4",
+            "-o", output_template,
+            url,
+        ]
+
+    print(f"Downloading video from: {url}")
+    try:
+        subprocess.check_call(cmd)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"Failed to download video from {url}.\n"
+            "Make sure yt-dlp is up to date: pip install -U yt-dlp\n"
+            f"Error: {exc}"
+        ) from exc
+
+    # Find the downloaded file (yt-dlp may adjust the extension).
+    candidates = sorted(dest.glob(f"video_{url_hash}.*"))
+    if not candidates:
+        raise RuntimeError(f"yt-dlp finished but no video file found under: {dest}")
+    return candidates[0]
+
+
+def _resolve_sim_video(args: argparse.Namespace) -> Path | None:
+    """
+    Resolve the video file to use in simulator mode.
+
+    Returns the local path to the video file, or None if neither --local_video
+    nor --video_url was provided.
+    """
+    local_video = getattr(args, "local_video", None)
+    url = getattr(args, "video_url", None)
+
+    if local_video and url:
+        raise RuntimeError("Cannot specify both --local_video and --video_url. Choose one.")
+
+    if local_video:
+        p = Path(local_video).expanduser().resolve()
+        if not p.exists():
+            raise FileNotFoundError(f"Local video file not found: {p}")
+        print(f"Using local video: {p}")
+        return p
+
+    if url:
+        dl_dir = _XG_GLASS_HOME / "video_cache"
+        return _download_video_from_url(url, dl_dir)
+
+    return None
+
+
+def _push_video_to_device(video_path: Path, serial: str | None = None) -> None:
+    """Push a video file to the emulator/device via adb."""
+    adb = _find_adb_cmd()
+    cmd = [adb]
+    if serial:
+        cmd += ["-s", serial]
+    cmd += ["push", str(video_path), _DEVICE_VIDEO_PATH]
+    print(f"Pushing video to device: {_DEVICE_VIDEO_PATH}")
+    subprocess.check_call(cmd)
 
 
 def _parse_simple_yaml(text: str) -> dict[str, str]:

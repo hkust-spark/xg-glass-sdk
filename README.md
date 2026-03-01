@@ -91,7 +91,9 @@ xg-glass install
 xg-glass run
 ```
 
-We also support a simulator (simply add `--sim`) for development and testing that can run on your PC with a webcam:
+#### Simulator
+
+If you don't have glasses right now, we also support a simulator (simply add `--sim`) for development and testing. The WebCam on your PC will "act as" the camera on the glasses.
 
 ```bash
 # Quick mode
@@ -106,6 +108,19 @@ xg-glass run
 ```
 
 The launch of Android Emulator may take serval minutes. You can keep it on to save time for the next run. 
+
+#### Simulator with pre-recorded datasets
+
+We support simulation with online or local video datasets.
+
+```bash
+xg-glass run --sim --video_url <video.url> /path/to/MyEntry.kt
+```
+or
+```bash
+xg-glass run --sim --local_video </path/to/local/video.mp4> /path/to/MyEntry.kt
+```
+We currently support video from YouTube and Bilibili.
 
 For more details, see the following documentation:
 

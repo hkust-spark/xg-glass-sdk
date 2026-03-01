@@ -357,6 +357,8 @@ internal object RayneoHostTemplate {
                             if (r.isFailure) {
                                 appendLog("Failed: ${"$"}{r.exceptionOrNull()?.message ?: "unknown"}")
                             }
+                        } catch (e: Exception) {
+                            appendLog("Command error: ${"$"}{e.javaClass.simpleName}: ${"$"}{e.message}")
                         } finally {
                             isRunningCommand = false
                         }
