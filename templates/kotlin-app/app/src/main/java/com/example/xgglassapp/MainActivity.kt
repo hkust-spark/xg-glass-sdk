@@ -530,6 +530,14 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // ── Step 2: Camera permission ────────────────────────────────────────
+                // checkPermissionStatus requires BT Classic to talk to the glasses.
+                // On first connection (and any time the glasses are off) it throws
+                // DatException("...powered off or disconnected") — this means the SDK
+                // cannot reach the glasses to verify permission status. It does NOT mean
+                // permission is denied. In that case, skip the Meta AI prompt and go
+                // straight to connect(): the session retry logic in the client will keep
+                // trying until BT Classic is established.
+                val devicesUnavailableMsg = "powered off or disconnected"
                 try {
                     val result = Wearables.checkPermissionStatus(Permission.CAMERA)
                     result
@@ -546,15 +554,34 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                             .onFailure { err ->
-                                appendLog(
-                                        "Meta: camera permission check failed: $err. " +
-                                                "Launching permission flow."
-                                )
-                                metaPermissionsLauncher.launch(Permission.CAMERA)
+                                if (devicesUnavailableMsg in err.toString()) {
+                                    // Glasses not BT-connected yet; permission might be
+                                    // granted already. Proceed — the client retries the
+                                    // stream session automatically.
+                                    appendLog(
+                                            "Meta: glasses not BT-connected yet — " +
+                                                    "proceeding to connect (session will retry automatically)."
+                                    )
+                                    connect(GlassesModel.META)
+                                } else {
+                                    appendLog(
+                                            "Meta: camera permission check failed: $err. " +
+                                                    "Launching permission flow."
+                                    )
+                                    metaPermissionsLauncher.launch(Permission.CAMERA)
+                                }
                             }
                 } catch (e: Exception) {
-                    appendLog("Meta: camera permission check exception: ${e.message}")
-                    metaPermissionsLauncher.launch(Permission.CAMERA)
+                    if (devicesUnavailableMsg in (e.message ?: "")) {
+                        appendLog(
+                                "Meta: glasses not BT-connected yet — " +
+                                        "proceeding to connect (session will retry automatically)."
+                        )
+                        connect(GlassesModel.META)
+                    } else {
+                        appendLog("Meta: camera permission check exception: ${e.message}")
+                        metaPermissionsLauncher.launch(Permission.CAMERA)
+                    }
                 }
             }
             return
@@ -708,7 +735,6 @@ class MainActivity : AppCompatActivity() {
                                             appendLog(
                                                     "Command failed: ${r.exceptionOrNull()?.message ?: "unknown"}"
                                             )
-                                }
                                 } catch (e: Exception) {
                                     appendLog("Command error: ${e.javaClass.simpleName}: ${e.message}")
                                 }

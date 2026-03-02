@@ -12,6 +12,7 @@ import com.meta.wearable.dat.camera.types.VideoQuality
 import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.selectors.AutoDeviceSelector
 import com.meta.wearable.dat.core.types.RegistrationState
+import com.universalglasses.core.AudioSource
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.ConnectionState
@@ -22,6 +23,7 @@ import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
+import com.universalglasses.core.PlayAudioOptions
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -97,36 +99,17 @@ class MetaWearableGlassesClient(private val context: Context) : GlassesClient {
 
                             when (connState) {
                                 is ConnectionState.Connected -> {
-                                    // Proactively warm up the stream session as soon as the
-                                    // device is Connected, rather than lazily at capturePhoto()
-                                    // time.
-                                    //
-                                    // Root cause of the "works after restart" bug:
-                                    //   On first launch the BT Classic link (needed for video)
-                                    //   is not yet established. Starting the session lazily on
-                                    //   first capturePhoto() gives it no time to run through
-                                    //   STARTING → STARTED → STREAMING before the wait timeout.
-                                    //   After a restart the Meta AI app has a cached BT Classic
-                                    //   connection, so the session reaches STREAMING in < 1 s.
-                                    //
-                                    // Fix: start the session NOW. videoStream.collect {} drives
-                                    // the state machine through to STREAMING in the background.
-                                    // By the time the user taps Capture Photo the session will
-                                    // already be STREAMING (or close to it).
                                     if (streamSession == null) {
-                                        Log.d(TAG, "Connected — warming up stream session eagerly.")
-                                        try {
-                                            getOrCreateSession()
-                                        } catch (e: Exception) {
-                                            Log.w(
-                                                    TAG,
-                                                    "Eager stream session start failed: ${e.message}"
-                                            )
+                                        scope.launch {
+                                            try {
+                                                getOrCreateSession()
+                                            } catch (e: Exception) {
+                                                emitWarn("Meta: session start failed: ${e.message}")
+                                            }
                                         }
                                     }
                                 }
                                 is ConnectionState.Disconnected -> {
-                                    // Per lifecycle docs: release resources when connection drops.
                                     Log.d(TAG, "Disconnected — stopping stream session.")
                                     stopStreamSession()
                                 }
@@ -338,6 +321,15 @@ class MetaWearableGlassesClient(private val context: Context) : GlassesClient {
 
     override suspend fun display(text: String, options: DisplayOptions): Result<Unit> {
         return Result.failure(UnsupportedOperationException("Display not supported on this device"))
+    }
+
+    override suspend fun playAudio(
+            source: AudioSource,
+            options: PlayAudioOptions,
+    ): Result<Unit> {
+        return Result.failure(
+                UnsupportedOperationException("Audio playback not supported on Meta wearable")
+        )
     }
 
     override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> {
