@@ -533,21 +533,24 @@ def _ensure_emulator_running(serial: str | None = None) -> None:
             "Please connect a device or start an emulator manually."
         )
 
-    # Ensure emulator + system image are installed.
     system = platform.system().lower()
+
+    # Locate sdkmanager (needed for installing emulator/system-images/AVD creation).
     sdkmanager_name = "sdkmanager.bat" if system == "windows" else "sdkmanager"
-    sdkmanager = Path(sdk) / "cmdline-tools" / "latest" / "bin" / sdkmanager_name
+    sdkmanager: Path | None = Path(sdk) / "cmdline-tools" / "latest" / "bin" / sdkmanager_name
     if not sdkmanager.exists():
-        # Try alternate location
         sdkmanager = Path(sdk) / "tools" / "bin" / sdkmanager_name
     if not sdkmanager.exists():
-        raise RuntimeError(
-            "sdkmanager not found. Cannot install emulator packages.\n"
-            "Please start an emulator manually."
-        )
+        sdkmanager = None
 
+    # Check if the emulator binary is already installed before trying sdkmanager.
     emu = _find_emulator_cmd()
     if not emu:
+        if sdkmanager is None:
+            raise RuntimeError(
+                "Emulator binary not found and sdkmanager not available to install it.\n"
+                "Please start an emulator manually, or install Android SDK command-line tools."
+            )
         print("  Installing emulator package...")
         env = {**os.environ, "ANDROID_HOME": sdk, "ANDROID_SDK_ROOT": sdk}
         _ensure_java_runtime(env)
@@ -573,11 +576,10 @@ def _ensure_emulator_running(serial: str | None = None) -> None:
     avds = _list_avds()
     avd_name = avds[0] if avds else "xg_glass_avd"
     if not avds:
-        # Ensure system image is installed
         env = {**os.environ, "ANDROID_HOME": sdk, "ANDROID_SDK_ROOT": sdk}
         _ensure_java_runtime(env)
         sys_img = Path(sdk) / "system-images" / "android-34" / "google_apis" / "x86_64"
-        if not sys_img.is_dir():
+        if not sys_img.is_dir() and sdkmanager is not None:
             print("  Installing system image...")
             try:
                 _run_quiet(
@@ -606,7 +608,7 @@ def _ensure_emulator_running(serial: str | None = None) -> None:
                         "-d", "pixel",
                         "--force",
                     ],
-                    input="no\n",  # don't customize hardware profile
+                    input="no\n",
                     text=True, env=env, check=True, timeout=60,
                 )
             except subprocess.CalledProcessError as exc:
@@ -1168,6 +1170,9 @@ def _persist_env_macos_zshrc(*, java_home: str | None, android_sdk: str | None, 
             "fi",
             'if [[ -n "${ANDROID_SDK_ROOT:-}" && -d "${ANDROID_SDK_ROOT}/platform-tools" ]]; then',
             '  xg_glass_prepend_path "${ANDROID_SDK_ROOT}/platform-tools"',
+            "fi",
+            'if [[ -n "${ANDROID_SDK_ROOT:-}" && -d "${ANDROID_SDK_ROOT}/emulator" ]]; then',
+            '  xg_glass_prepend_path "${ANDROID_SDK_ROOT}/emulator"',
             "fi",
             "",
         ]
