@@ -8,6 +8,7 @@ android {
 
 dependencies {
     api(project(":core"))
+    implementation(project(":core-android"))
 
     api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 

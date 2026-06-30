@@ -56,6 +56,7 @@ rootProject.name = "universal-glasses"
 // Single entry-point artifact for third-party apps (one dependency line).
 include(":universal")
 include(":core")
+include(":core-android")
 include(":app-contract")
 include(":device-rokid")
 if (hasMetaDatAccess) {

@@ -8,10 +8,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
-import android.media.AudioFormat as AndroidAudioFormat
 import android.media.AudioManager
-import android.media.AudioRecord
-import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Build
@@ -30,9 +27,7 @@ import com.meta.wearable.dat.core.types.DeviceIdentifier
 import com.meta.wearable.dat.core.types.Permission
 import com.meta.wearable.dat.core.types.PermissionStatus
 import com.meta.wearable.dat.core.types.RegistrationState
-import com.universalglasses.core.AudioChunk
 import com.universalglasses.core.AudioEncoding
-import com.universalglasses.core.AudioFormat
 import com.universalglasses.core.AudioSource
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
@@ -49,19 +44,16 @@ import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PcmFormat
 import com.universalglasses.core.PlayAudioOptions
+import com.universalglasses.core.android.openAndroidMicrophone
+import com.universalglasses.core.android.playEncodedViaMediaPlayer
+import com.universalglasses.core.android.playPcmViaAudioTrack
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -70,7 +62,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -228,88 +219,24 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
             delay(this.options.audioRouteWarmupMs)
 
             val sampleRate = HFP_SAMPLE_RATE_HZ
-            val channelConfig = AndroidAudioFormat.CHANNEL_IN_MONO
-            val minBuffer = AudioRecord.getMinBufferSize(
-                sampleRate,
-                channelConfig,
-                AndroidAudioFormat.ENCODING_PCM_16BIT,
+            val micOptions = options.copy(
+                preferredEncoding = AudioEncoding.PCM_S16_LE,
+                preferredSampleRateHz = sampleRate,
+                preferredChannelCount = 1,
             )
-            if (minBuffer <= 0) {
-                releaseAudioRoute()
-                return Result.failure(GlassesError.Transport("Meta AudioRecord.getMinBufferSize failed: $minBuffer"))
-            }
-
-            val record = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                sampleRate,
-                channelConfig,
-                AndroidAudioFormat.ENCODING_PCM_16BIT,
-                minBuffer * 2,
-            )
-            if (record.state != AudioRecord.STATE_INITIALIZED) {
-                releaseAudioRoute()
-                record.release()
-                return Result.failure(GlassesError.Transport("Meta AudioRecord not initialized"))
-            }
-
-            val format = AudioFormat(
-                encoding = AudioEncoding.PCM_S16_LE,
+            val session = openAndroidMicrophone(
+                options = micOptions,
+                audioSource = MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 sampleRateHz = sampleRate,
                 channelCount = 1,
-            )
-            val shared = MutableSharedFlow<AudioChunk>(
-                extraBufferCapacity = 64,
-                onBufferOverflow = BufferOverflow.DROP_OLDEST,
-            )
-            val running = AtomicBoolean(true)
-            val seq = AtomicLong(0)
-            val readScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-            val session = object : MicrophoneSession {
-                override val format: AudioFormat = format
-                override val audio: Flow<AudioChunk> = shared
-
-                override suspend fun stop() {
-                    if (!running.compareAndSet(true, false)) return
-                    try { record.stop() } catch (_: Exception) {}
-                    try { record.release() } catch (_: Exception) {}
-                    readScope.cancel()
+                minBufferErrorMessage = { "Meta AudioRecord.getMinBufferSize failed: $it" },
+                uninitializedMessage = "Meta AudioRecord not initialized",
+                sharedFlowOverflow = BufferOverflow.DROP_OLDEST,
+                afterStop = {
                     activeMic = null
                     releaseAudioRoute()
-                    shared.tryEmit(
-                        AudioChunk(
-                            bytes = ByteArray(0),
-                            format = format,
-                            sequence = seq.incrementAndGet(),
-                            endOfStream = true,
-                        )
-                    )
-                }
-            }
-
-            record.startRecording()
-            readScope.launch {
-                val buffer = ByteArray(minBuffer)
-                while (running.get()) {
-                    val read = try {
-                        record.read(buffer, 0, buffer.size)
-                    } catch (_: Exception) {
-                        break
-                    }
-                    if (read > 0) {
-                        shared.tryEmit(
-                            AudioChunk(
-                                bytes = buffer.copyOfRange(0, read),
-                                format = format,
-                                sequence = seq.incrementAndGet(),
-                            )
-                        )
-                    } else if (read < 0) {
-                        break
-                    }
-                }
-            }
-
+                },
+            ).getOrThrow()
             activeMic = session
             emitLog("Meta: microphone started over Bluetooth HFP")
             Result.success(session)
@@ -345,111 +272,30 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
     }
 
     private suspend fun playPcm(data: ByteArray, pcm: PcmFormat, preferredOutput: AudioDeviceInfo?) {
-        val channelMask = if (pcm.channelCount <= 1) {
-            AndroidAudioFormat.CHANNEL_OUT_MONO
-        } else {
-            AndroidAudioFormat.CHANNEL_OUT_STEREO
-        }
-        val encoding = when (pcm.encoding) {
-            AudioEncoding.PCM_S16_LE -> AndroidAudioFormat.ENCODING_PCM_16BIT
-            AudioEncoding.PCM_S8 -> AndroidAudioFormat.ENCODING_PCM_8BIT
-            AudioEncoding.OPUS -> throw GlassesError.Unsupported("Meta playAudio does not support OPUS PCM playback.")
-        }
-
-        val minBuffer = AudioTrack.getMinBufferSize(pcm.sampleRateHz, channelMask, encoding).coerceAtLeast(1024)
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .setLegacyStreamType(AudioManager.STREAM_MUSIC)
-                    .build()
-            )
-            .setAudioFormat(
-                AndroidAudioFormat.Builder()
-                    .setSampleRate(pcm.sampleRateHz)
-                    .setChannelMask(channelMask)
-                    .setEncoding(encoding)
-                    .build()
-            )
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .setBufferSizeInBytes(minBuffer)
-            .build()
-
-        if (track.state != AudioTrack.STATE_INITIALIZED) {
-            track.release()
-            throw GlassesError.Transport("Meta AudioTrack not initialized")
-        }
-
-        try {
-            if (preferredOutput != null) {
-                runCatching { track.preferredDevice = preferredOutput }
-            }
-            track.play()
-            var written = 0
-            while (written < data.size) {
-                val n = track.write(data, written, minOf(4096, data.size - written))
-                if (n <= 0) break
-                written += n
-            }
-            val bytesPerSecond = pcm.sampleRateHz.toLong() * pcm.channelCount * if (encoding == AndroidAudioFormat.ENCODING_PCM_16BIT) 2 else 1
-            if (bytesPerSecond > 0) {
-                delay(data.size * 1000L / bytesPerSecond + 200L)
-            }
-        } finally {
-            runCatching { track.stop() }
-            track.release()
-        }
+        playPcmViaAudioTrack(
+            data = data,
+            format = pcm,
+            usageAttributes = AudioAttributes.USAGE_MEDIA,
+            interrupt = false,
+            legacyStreamType = AudioManager.STREAM_MUSIC,
+            preferredDevice = preferredOutput,
+            unsupportedOpusMessage = "Meta playAudio does not support OPUS PCM playback.",
+            uninitializedMessage = "Meta AudioTrack not initialized",
+        ).getOrThrow()
     }
 
     private suspend fun playEncoded(data: ByteArray, preferredOutput: AudioDeviceInfo?) {
-        val tmpFile = File(activity.cacheDir, "meta_audio_${System.currentTimeMillis()}.tmp")
-        try {
-            tmpFile.writeBytes(data)
-            withContext(Dispatchers.Main) {
-                kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
-                    val player = MediaPlayer()
-                    activePlayer = player
-                    player.setDataSource(tmpFile.absolutePath)
-                    player.setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .setLegacyStreamType(AudioManager.STREAM_MUSIC)
-                            .build()
-                    )
-                    if (preferredOutput != null) {
-                        runCatching { player.preferredDevice = preferredOutput }
-                    }
-                    player.setOnCompletionListener {
-                        player.release()
-                        activePlayer = null
-                        tmpFile.delete()
-                        if (cont.isActive) cont.resume(Unit)
-                    }
-                    player.setOnErrorListener { _, what, extra ->
-                        player.release()
-                        activePlayer = null
-                        tmpFile.delete()
-                        if (cont.isActive) {
-                            cont.resumeWithException(
-                                GlassesError.Transport("Meta MediaPlayer error: what=$what extra=$extra")
-                            )
-                        }
-                        true
-                    }
-                    player.prepare()
-                    player.start()
-                    cont.invokeOnCancellation {
-                        player.release()
-                        activePlayer = null
-                        tmpFile.delete()
-                    }
-                }
-            }
-        } finally {
-            tmpFile.delete()
-        }
+        playEncodedViaMediaPlayer(
+            data = data,
+            usageAttributes = AudioAttributes.USAGE_MEDIA,
+            interrupt = false,
+            tempFileFactory = { File(activity.cacheDir, "meta_audio_${System.currentTimeMillis()}.tmp") },
+            legacyStreamType = AudioManager.STREAM_MUSIC,
+            preferredDevice = preferredOutput,
+            currentPlayer = { activePlayer },
+            setCurrentPlayer = { activePlayer = it },
+            errorMessage = { what, extra -> "Meta MediaPlayer error: what=$what extra=$extra" },
+        ).getOrThrow()
     }
 
     private suspend fun ensureWearablesInitialized() {

@@ -20,8 +20,6 @@ import com.rokid.cxr.client.extend.callbacks.SyncStatusCallback
 import com.rokid.cxr.client.extend.callbacks.WifiP2PStatusCallback
 import com.rokid.cxr.client.utils.ValueUtil
 import android.media.AudioAttributes
-import android.media.AudioManager
-import android.media.AudioTrack
 import com.universalglasses.core.AudioChunk
 import com.universalglasses.core.AudioEncoding
 import com.universalglasses.core.AudioFormat
@@ -40,6 +38,7 @@ import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PcmFormat
 import com.universalglasses.core.PlayAudioOptions
+import com.universalglasses.core.android.playPcmViaAudioTrack
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -257,57 +256,23 @@ class RokidGlassesClient(
             ?: return Result.failure(GlassesError.Unsupported(
                 "Rokid playAudio(RawBytes) requires explicit PcmFormat (container auto-detect not supported)"
             ))
-
-        val sampleRate = pcm.sampleRateHz
-        val channels = pcm.channelCount
-        val channelMask = if (channels <= 1)
-            android.media.AudioFormat.CHANNEL_OUT_MONO
-        else
-            android.media.AudioFormat.CHANNEL_OUT_STEREO
-        val enc = when (pcm.encoding) {
-            AudioEncoding.PCM_S16_LE -> android.media.AudioFormat.ENCODING_PCM_16BIT
-            AudioEncoding.PCM_S8 -> android.media.AudioFormat.ENCODING_PCM_8BIT
-            AudioEncoding.OPUS -> return Result.failure(GlassesError.Unsupported("Rokid playAudio: OPUS not supported"))
+        if (pcm.encoding == AudioEncoding.OPUS) {
+            return Result.failure(GlassesError.Unsupported("Rokid playAudio: OPUS not supported"))
         }
 
         return try {
             CxrApi.getInstance().setCommunicationDevice()
 
-            val minBuf = AudioTrack.getMinBufferSize(sampleRate, channelMask, enc).coerceAtLeast(1024)
-            val track = AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
-                .setAudioFormat(
-                    android.media.AudioFormat.Builder()
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(channelMask)
-                        .setEncoding(enc)
-                        .build()
-                )
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .setBufferSizeInBytes(minBuf)
-                .build()
-
             try {
-                track.play()
-                var written = 0
-                while (written < data.size) {
-                    val n = track.write(data, written, minOf(4096, data.size - written))
-                    if (n <= 0) break
-                    written += n
-                }
-                val bytesPerSample = if (enc == android.media.AudioFormat.ENCODING_PCM_16BIT) 2 else 1
-                val bytesPerSecond = sampleRate.toLong() * channels * bytesPerSample
-                if (bytesPerSecond > 0) {
-                    kotlinx.coroutines.delay(data.size * 1000L / bytesPerSecond + 200L)
-                }
+                playPcmViaAudioTrack(
+                    data = data,
+                    format = pcm,
+                    usageAttributes = AudioAttributes.USAGE_VOICE_COMMUNICATION,
+                    interrupt = options.interrupt,
+                    unsupportedOpusMessage = "Rokid playAudio: OPUS not supported",
+                    checkInitialized = false,
+                ).getOrThrow()
             } finally {
-                runCatching { track.stop() }
-                track.release()
                 runCatching { CxrApi.getInstance().clearCommunicationDevice() }
             }
 

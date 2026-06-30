@@ -10,17 +10,13 @@ import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.media.AudioAttributes
 import android.media.AudioManager
-import android.media.AudioRecord
-import android.media.AudioTrack
 import android.media.ImageReader
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Handler
 import android.os.HandlerThread
 import android.widget.Toast
-import com.universalglasses.core.AudioChunk
 import com.universalglasses.core.AudioEncoding
-import com.universalglasses.core.AudioFormat
 import com.universalglasses.core.AudioSource
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
@@ -35,27 +31,23 @@ import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PcmFormat
 import com.universalglasses.core.PlayAudioOptions
-import kotlinx.coroutines.CoroutineScope
+import com.universalglasses.core.android.openAndroidMicrophone
+import com.universalglasses.core.android.playEncodedViaMediaPlayer
+import com.universalglasses.core.android.playPcmViaAudioTrack
+import com.universalglasses.core.android.rayNeoPcmBufferSize
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.math.max
 
 /**
  * RayNeo (on-glasses) client.
@@ -188,115 +180,29 @@ class RayNeoRuntimeGlassesClient(
     }
 
     private suspend fun playPcm(data: ByteArray, pcm: PcmFormat) {
-        val sampleRate = pcm.sampleRateHz
-        val channels = pcm.channelCount
-        val channelMask = if (channels <= 1) {
-            android.media.AudioFormat.CHANNEL_OUT_MONO
-        } else {
-            android.media.AudioFormat.CHANNEL_OUT_STEREO
-        }
-        val enc = when (pcm.encoding) {
-            AudioEncoding.PCM_S16_LE -> android.media.AudioFormat.ENCODING_PCM_16BIT
-            AudioEncoding.PCM_S8 -> android.media.AudioFormat.ENCODING_PCM_8BIT
-            AudioEncoding.OPUS -> throw GlassesError.Unsupported("RayNeo playAudio: OPUS PCM not supported")
-        }
-
-        val minBuf = AudioTrack.getMinBufferSize(sampleRate, channelMask, enc).coerceAtLeast(0)
-        val bufSize = max(minBuf, 8 * 1024)
-
-        val track = runCatching {
-            AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .setLegacyStreamType(AudioManager.STREAM_MUSIC)
-                        .build()
-                )
-                .setAudioFormat(
-                    android.media.AudioFormat.Builder()
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(channelMask)
-                        .setEncoding(enc)
-                        .build()
-                )
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .setBufferSizeInBytes(bufSize)
-                .build()
-        }.getOrElse {
-            @Suppress("DEPRECATION")
-            AudioTrack(
-                AudioManager.STREAM_MUSIC, sampleRate, channelMask, enc,
-                bufSize, AudioTrack.MODE_STREAM,
-            )
-        }
-
-        if (track.state != AudioTrack.STATE_INITIALIZED) {
-            track.release()
-            throw GlassesError.Transport("RayNeo AudioTrack not initialized")
-        }
-
-        try {
-            track.play()
-            var written = 0
-            while (written < data.size) {
-                val n = track.write(data, written, minOf(4096, data.size - written))
-                if (n <= 0) break
-                written += n
-            }
-            val bytesPerSecond = sampleRate.toLong() * channels * (if (enc == android.media.AudioFormat.ENCODING_PCM_16BIT) 2 else 1)
-            if (bytesPerSecond > 0) {
-                delay(data.size * 1000L / bytesPerSecond + 200L)
-            }
-        } finally {
-            runCatching { track.stop() }
-            track.release()
-        }
+        playPcmViaAudioTrack(
+            data = data,
+            format = pcm,
+            usageAttributes = AudioAttributes.USAGE_MEDIA,
+            interrupt = false,
+            legacyStreamType = AudioManager.STREAM_MUSIC,
+            unsupportedOpusMessage = "RayNeo playAudio: OPUS PCM not supported",
+            uninitializedMessage = "RayNeo AudioTrack not initialized",
+            bufferSizeInBytes = ::rayNeoPcmBufferSize,
+            fallbackToLegacyStream = true,
+        ).getOrThrow()
     }
 
     private suspend fun playEncoded(data: ByteArray) {
-        val tmpFile = File.createTempFile("ug_audio_", ".tmp", context.cacheDir)
-        try {
-            tmpFile.writeBytes(data)
-            withContext(Dispatchers.Main) {
-                suspendCancellableCoroutine<Unit> { cont ->
-                    val mp = MediaPlayer()
-                    activePlayer = mp
-                    mp.setDataSource(tmpFile.absolutePath)
-                    mp.setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build()
-                    )
-                    mp.setOnCompletionListener {
-                        mp.release()
-                        activePlayer = null
-                        tmpFile.delete()
-                        if (cont.isActive) cont.resume(Unit)
-                    }
-                    mp.setOnErrorListener { _, what, extra ->
-                        mp.release()
-                        activePlayer = null
-                        tmpFile.delete()
-                        if (cont.isActive) cont.resumeWithException(
-                            GlassesError.Transport("RayNeo MediaPlayer error: what=$what extra=$extra")
-                        )
-                        true
-                    }
-                    mp.prepare()
-                    mp.start()
-                    cont.invokeOnCancellation {
-                        mp.release()
-                        activePlayer = null
-                        tmpFile.delete()
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            tmpFile.delete()
-            throw e
-        }
+        playEncodedViaMediaPlayer(
+            data = data,
+            usageAttributes = AudioAttributes.USAGE_MEDIA,
+            interrupt = false,
+            tempFileFactory = { File.createTempFile("ug_audio_", ".tmp", context.cacheDir) },
+            currentPlayer = { activePlayer },
+            setCurrentPlayer = { activePlayer = it },
+            errorMessage = { what, extra -> "RayNeo MediaPlayer error: what=$what extra=$extra" },
+        ).getOrThrow()
     }
 
     override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> {
@@ -313,114 +219,38 @@ class RayNeoRuntimeGlassesClient(
 
         val sampleRate = options.preferredSampleRateHz ?: 16_000
         val channels = options.preferredChannelCount ?: 1
-        val channelConfig = when (channels) {
-            1 -> android.media.AudioFormat.CHANNEL_IN_MONO
-            2 -> android.media.AudioFormat.CHANNEL_IN_STEREO
+        when (channels) {
+            1, 2 -> Unit
             else -> return Result.failure(GlassesError.Unsupported("RayNeo runtime microphone: channelCount=$channels"))
         }
-        val audioFormat = when (encoding) {
-            AudioEncoding.PCM_S16_LE -> android.media.AudioFormat.ENCODING_PCM_16BIT
-            AudioEncoding.PCM_S8 -> android.media.AudioFormat.ENCODING_PCM_8BIT
-            AudioEncoding.OPUS -> android.media.AudioFormat.ENCODING_PCM_16BIT // unreachable
-        }
-
         return try {
-            val minBuf = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
-            if (minBuf <= 0) {
-                return Result.failure(GlassesError.Transport("AudioRecord.getMinBufferSize failed: $minBuf"))
-            }
-
             val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val vendorMode = options.vendorMode?.trim()?.takeIf { it.isNotEmpty() }
 
-            val record = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
-                sampleRate,
-                channelConfig,
-                audioFormat,
-                minBuf * 2,
-            )
-            if (record.state != AudioRecord.STATE_INITIALIZED) {
-                try {
-                    record.release()
-                } catch (_: Exception) {}
-                return Result.failure(GlassesError.Transport("AudioRecord not initialized"))
-            }
-
-            val fmt = AudioFormat(
-                encoding = encoding,
+            val session = openAndroidMicrophone(
+                options = options,
+                audioSource = MediaRecorder.AudioSource.MIC,
                 sampleRateHz = sampleRate,
                 channelCount = channels,
-            )
-
-            val shared = MutableSharedFlow<AudioChunk>(
-                extraBufferCapacity = 64,
-            )
-            val running = AtomicBoolean(true)
-            val seq = AtomicLong(0)
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-            val session = object : MicrophoneSession {
-                override val format: AudioFormat = fmt
-                override val audio: Flow<AudioChunk> = shared
-
-                override suspend fun stop() {
-                    if (!running.compareAndSet(true, false)) return
+                unsupportedOpusMessage = "RayNeo runtime microphone: OPUS not supported (use PCM + app-side encoder)",
+                unsupportedChannelMessage = { "RayNeo runtime microphone: channelCount=$it" },
+                minBufferErrorMessage = { "AudioRecord.getMinBufferSize failed: $it" },
+                uninitializedMessage = "AudioRecord not initialized",
+                breakOnNegativeRead = false,
+                beforeStart = {
+                    // Apply vendor mode before starting.
                     try {
-                        // Best-effort: inform RayNeo audio HAL that we're done.
-                        if (vendorMode != null) am.setParameters("audio_source_record=off")
-                    } catch (_: Exception) {}
-
-                    try {
-                        record.stop()
-                    } catch (_: Exception) {}
-                    try {
-                        record.release()
-                    } catch (_: Exception) {}
-
-                    scope.cancel()
-                    activeMic = null
-                    // Emit EOS marker (best-effort).
-                    shared.tryEmit(
-                        AudioChunk(
-                            bytes = ByteArray(0),
-                            format = fmt,
-                            sequence = seq.incrementAndGet(),
-                            endOfStream = true,
-                        )
-                    )
-                }
-            }
-
-            // Apply vendor mode before starting.
-            try {
-                if (vendorMode != null) am.setParameters("audio_source_record=$vendorMode")
-            } catch (_: Exception) {
-                // ignore; still try default MIC path
-            }
-
-            record.startRecording()
-            scope.launch {
-                val buf = ByteArray(minBuf)
-                while (running.get()) {
-                    val n = try {
-                        record.read(buf, 0, buf.size)
+                        if (vendorMode != null) am.setParameters("audio_source_record=$vendorMode")
                     } catch (_: Exception) {
-                        break
+                        // ignore; still try default MIC path
                     }
-                    if (n > 0) {
-                        val out = buf.copyOfRange(0, n)
-                        shared.tryEmit(
-                            AudioChunk(
-                                bytes = out,
-                                format = fmt,
-                                sequence = seq.incrementAndGet(),
-                            )
-                        )
-                    }
-                }
-            }
-
+                },
+                beforeStop = {
+                    // Best-effort: inform RayNeo audio HAL that we're done.
+                    if (vendorMode != null) am.setParameters("audio_source_record=off")
+                },
+                afterStop = { activeMic = null },
+            ).getOrThrow()
             activeMic = session
             Result.success(session)
         } catch (e: Exception) {

@@ -3,10 +3,9 @@ plugins {
 }
 
 android {
-    namespace = "com.universalglasses.device.rayneo.runtime"
+    namespace = "com.universalglasses.core.android"
 }
 
 dependencies {
     api(project(":core"))
-    implementation(project(":core-android"))
 }

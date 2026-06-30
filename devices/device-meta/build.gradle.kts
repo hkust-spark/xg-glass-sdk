@@ -12,6 +12,7 @@ android {
 
 dependencies {
     api(project(":core"))
+    implementation(project(":core-android"))
 
     api(libs.mwdat.core)
     api(libs.mwdat.camera)

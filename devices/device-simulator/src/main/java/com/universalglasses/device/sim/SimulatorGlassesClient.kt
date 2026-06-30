@@ -5,8 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.AudioManager
-import android.media.AudioRecord
-import android.media.AudioTrack
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.media.MediaRecorder
@@ -18,9 +16,7 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
-import com.universalglasses.core.AudioChunk
 import com.universalglasses.core.AudioEncoding
-import com.universalglasses.core.AudioFormat
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.ConnectionState
@@ -35,19 +31,17 @@ import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PcmFormat
 import com.universalglasses.core.PlayAudioOptions
+import com.universalglasses.core.android.openAndroidMicrophone
+import com.universalglasses.core.android.playEncodedViaMediaPlayer
+import com.universalglasses.core.android.playPcmViaAudioTrack
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -57,8 +51,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -335,100 +327,26 @@ class SimulatorGlassesClient(
     }
 
     private suspend fun playPcm(data: ByteArray, pcm: PcmFormat) {
-        val sampleRate = pcm.sampleRateHz
-        val channels = pcm.channelCount
-        val channelMask = if (channels <= 1)
-            android.media.AudioFormat.CHANNEL_OUT_MONO else android.media.AudioFormat.CHANNEL_OUT_STEREO
-        val enc = when (pcm.encoding) {
-            AudioEncoding.PCM_S16_LE -> android.media.AudioFormat.ENCODING_PCM_16BIT
-            AudioEncoding.PCM_S8 -> android.media.AudioFormat.ENCODING_PCM_8BIT
-            AudioEncoding.OPUS -> throw GlassesError.Unsupported("Simulator playAudio: OPUS not supported")
-        }
-
-        val minBuf = AudioTrack.getMinBufferSize(sampleRate, channelMask, enc).coerceAtLeast(1024)
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-            )
-            .setAudioFormat(
-                android.media.AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(channelMask)
-                    .setEncoding(enc)
-                    .build()
-            )
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .setBufferSizeInBytes(minBuf)
-            .build()
-
-        if (track.state != AudioTrack.STATE_INITIALIZED) {
-            track.release()
-            throw GlassesError.Transport("Simulator AudioTrack not initialized")
-        }
-
-        try {
-            track.play()
-            var written = 0
-            while (written < data.size) {
-                val n = track.write(data, written, minOf(4096, data.size - written))
-                if (n <= 0) break
-                written += n
-            }
-            val bytesPerSample = if (enc == android.media.AudioFormat.ENCODING_PCM_16BIT) 2 else 1
-            val bytesPerSecond = sampleRate.toLong() * channels * bytesPerSample
-            if (bytesPerSecond > 0) delay(data.size * 1000L / bytesPerSecond + 200L)
-        } finally {
-            runCatching { track.stop() }
-            track.release()
-        }
+        playPcmViaAudioTrack(
+            data = data,
+            format = pcm,
+            usageAttributes = AudioAttributes.USAGE_MEDIA,
+            interrupt = false,
+            unsupportedOpusMessage = "Simulator playAudio: OPUS not supported",
+            uninitializedMessage = "Simulator AudioTrack not initialized",
+        ).getOrThrow()
     }
 
     private suspend fun playEncoded(data: ByteArray) {
-        val tmpFile = File(activity.cacheDir, "sim_audio_${System.currentTimeMillis()}.tmp")
-        try {
-            tmpFile.writeBytes(data)
-            withContext(Dispatchers.Main) {
-                suspendCancellableCoroutine<Unit> { cont ->
-                    val mp = MediaPlayer()
-                    activePlayer = mp
-                    mp.setDataSource(tmpFile.absolutePath)
-                    mp.setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build()
-                    )
-                    mp.setOnCompletionListener {
-                        mp.release()
-                        activePlayer = null
-                        tmpFile.delete()
-                        if (cont.isActive) cont.resume(Unit)
-                    }
-                    mp.setOnErrorListener { _, what, extra ->
-                        mp.release()
-                        activePlayer = null
-                        tmpFile.delete()
-                        if (cont.isActive) cont.resumeWithException(
-                            GlassesError.Transport("Simulator MediaPlayer error: what=$what extra=$extra")
-                        )
-                        true
-                    }
-                    mp.prepare()
-                    mp.start()
-                    cont.invokeOnCancellation {
-                        mp.release()
-                        activePlayer = null
-                        tmpFile.delete()
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            tmpFile.delete()
-            throw e
-        }
+        playEncodedViaMediaPlayer(
+            data = data,
+            usageAttributes = AudioAttributes.USAGE_MEDIA,
+            interrupt = false,
+            tempFileFactory = { File(activity.cacheDir, "sim_audio_${System.currentTimeMillis()}.tmp") },
+            currentPlayer = { activePlayer },
+            setCurrentPlayer = { activePlayer = it },
+            errorMessage = { what, extra -> "Simulator MediaPlayer error: what=$what extra=$extra" },
+        ).getOrThrow()
     }
 
     private suspend fun ensureTts(): TextToSpeech {
@@ -476,100 +394,22 @@ class SimulatorGlassesClient(
 
         val sampleRate = options.preferredSampleRateHz ?: 16_000
         val channels = options.preferredChannelCount ?: 1
-        val channelConfig = when (channels) {
-            1 -> android.media.AudioFormat.CHANNEL_IN_MONO
-            2 -> android.media.AudioFormat.CHANNEL_IN_STEREO
+        when (channels) {
+            1, 2 -> Unit
             else -> return Result.failure(GlassesError.Unsupported("Simulator microphone: channelCount=$channels"))
         }
-        val audioFormat = when (encoding) {
-            AudioEncoding.PCM_S16_LE -> android.media.AudioFormat.ENCODING_PCM_16BIT
-            AudioEncoding.PCM_S8 -> android.media.AudioFormat.ENCODING_PCM_8BIT
-            AudioEncoding.OPUS -> android.media.AudioFormat.ENCODING_PCM_16BIT // unreachable
-        }
-
         return try {
-            val minBuf = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
-            if (minBuf <= 0) {
-                return Result.failure(GlassesError.Transport("AudioRecord.getMinBufferSize failed: $minBuf"))
-            }
-
-            val record = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
-                sampleRate,
-                channelConfig,
-                audioFormat,
-                minBuf * 2,
-            )
-            if (record.state != AudioRecord.STATE_INITIALIZED) {
-                try {
-                    record.release()
-                } catch (_: Exception) {}
-                return Result.failure(GlassesError.Transport("AudioRecord not initialized"))
-            }
-
-            val fmt = AudioFormat(
-                encoding = encoding,
+            val session = openAndroidMicrophone(
+                options = options,
+                audioSource = MediaRecorder.AudioSource.MIC,
                 sampleRateHz = sampleRate,
                 channelCount = channels,
-            )
-
-            val shared = MutableSharedFlow<AudioChunk>(
-                extraBufferCapacity = 64,
-            )
-            val running = AtomicBoolean(true)
-            val seq = AtomicLong(0)
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-            val session = object : MicrophoneSession {
-                override val format: AudioFormat = fmt
-                override val audio: Flow<AudioChunk> = shared
-
-                override suspend fun stop() {
-                    if (!running.compareAndSet(true, false)) return
-                    try {
-                        record.stop()
-                    } catch (_: Exception) {}
-                    try {
-                        record.release()
-                    } catch (_: Exception) {}
-
-                    scope.cancel()
-                    activeMic = null
-                    shared.tryEmit(
-                        AudioChunk(
-                            bytes = ByteArray(0),
-                            format = fmt,
-                            sequence = seq.incrementAndGet(),
-                            endOfStream = true,
-                        )
-                    )
-                }
-            }
-
-            record.startRecording()
-            scope.launch {
-                val buf = ByteArray(minBuf)
-                while (running.get()) {
-                    val n = try {
-                        record.read(buf, 0, buf.size)
-                    } catch (_: Exception) {
-                        break
-                    }
-                    if (n > 0) {
-                        shared.tryEmit(
-                            AudioChunk(
-                                bytes = buf.copyOfRange(0, n),
-                                format = fmt,
-                                sequence = seq.incrementAndGet(),
-                            )
-                        )
-                    } else {
-                        // On some devices/emulators AudioRecord may return 0 or an error code; exit.
-                        if (n < 0) break
-                    }
-                }
-            }
-
+                unsupportedOpusMessage = "Simulator microphone: OPUS not supported (use PCM + app-side encoder)",
+                unsupportedChannelMessage = { "Simulator microphone: channelCount=$it" },
+                minBufferErrorMessage = { "AudioRecord.getMinBufferSize failed: $it" },
+                uninitializedMessage = "AudioRecord not initialized",
+                afterStop = { activeMic = null },
+            ).getOrThrow()
             activeMic = session
             emitLog("Simulator: startMicrophone => ok ($sampleRate Hz, $channels ch, $encoding)")
             Result.success(session)

@@ -8,6 +8,7 @@ android {
 
 dependencies {
     api(project(":core"))
+    implementation(project(":core-android"))
 
     // Rokid CXR-M SDK
     api("com.rokid.cxr:client-m:1.0.4") {
