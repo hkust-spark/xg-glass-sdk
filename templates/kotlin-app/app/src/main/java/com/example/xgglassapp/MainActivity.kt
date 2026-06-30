@@ -275,6 +275,11 @@ class MainActivity : AppCompatActivity() {
                         )
                     }
                     GlassesModel.OMI -> OmiGlassesClient(this@MainActivity)
+                    GlassesModel.ANDROID_XR -> {
+                        appendLog("Android XR: preview scaffold is not enabled in this app.")
+                        tvStatus.text = "Status: Android XR preview scaffold not enabled"
+                        return@launch
+                    }
                 }
 
                 client = newClient

@@ -5,6 +5,7 @@ enum class GlassesModel {
     META,
     ROKID,
     RAYNEO,
+    ANDROID_XR,
     SIMULATOR,
     OMI,
 }
