@@ -32,6 +32,16 @@ _MANAGED_JDK_DIR = _XG_GLASS_HOME / "jdk"
 # JDK 25 (LTS, Sep 2025) is too new for AGP 8.13.1 / Gradle 8.13 and causes a bare
 # "25.0.2" build error.  Bump this constant when upgrading AGP to a version that supports it.
 _MAX_AGP_JDK_MAJOR = 21
+_FQCN_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$')
+
+
+def _validate_entry_class(entry_class: str, source: str) -> str:
+    entry_class = str(entry_class).strip()
+    if not entry_class:
+        raise ValueError(f"{source} must be non-empty")
+    if not _FQCN_RE.fullmatch(entry_class):
+        raise ValueError(f"{source} must be a fully-qualified Java/Kotlin class name")
+    return entry_class
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -131,9 +141,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     dst = Path(args.dir).expanduser().resolve()
     template = Path(args.template).expanduser().resolve()
     sdk = Path(args.sdk).expanduser().resolve()
-    entry_class = str(args.entry_class).strip()
-    if not entry_class:
-        raise ValueError("--entry-class must be non-empty")
+    entry_class = _validate_entry_class(args.entry_class, "--entry-class")
 
     if not template.is_dir():
         raise FileNotFoundError(f"Template not found: {template}")
@@ -323,12 +331,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         if not sdk.exists():
             raise FileNotFoundError("SDK path not found. Provide --sdk pointing to your universal_glasses checkout.")
 
-        entry_class = getattr(args, "entry_class", None) or _infer_entry_class_from_kt(kt)
+        raw_entry_class = getattr(args, "entry_class", None)
+        entry_class = raw_entry_class or _infer_entry_class_from_kt(kt)
         if not entry_class:
             raise RuntimeError(
                 "Failed to infer entry class from .kt file. Please ensure the file has a `package ...` line and a top-level `class`, "
                 "or pass --entry-class explicitly."
             )
+        entry_class = _validate_entry_class(
+            entry_class,
+            "--entry-class" if raw_entry_class else "inferred entry class",
+        )
 
         if getattr(args, "save", None):
             project_dir = Path(args.save).expanduser().resolve()
@@ -454,6 +467,18 @@ def _pick_apk(project: Path, module: str, variant: str, serial: str | None) -> P
     return apks[0]
 
 
+def _adb_not_found_error() -> RuntimeError:
+    return RuntimeError(
+        "adb not found. Install Android SDK platform-tools or set ANDROID_SDK_ROOT/ANDROID_HOME "
+        "to an Android SDK that contains platform-tools/adb."
+    )
+
+
+def _adb_line_is_ready_device(line: str) -> bool:
+    fields = line.strip().split()
+    return len(fields) >= 2 and fields[0].lower() != "no" and fields[1] == "device"
+
+
 def _adb_getprop(prop: str, serial: str | None) -> str | None:
     cmd = [_find_adb_cmd()]
     if serial:
@@ -462,7 +487,9 @@ def _adb_getprop(prop: str, serial: str | None) -> str | None:
     try:
         out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, text=True).strip()
         return out or None
-    except Exception:
+    except FileNotFoundError as exc:
+        raise _adb_not_found_error() from exc
+    except subprocess.CalledProcessError:
         return None
 
 
@@ -481,9 +508,11 @@ def _adb_has_device(serial: str | None = None) -> bool:
     try:
         out = subprocess.check_output([adb, "devices"], text=True, stderr=subprocess.DEVNULL)
         for line in out.strip().splitlines()[1:]:
-            if line.strip() and "device" in line:
+            if _adb_line_is_ready_device(line):
                 return True
-    except Exception:
+    except FileNotFoundError as exc:
+        raise _adb_not_found_error() from exc
+    except subprocess.CalledProcessError:
         pass
     return False
 
@@ -640,7 +669,11 @@ def _ensure_emulator_running(serial: str | None = None) -> None:
             out = subprocess.check_output(
                 [adb, "devices"], text=True, stderr=subprocess.DEVNULL,
             )
-            if any("emulator" in line and "device" in line for line in out.splitlines()):
+            if any(
+                _adb_line_is_ready_device(line)
+                and line.strip().split()[0].startswith("emulator-")
+                for line in out.splitlines()
+            ):
                 # Check boot_completed
                 try:
                     boot = subprocess.check_output(
@@ -650,8 +683,14 @@ def _ensure_emulator_running(serial: str | None = None) -> None:
                     if boot == "1":
                         print(" Ready!")
                         return
+                except FileNotFoundError as exc:
+                    raise _adb_not_found_error() from exc
                 except Exception:
                     pass
+        except FileNotFoundError as exc:
+            raise _adb_not_found_error() from exc
+        except RuntimeError:
+            raise
         except Exception:
             pass
     print()
@@ -706,14 +745,17 @@ def _apply_simulator_build_settings(project: Path, *, enabled: bool) -> None:
     desired = "true" if enabled else "false"
     s2 = re.sub(
         r'buildConfigField\("boolean",\s*"XG_SIMULATOR",\s*"(true|false)"\)',
-        f'buildConfigField("boolean", "XG_SIMULATOR", "{desired}")',
+        lambda _m: f'buildConfigField("boolean", "XG_SIMULATOR", "{desired}")',
         s,
     )
     if s2 == s:
         # Insert into defaultConfig if missing.
         s2 = re.sub(
             r"(defaultConfig\s*\{\s*)",
-            rf'\1\n        buildConfigField("boolean", "XG_SIMULATOR", "{desired}")\n',
+            lambda m: (
+                f'{m.group(1)}\n'
+                f'        buildConfigField("boolean", "XG_SIMULATOR", "{desired}")\n'
+            ),
             s,
             count=1,
         )
@@ -737,14 +779,19 @@ def _apply_sim_video_build_setting(project: Path, device_video_path: str) -> Non
     # The value in the gradle file looks like: buildConfigField("String", "XG_SIM_VIDEO_PATH", "\"...\"")
     s2 = re.sub(
         r'buildConfigField\("String",\s*"XG_SIM_VIDEO_PATH",\s*"[^)]*"\)',
-        f'buildConfigField("String", "XG_SIM_VIDEO_PATH", "\\"{device_video_path}\\"")',
+        lambda _m: (
+            f'buildConfigField("String", "XG_SIM_VIDEO_PATH", "\\"{device_video_path}\\"")'
+        ),
         s,
     )
     if s2 == s:
         # Insert into defaultConfig if missing.
         s2 = re.sub(
             r"(defaultConfig\s*\{\s*)",
-            rf'\1\n        buildConfigField("String", "XG_SIM_VIDEO_PATH", "\\"{device_video_path}\\"")\n',
+            lambda m: (
+                f'{m.group(1)}\n'
+                f'        buildConfigField("String", "XG_SIM_VIDEO_PATH", "\\"{device_video_path}\\"")\n'
+            ),
             s,
             count=1,
         )
@@ -768,9 +815,12 @@ def _load_config(project: Path, config_arg: str) -> XgConfig:
     if not cfg_path.exists():
         return XgConfig()
     data = _parse_simple_yaml(cfg_path.read_text(encoding="utf-8"))
+    entry_class = data.get("entryClass")
+    if entry_class:
+        entry_class = _validate_entry_class(entry_class, "entryClass in config")
     return XgConfig(
         sdk_path=data.get("sdkPath"),
-        entry_class=data.get("entryClass"),
+        entry_class=entry_class,
         rayneo_mercury_aar_dir=data.get("rayneoMercuryAarDir"),
         variant=(data.get("variant") or "debug"),
         module=(data.get("module") or "app"),
@@ -789,9 +839,15 @@ def _apply_overrides(
 ) -> XgConfig:
     v = (variant or cfg.variant).strip() if (variant or cfg.variant) else "debug"
     m = (module or cfg.module).strip() if (module or cfg.module) else "app"
+    merged_entry_class = entry_class or cfg.entry_class
+    if merged_entry_class:
+        merged_entry_class = _validate_entry_class(
+            merged_entry_class,
+            "--entry-class" if entry_class else "entryClass in config",
+        )
     return XgConfig(
         sdk_path=(sdk or cfg.sdk_path),
-        entry_class=(entry_class or cfg.entry_class),
+        entry_class=merged_entry_class,
         rayneo_mercury_aar_dir=(rayneo_aar_dir or cfg.rayneo_mercury_aar_dir),
         variant=v,
         module=m,
@@ -807,7 +863,7 @@ def _apply_cfg_to_project(project: Path, cfg: XgConfig) -> None:
             s = manifest.read_text(encoding="utf-8")
             s = re.sub(
                 r'(android:name="com\.universalglasses\.app_entry_class"\s+android:value=")([^"]*)(")',
-                rf'\g<1>{cfg.entry_class}\g<3>',
+                lambda m: f"{m.group(1)}{cfg.entry_class}{m.group(3)}",
                 s,
             )
             manifest.write_text(s, encoding="utf-8")
@@ -817,18 +873,26 @@ def _apply_cfg_to_project(project: Path, cfg: XgConfig) -> None:
     if app_gradle.exists():
         s = app_gradle.read_text(encoding="utf-8")
         if cfg.entry_class:
-            s = re.sub(r'appEntryClass\.set\(".*?"\)', f'appEntryClass.set("{cfg.entry_class}")', s)
+            s = re.sub(
+                r'appEntryClass\.set\(".*?"\)',
+                lambda _m: f'appEntryClass.set("{cfg.entry_class}")',
+                s,
+            )
         if cfg.rayneo_mercury_aar_dir:
             # Normalize to a File(rootDir, "...").absolutePath style.
             s = re.sub(
                 r'mercuryAarDir\.set\(File\(rootDir,\s*".*?"\)\.absolutePath\)',
-                f'mercuryAarDir.set(File(rootDir, "{cfg.rayneo_mercury_aar_dir}").absolutePath)',
+                lambda _m: (
+                    f'mercuryAarDir.set(File(rootDir, "{cfg.rayneo_mercury_aar_dir}").absolutePath)'
+                ),
                 s,
             )
         elif cfg.sdk_path:
             s = re.sub(
                 r'mercuryAarDir\.set\(File\(rootDir,\s*".*?"\)\.absolutePath\)',
-                f'mercuryAarDir.set(File(rootDir, "{cfg.sdk_path}/third_party/rayneo/aar").absolutePath)',
+                lambda _m: (
+                    f'mercuryAarDir.set(File(rootDir, "{cfg.sdk_path}/third_party/rayneo/aar").absolutePath)'
+                ),
                 s,
             )
         app_gradle.write_text(s, encoding="utf-8")
@@ -841,13 +905,13 @@ def _apply_cfg_to_project(project: Path, cfg: XgConfig) -> None:
             # 1) pluginManagement includeBuild(.../build-logic)
             s = re.sub(
                 r'includeBuild\(".*?/build-logic"\)',
-                f'includeBuild("{cfg.sdk_path}/build-logic")',
+                lambda _m: f'includeBuild("{cfg.sdk_path}/build-logic")',
                 s,
             )
             # 2) composite build includeBuild(...) anchored by the comment block
             s = re.sub(
                 r'(^\\s*//\\s*Use\\s+universal_glasses\\s+as\\s+a\\s+composite\\s+build.*\\n)\\s*includeBuild\\(".*?"\\)',
-                rf'\\1includeBuild("{cfg.sdk_path}")',
+                lambda m: f'{m.group(1)}includeBuild("{cfg.sdk_path}")',
                 s,
                 flags=re.MULTILINE,
             )
@@ -1050,16 +1114,39 @@ def _download_json(url: str) -> object:
         return json.loads(resp.read())
 
 
+def _verify_sha256(path: Path, expected: str) -> None:
+    expected = expected.strip().lower()
+    if expected.startswith("sha256:"):
+        expected = expected.split(":", 1)[1]
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while True:
+            chunk = f.read(1024 * 1024)
+            if not chunk:
+                break
+            h.update(chunk)
+    actual = h.hexdigest()
+    if actual != expected:
+        raise RuntimeError(
+            f"SHA-256 mismatch for {path.name}: expected {expected}, got {actual}"
+        )
+
+
 def _extract_archive(archive: Path, dest: Path) -> None:
     """Extract a zip / tar.gz / tar.xz archive into *dest*."""
     name = archive.name.lower()
     if name.endswith(".zip"):
+        dest_root = Path(dest).resolve()
         with zipfile.ZipFile(str(archive), "r") as zf:
+            for m in zf.infolist():
+                target = (dest_root / m.filename).resolve()
+                if not str(target).startswith(str(dest_root) + os.sep) and target != dest_root:
+                    raise RuntimeError(f"Unsafe path in archive (zip-slip): {m.filename}")
             zf.extractall(str(dest))
     elif name.endswith((".tar.gz", ".tgz", ".tar.xz", ".tar")):
         with tarfile.open(str(archive), "r:*") as tf:
             if sys.version_info >= (3, 12):
-                tf.extractall(str(dest), filter="fully_trusted")
+                tf.extractall(str(dest), filter="data")
             else:
                 tf.extractall(str(dest))
     else:
@@ -1224,17 +1311,32 @@ function Prepend-UserPathIfMissing([string]$dir) {
   }
 }
 """
-    if android_sdk:
-        ps += f'Set-UserEnvIfMissing "ANDROID_SDK_ROOT" "{android_sdk}"\n'
-        ps += f'Set-UserEnvIfMissing "ANDROID_HOME" "{android_sdk}"\n'
-        ps += 'Prepend-UserPathIfMissing (Join-Path $env:ANDROID_SDK_ROOT "platform-tools")\n'
-    if java_home:
-        ps += f'Set-UserEnvIfMissing "JAVA_HOME" "{java_home}"\n'
-        ps += 'Prepend-UserPathIfMissing (Join-Path $env:JAVA_HOME "bin")\n'
-    if flutter_dir:
-        ps += f'Prepend-UserPathIfMissing "{flutter_dir}"\n'
+    ps += r"""
+if (-not [string]::IsNullOrEmpty($env:XG_ANDROID_SDK)) {
+  Set-UserEnvIfMissing "ANDROID_SDK_ROOT" $env:XG_ANDROID_SDK
+  Set-UserEnvIfMissing "ANDROID_HOME" $env:XG_ANDROID_SDK
+  Prepend-UserPathIfMissing (Join-Path $env:XG_ANDROID_SDK "platform-tools")
+}
+if (-not [string]::IsNullOrEmpty($env:XG_JAVA_HOME)) {
+  Set-UserEnvIfMissing "JAVA_HOME" $env:XG_JAVA_HOME
+  Prepend-UserPathIfMissing (Join-Path $env:XG_JAVA_HOME "bin")
+}
+if (-not [string]::IsNullOrEmpty($env:XG_FLUTTER_DIR)) {
+  Prepend-UserPathIfMissing $env:XG_FLUTTER_DIR
+}
+"""
     ps += 'Write-Host "Updated user environment variables. Restart your terminal to apply."\n'
-    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], check=False)
+    ps_env = {
+        **os.environ,
+        "XG_ANDROID_SDK": android_sdk or "",
+        "XG_JAVA_HOME": java_home or "",
+        "XG_FLUTTER_DIR": flutter_dir or "",
+    }
+    subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+        check=False,
+        env=ps_env,
+    )
 
 
 def _persist_env(*, java_home: str | None = None, android_sdk: str | None = None, flutter_bin: str | None = None) -> None:
@@ -1332,6 +1434,9 @@ def _auto_download_flutter() -> str:
     archive_url = base_url + "/" + release["archive"]
     version = release["version"]
     archive_name = release["archive"].rsplit("/", 1)[-1]
+    expected_sha256 = str(release.get("sha256") or "").strip()
+    if not expected_sha256:
+        raise RuntimeError("Flutter release manifest did not include a SHA-256 checksum.")
 
     _MANAGED_FLUTTER_DIR.mkdir(parents=True, exist_ok=True)
     archive_path = _MANAGED_FLUTTER_DIR / archive_name
@@ -1342,7 +1447,8 @@ def _auto_download_flutter() -> str:
     try:
         _download_file(archive_url, archive_path)
         print()  # newline after progress bar
-    except (urllib.error.URLError, OSError) as exc:
+        _verify_sha256(archive_path, expected_sha256)
+    except (urllib.error.URLError, OSError, RuntimeError) as exc:
         archive_path.unlink(missing_ok=True)
         raise RuntimeError(
             f"Failed to download Flutter SDK: {exc}\n"
@@ -1707,6 +1813,7 @@ def _auto_download_jdk(major: int) -> str:
 
     link: str | None = None
     name: str | None = None
+    expected_sha256: str | None = None
 
     # Allow explicit override for air-gapped / mirrored environments.
     override_url = os.environ.get("XG_JDK_URL", "").strip()
@@ -1723,7 +1830,7 @@ def _auto_download_jdk(major: int) -> str:
             data = _download_json(assets_url)
             if isinstance(data, dict):
                 data = [data]
-            candidates: list[tuple[str, str]] = []
+            candidates: list[tuple[str, str, str | None]] = []
             for item in data:
                 bins = item.get("binaries") or []
                 if not bins and item.get("binary"):
@@ -1732,16 +1839,18 @@ def _auto_download_jdk(major: int) -> str:
                     pkg = (b or {}).get("package") or {}
                     lnk = pkg.get("link")
                     nm = pkg.get("name") or ""
+                    checksum = pkg.get("checksum")
+                    checksum = str(checksum).strip() if checksum else None
                     if lnk:
-                        candidates.append((lnk, nm))
+                        candidates.append((lnk, nm, checksum))
             if candidates:
                 # Prefer expected extension for the platform.
-                for lnk, nm in candidates:
+                for lnk, nm, checksum in candidates:
                     if nm.endswith(prefer_ext):
-                        link, name = lnk, nm
+                        link, name, expected_sha256 = lnk, nm, checksum
                         break
                 if not link:
-                    link, name = candidates[0]
+                    link, name, expected_sha256 = candidates[0]
         except Exception:
             link = None
 
@@ -1763,7 +1872,9 @@ def _auto_download_jdk(major: int) -> str:
         else:
             _download_file(link, archive_path)
         print()  # newline after progress
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
+        if expected_sha256:
+            _verify_sha256(archive_path, expected_sha256)
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, RuntimeError) as exc:
         archive_path.unlink(missing_ok=True)
         hint = ""
         if isinstance(exc, urllib.error.HTTPError) and getattr(exc, "code", None) == 403:
@@ -1955,6 +2066,7 @@ def _auto_download_android_sdk() -> str:
     print("Android SDK not found. Downloading Android SDK command-line tools...")
     print(f"  Install location: {_MANAGED_ANDROID_SDK_DIR}")
 
+    # TODO: no published checksum available for this pinned commandline-tools download URL.
     url = f"https://dl.google.com/android/repository/commandlinetools-{os_tag}-11076708_latest.zip"
 
     _MANAGED_ANDROID_SDK_DIR.mkdir(parents=True, exist_ok=True)
