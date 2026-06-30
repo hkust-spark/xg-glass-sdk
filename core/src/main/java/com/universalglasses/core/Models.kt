@@ -53,4 +53,26 @@ data class CapturedImage(
     val height: Int? = null,
     val rotationDegrees: Int? = null,
     val sourceModel: GlassesModel,
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is CapturedImage) return false
+
+        return jpegBytes.contentEquals(other.jpegBytes) &&
+            timestampMs == other.timestampMs &&
+            width == other.width &&
+            height == other.height &&
+            rotationDegrees == other.rotationDegrees &&
+            sourceModel == other.sourceModel
+    }
+
+    override fun hashCode(): Int {
+        var result = jpegBytes.contentHashCode()
+        result = 31 * result + timestampMs.hashCode()
+        result = 31 * result + (width ?: 0)
+        result = 31 * result + (height ?: 0)
+        result = 31 * result + (rotationDegrees ?: 0)
+        result = 31 * result + sourceModel.hashCode()
+        return result
+    }
+}

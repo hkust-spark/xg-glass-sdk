@@ -40,7 +40,21 @@ sealed class AudioSource {
     data class RawBytes(
         val data: ByteArray,
         val pcmFormat: PcmFormat? = null,
-    ) : AudioSource()
+    ) : AudioSource() {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is RawBytes) return false
+
+            return data.contentEquals(other.data) &&
+                pcmFormat == other.pcmFormat
+        }
+
+        override fun hashCode(): Int {
+            var result = data.contentHashCode()
+            result = 31 * result + (pcmFormat?.hashCode() ?: 0)
+            return result
+        }
+    }
 }
 
 /** Format descriptor for headerless PCM data passed via [AudioSource.RawBytes]. */
@@ -76,7 +90,27 @@ data class AudioChunk(
     val timestampMs: Long = System.currentTimeMillis(),
     /** True when this chunk indicates end-of-stream (may have empty bytes). */
     val endOfStream: Boolean = false,
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is AudioChunk) return false
+
+        return bytes.contentEquals(other.bytes) &&
+            format == other.format &&
+            sequence == other.sequence &&
+            timestampMs == other.timestampMs &&
+            endOfStream == other.endOfStream
+    }
+
+    override fun hashCode(): Int {
+        var result = bytes.contentHashCode()
+        result = 31 * result + format.hashCode()
+        result = 31 * result + sequence.hashCode()
+        result = 31 * result + timestampMs.hashCode()
+        result = 31 * result + endOfStream.hashCode()
+        return result
+    }
+}
 
 data class MicrophoneOptions(
     val preferredEncoding: AudioEncoding = AudioEncoding.PCM_S16_LE,
