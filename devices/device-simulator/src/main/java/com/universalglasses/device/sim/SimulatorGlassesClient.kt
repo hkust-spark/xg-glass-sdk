@@ -49,6 +49,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
@@ -107,6 +109,7 @@ class SimulatorGlassesClient(
     @Volatile private var activeMic: MicrophoneSession? = null
     @Volatile private var tts: TextToSpeech? = null
     @Volatile private var activePlayer: MediaPlayer? = null
+    private val connectMutex = Mutex()
 
     // ── Video-file playback state (used when videoPath != null) ────────
     /** The retriever used to extract frames from the video file. */
@@ -120,7 +123,7 @@ class SimulatorGlassesClient(
 
     private val useVideoSource: Boolean get() = videoPath != null
 
-    override suspend fun connect(): Result<Unit> {
+    override suspend fun connect(): Result<Unit> = connectMutex.withLock {
         if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
             return Result.success(Unit)
         }

@@ -51,6 +51,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.File
@@ -111,8 +113,9 @@ class RokidGlassesClient(
     @Volatile private var wifiReady: Boolean = false
     @Volatile private var btReady: Boolean = false
     @Volatile private var activeMic: MicrophoneSession? = null
+    private val connectMutex = Mutex()
 
-    override suspend fun connect(): Result<Unit> {
+    override suspend fun connect(): Result<Unit> = connectMutex.withLock {
         if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
             return Result.success(Unit)
         }
@@ -724,7 +727,21 @@ class RokidGlassesClient(
     data class RokidAuthorization(
         val snLc: ByteArray,
         val clientSecret: String,
-    )
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is RokidAuthorization) return false
+
+            return snLc.contentEquals(other.snLc) &&
+                clientSecret == other.clientSecret
+        }
+
+        override fun hashCode(): Int {
+            var result = snLc.contentHashCode()
+            result = 31 * result + clientSecret.hashCode()
+            return result
+        }
+    }
 
     private companion object {
         const val ROKID_SERVICE_UUID = "00009100-0000-1000-8000-00805f9b34fb"

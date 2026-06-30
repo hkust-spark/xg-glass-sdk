@@ -12,15 +12,14 @@ import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PlayAudioOptions
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 /**
  * Frame implementation of [GlassesClient] backed by a host-provided [FrameFlutterBridge].
@@ -42,20 +41,27 @@ class FrameGlassesClient(
         supportsStreamingTextUpdates = true,
     )
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val stateScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
+    override val state: StateFlow<ConnectionState> = _state
 
-    override val state: StateFlow<ConnectionState> = bridge.state
-        .map { st ->
-            when (st) {
-                FrameFlutterState.Disconnected -> ConnectionState.Disconnected
-                FrameFlutterState.Connecting -> ConnectionState.Connecting
-                FrameFlutterState.Connected -> ConnectionState.Connected
-                is FrameFlutterState.Error -> ConnectionState.Error(
-                    com.universalglasses.core.GlassesError.Transport("Frame error: ${st.message}")
-                )
+    @Volatile
+    private var activeMic: MicrophoneSession? = null
+
+    init {
+        stateScope.launch {
+            bridge.state.collect { st ->
+                _state.value = when (st) {
+                    FrameFlutterState.Disconnected -> ConnectionState.Disconnected
+                    FrameFlutterState.Connecting -> ConnectionState.Connecting
+                    FrameFlutterState.Connected -> ConnectionState.Connected
+                    is FrameFlutterState.Error -> ConnectionState.Error(
+                        com.universalglasses.core.GlassesError.Transport("Frame error: ${st.message}")
+                    )
+                }
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, ConnectionState.Disconnected)
+    }
 
     override val events: Flow<GlassesEvent> = bridge.events
 
@@ -63,7 +69,8 @@ class FrameGlassesClient(
 
     override suspend fun disconnect() {
         bridge.disconnect()
-        scope.cancel()
+        activeMic = null
+        _state.value = ConnectionState.Disconnected
     }
 
     override suspend fun capturePhoto(options: CaptureOptions) = bridge.capturePhoto(options)
@@ -75,15 +82,25 @@ class FrameGlassesClient(
     }
 
     override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> {
+        if (activeMic != null) return Result.failure(GlassesError.Busy)
+
         val fmtRes = bridge.startMicrophone(options)
         return fmtRes.map { fmt ->
-            object : MicrophoneSession {
+            val session = object : MicrophoneSession {
                 override val format = fmt
                 override val audio = bridge.microphone
                 override suspend fun stop() {
-                    bridge.stopMicrophone()
+                    try {
+                        bridge.stopMicrophone()
+                    } finally {
+                        if (activeMic === this) {
+                            activeMic = null
+                        }
+                    }
                 }
             }
+            activeMic = session
+            session
         }
     }
 }

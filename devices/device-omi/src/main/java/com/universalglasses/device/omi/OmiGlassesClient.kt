@@ -36,16 +36,21 @@ import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PlayAudioOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -66,12 +71,14 @@ import kotlin.coroutines.resumeWithException
  */
 class OmiGlassesClient(
     private val context: Context,
+    private val options: OmiOptions = OmiOptions(),
 ) : GlassesClient {
 
     override val model: GlassesModel = GlassesModel.OMI
 
-    override val capabilities: DeviceCapabilities = DeviceCapabilities(
-        canCapturePhoto = true,
+    @Volatile
+    private var currentCapabilities: DeviceCapabilities = DeviceCapabilities(
+        canCapturePhoto = false,
         canDisplayText = false,
         canRecordAudio = true,
         canPlayTts = false,
@@ -79,6 +86,8 @@ class OmiGlassesClient(
         supportsTapEvents = false,
         supportsStreamingTextUpdates = false,
     )
+    override val capabilities: DeviceCapabilities
+        get() = currentCapabilities
 
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     override val state: StateFlow<ConnectionState> = _state
@@ -96,9 +105,12 @@ class OmiGlassesClient(
     private var timeSyncCharacteristic: BluetoothGattCharacteristic? = null
 
     // Photo retrieval state
+    private val photoLock = Any()
     private var photoBuffer = mutableListOf<Byte>()
     private var lastPhotoChunkId = -1
     private var photoContinuation: kotlinx.coroutines.CancellableContinuation<Result<CapturedImage>>? = null
+
+    private val connectMutex = Mutex()
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -108,7 +120,7 @@ class OmiGlassesClient(
     @Volatile
     private var audioSession: MicrophoneSession? = null
 
-    override suspend fun connect(): Result<Unit> {
+    override suspend fun connect(): Result<Unit> = connectMutex.withLock {
         if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
             return Result.success(Unit)
         }
@@ -125,12 +137,23 @@ class OmiGlassesClient(
 
         return withContext(Dispatchers.IO) {
             try {
-                val device = scanFirstOmiDevice(adapter)
-                emitLog("Omi: found device ${device.address} (${device.name}), initiating GATT connection...")
+                withTimeout(options.connectTimeoutMs) {
+                    val device = scanFirstOmiDevice(adapter)
+                    emitLog("Omi: found device ${device.address} (${device.name}), initiating GATT connection...")
 
-                connectGatt(device)
+                    connectGatt(device)
+                }
 
                 Result.success(Unit)
+            } catch (_: TimeoutCancellationException) {
+                closeGatt()
+                val err = GlassesError.Timeout("Omi connect")
+                _state.value = ConnectionState.Error(err)
+                Result.failure(err)
+            } catch (ce: CancellationException) {
+                closeGatt()
+                _state.value = ConnectionState.Disconnected
+                throw ce
             } catch (e: Exception) {
                 val err = (e as? GlassesError)
                     ?: GlassesError.Transport("Omi connect failed: ${e.message}", e)
@@ -146,9 +169,7 @@ class OmiGlassesClient(
         } catch (_: Exception) {
         }
         audioSession = null
-        bluetoothGatt?.disconnect()
-        bluetoothGatt?.close()
-        bluetoothGatt = null
+        closeGatt()
         _state.value = ConnectionState.Disconnected
     }
 
@@ -157,10 +178,13 @@ class OmiGlassesClient(
         val dataChar = photoDataCharacteristic ?: return Result.failure(GlassesError.Unsupported("Photo data characteristic not found"))
         val gatt = bluetoothGatt ?: return Result.failure(GlassesError.NotConnected)
 
-        return kotlinx.coroutines.withTimeoutOrNull(10000) {
+        return kotlinx.coroutines.withTimeoutOrNull(options.timeoutMs) {
             kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-                photoContinuation = cont
-                photoBuffer.clear()
+                synchronized(photoLock) {
+                    photoContinuation = cont
+                    photoBuffer.clear()
+                    lastPhotoChunkId = -1
+                }
 
                 // Enable notifications for photo data
                 gatt.setCharacteristicNotification(dataChar, true)
@@ -174,7 +198,9 @@ class OmiGlassesClient(
                     // though in production we should wait for onDescriptorWrite.
                     kotlinx.coroutines.delay(200) 
                     
-                    lastPhotoChunkId = -1
+                    synchronized(photoLock) {
+                        lastPhotoChunkId = -1
+                    }
                     // Write 0x05 to trigger single photo (like React Native SDK)
                     ctrlChar.value = byteArrayOf(0x05.toByte())
                     gatt.writeCharacteristic(ctrlChar)
@@ -182,10 +208,16 @@ class OmiGlassesClient(
                 }
 
                 cont.invokeOnCancellation {
-                    photoContinuation = null
+                    synchronized(photoLock) {
+                        if (photoContinuation === cont) {
+                            photoContinuation = null
+                        }
+                        photoBuffer.clear()
+                        lastPhotoChunkId = -1
+                    }
                 }
             }
-        } ?: Result.failure(GlassesError.Transport("Photo capture timed out"))
+        } ?: Result.failure(GlassesError.Timeout("capturePhoto"))
     }
 
     override suspend fun display(text: String, options: DisplayOptions): Result<Unit> {
@@ -262,10 +294,12 @@ class OmiGlassesClient(
                             gatt.requestMtu(512)
                         } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                             emitLog("Omi: GATT disconnected")
+                            updatePhotoCapability(false)
                             _state.value = ConnectionState.Disconnected
                         }
                     } else {
                         emitLog("Omi: GATT error status=$status")
+                        updatePhotoCapability(false)
                         _state.value = ConnectionState.Disconnected
                         if (cont.isActive) cont.resumeWithException(GlassesError.Transport("GATT error $status"))
                     }
@@ -283,6 +317,10 @@ class OmiGlassesClient(
                         audioCharacteristic = omiService?.getCharacteristic(AUDIO_DATA_UUID)
                         photoControlCharacteristic = omiService?.getCharacteristic(PHOTO_CONTROL_UUID)
                         photoDataCharacteristic = omiService?.getCharacteristic(PHOTO_DATA_UUID)
+                        updatePhotoCapability(
+                            photoControlCharacteristic != null &&
+                                photoDataCharacteristic != null
+                        )
                         
                         val timeSyncService = gatt.getService(TIME_SYNC_SERVICE_UUID)
                         timeSyncCharacteristic = timeSyncService?.getCharacteristic(TIME_SYNC_WRITE_UUID)
@@ -297,6 +335,7 @@ class OmiGlassesClient(
 
                         if (cont.isActive) cont.resume(Unit, onCancellation = null)
                     } else {
+                        updatePhotoCapability(false)
                         if (cont.isActive) cont.resumeWithException(GlassesError.Transport("Service discovery failed $status"))
                     }
                 }
@@ -320,7 +359,14 @@ class OmiGlassesClient(
                             val isEof = (data[0].toInt() and 0xFF) == 0xFF && (data[1].toInt() and 0xFF) == 0xFF
                             if (isEof) {
                                 // End of photo reached
-                                val rawBytes = photoBuffer.toByteArray()
+                                val (cont, rawBytes) = synchronized(photoLock) {
+                                    val pending = photoContinuation
+                                    photoContinuation = null
+                                    val bytes = photoBuffer.toByteArray()
+                                    photoBuffer.clear()
+                                    lastPhotoChunkId = -1
+                                    pending to bytes
+                                }
                                 val jpegStart = findJpegStart(rawBytes)
                                 val jpegBytes = if (jpegStart > 0) {
                                     emitLog("Omi: stripping $jpegStart leading bytes before JPEG header")
@@ -329,27 +375,32 @@ class OmiGlassesClient(
                                     rawBytes 
                                 }
                                 val captured = CapturedImage(jpegBytes = jpegBytes, sourceModel = GlassesModel.OMI)
-                                val cont = photoContinuation
                                 cont?.resumeWith(Result.success(Result.success(captured)))
                                 emitLog("Omi: photo received (${jpegBytes.size} bytes)")
-                                photoBuffer.clear()
-                                lastPhotoChunkId = -1
                             } else {
                                 val packetId = (data[0].toInt() and 0xFF) or ((data[1].toInt() and 0xFF) shl 8)
                                 val payload = data.sliceArray(2 until data.size)
-                                
-                                if (packetId == 0) {
-                                    photoBuffer.clear()
-                                    lastPhotoChunkId = 0
-                                    // Hardware may prepend a 1-byte orientation header before JPEG
-                                    photoBuffer.addAll(payload.toList())
-                                } else if (packetId == lastPhotoChunkId + 1) {
-                                    lastPhotoChunkId = packetId
-                                    photoBuffer.addAll(payload.toList())
-                                } else {
-                                    emitLog("Omi: WARN dropped photo chunk (expected ${lastPhotoChunkId + 1}, got $packetId)")
-                                    lastPhotoChunkId = packetId
-                                    photoBuffer.addAll(payload.toList())
+
+                                val warning = synchronized(photoLock) {
+                                    if (packetId == 0) {
+                                        photoBuffer.clear()
+                                        lastPhotoChunkId = 0
+                                        // Hardware may prepend a 1-byte orientation header before JPEG
+                                        photoBuffer.addAll(payload.toList())
+                                        null
+                                    } else if (packetId == lastPhotoChunkId + 1) {
+                                        lastPhotoChunkId = packetId
+                                        photoBuffer.addAll(payload.toList())
+                                        null
+                                    } else {
+                                        val message = "Omi: WARN dropped photo chunk (expected ${lastPhotoChunkId + 1}, got $packetId)"
+                                        lastPhotoChunkId = packetId
+                                        photoBuffer.addAll(payload.toList())
+                                        message
+                                    }
+                                }
+                                if (warning != null) {
+                                    emitLog(warning)
                                 }
                             }
                         }
@@ -358,11 +409,23 @@ class OmiGlassesClient(
             })
 
             cont.invokeOnCancellation {
+                updatePhotoCapability(false)
                 bluetoothGatt?.disconnect()
                 bluetoothGatt?.close()
                 bluetoothGatt = null
             }
         }
+    }
+
+    private fun updatePhotoCapability(canCapturePhoto: Boolean) {
+        currentCapabilities = currentCapabilities.copy(canCapturePhoto = canCapturePhoto)
+    }
+
+    private fun closeGatt() {
+        updatePhotoCapability(false)
+        bluetoothGatt?.disconnect()
+        bluetoothGatt?.close()
+        bluetoothGatt = null
     }
 
     private suspend fun performTimeSync(gatt: BluetoothGatt) {
@@ -501,6 +564,10 @@ class OmiGlassesClient(
         _events.tryEmit(GlassesEvent.Log(msg))
     }
 
+    data class OmiOptions(
+        val connectTimeoutMs: Long = 30_000,
+    )
+
     companion object {
         // BLE UUIDs from the Omi report; kept for future BLE GATT implementation.
         val AUDIO_SERVICE_UUID: UUID =
@@ -529,4 +596,3 @@ class OmiGlassesClient(
             UUID.fromString("19B10031-E8F2-537E-4F6C-D104768A1214")
     }
 }
-

@@ -20,6 +20,7 @@ import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PlayAudioOptions
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,11 +28,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStream
+import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -75,28 +78,34 @@ class RayNeoInstallerGlassesClient(
 
         return withContext(Dispatchers.IO) {
             try {
-                val installer = AdbRemoteInstaller(context.applicationContext)
-                val apk = openApkSource(config.apk)
+                withTimeout(config.connectTimeoutMs) {
+                    val installer = AdbRemoteInstaller(context.applicationContext, config.connectTimeoutMs)
+                    val apk = openApkSource(config.apk)
 
-                apk.input.use { input ->
-                    val output = installer.pushAndInstall(
-                        host = config.host,
-                        input = input,
-                        totalBytes = apk.totalBytes,
-                        remoteDir = config.remoteDir,
-                        preferredRemoteFileName = config.preferredRemoteFileName,
-                        log = { msg -> _events.tryEmit(GlassesEvent.Log("RayNeo installer: $msg")) },
-                    )
+                    apk.input.use { input ->
+                        val output = installer.pushAndInstall(
+                            host = config.host,
+                            input = input,
+                            totalBytes = apk.totalBytes,
+                            remoteDir = config.remoteDir,
+                            preferredRemoteFileName = config.preferredRemoteFileName,
+                            log = { msg -> _events.tryEmit(GlassesEvent.Log("RayNeo installer: $msg")) },
+                        )
 
-                    val ok = output.contains("Success", ignoreCase = true)
-                    if (!ok) {
-                        _state.value = ConnectionState.Error(GlassesError.Transport("Install failed: $output"))
-                        return@withContext Result.failure(GlassesError.Transport("Install failed: $output"))
+                        val ok = output.contains("Success", ignoreCase = true)
+                        if (!ok) {
+                            _state.value = ConnectionState.Error(GlassesError.Transport("Install failed: $output"))
+                            return@withTimeout Result.failure(GlassesError.Transport("Install failed: $output"))
+                        }
                     }
-                }
 
-                _state.value = ConnectionState.Connected
-                Result.success(Unit)
+                    _state.value = ConnectionState.Connected
+                    Result.success(Unit)
+                }
+            } catch (_: TimeoutCancellationException) {
+                val err = GlassesError.Timeout("RayNeo installer connect")
+                _state.value = ConnectionState.Error(err)
+                Result.failure(err)
             } catch (e: Exception) {
                 val err = when (e) {
                     is GlassesError -> e
@@ -151,7 +160,7 @@ class RayNeoInstallerGlassesClient(
                 val json = JSONObject(settings).toString()
                 val jsonBytes = json.toByteArray(Charsets.UTF_8)
 
-                val installer = AdbRemoteInstaller(context.applicationContext)
+                val installer = AdbRemoteInstaller(context.applicationContext, config.connectTimeoutMs)
                 installer.pushFile(
                     host = config.host,
                     remotePath = SETTINGS_REMOTE_PATH,
@@ -210,10 +219,20 @@ data class RayNeoInstallerConfig(
     val remoteDir: String = "/data/local/tmp",
     /** Optional remote file name; if null, a timestamped name will be used. */
     val preferredRemoteFileName: String? = null,
+    val connectTimeoutMs: Long = 30_000,
 )
 
 sealed interface RayNeoApkSource {
-    data class Bytes(val bytes: ByteArray) : RayNeoApkSource
+    data class Bytes(val bytes: ByteArray) : RayNeoApkSource {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Bytes) return false
+
+            return bytes.contentEquals(other.bytes)
+        }
+
+        override fun hashCode(): Int = bytes.contentHashCode()
+    }
     data class Asset(val assetPath: String) : RayNeoApkSource
     data class FilePath(val path: String) : RayNeoApkSource
     data class ContentUri(val uri: Uri, val totalBytes: Long? = null) : RayNeoApkSource
@@ -226,7 +245,10 @@ sealed interface RayNeoApkSource {
  * - Push APK to /data/local/tmp via sync:
  * - Install via `pm install -r`
  */
-private class AdbRemoteInstaller(private val context: Context) {
+private class AdbRemoteInstaller(
+    private val context: Context,
+    private val connectTimeoutMs: Long,
+) {
 
     fun pushAndInstall(
         host: String,
@@ -303,7 +325,8 @@ private class AdbRemoteInstaller(private val context: Context) {
     }
 
     private fun connect(host: String, log: (String) -> Unit): Pair<AdbConnection, Socket> {
-        val socket = Socket(host, 5555)
+        val socket = Socket()
+        socket.connect(InetSocketAddress(host, 5555), connectTimeoutMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
         socket.tcpNoDelay = true
 
         val crypto = loadOrCreateKeys()
@@ -311,10 +334,10 @@ private class AdbRemoteInstaller(private val context: Context) {
 
         try {
             // Abort on unauthorized to show clearer logs (same behavior as the sample).
-            connection.connect(Long.MAX_VALUE, TimeUnit.MILLISECONDS, true)
+            connection.connect(connectTimeoutMs, TimeUnit.MILLISECONDS, true)
         } catch (e: Exception) {
             log("May be unauthorized: accept the ADB prompt on the glasses and retry.")
-            connection.connect()
+            connection.connect(connectTimeoutMs, TimeUnit.MILLISECONDS, false)
         }
 
         return connection to socket

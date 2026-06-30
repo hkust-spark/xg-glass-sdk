@@ -71,6 +71,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
@@ -117,12 +119,13 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
     @Volatile private var activeDeviceId: DeviceIdentifier? = null
     @Volatile private var activeMic: MicrophoneSession? = null
     @Volatile private var activePlayer: MediaPlayer? = null
+    private val connectMutex = Mutex()
 
     private val audioRouteLock = Any()
     private var audioRouteRefCount = 0
     private var previousAudioMode: Int? = null
 
-    override suspend fun connect(): Result<Unit> {
+    override suspend fun connect(): Result<Unit> = connectMutex.withLock {
         if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
             return Result.success(Unit)
         }
@@ -452,11 +455,17 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
     private suspend fun ensureWearablesInitialized() {
         synchronized(initLock) {
             if (wearablesInitialized) return
-            Wearables.initialize(activity.applicationContext)
-                .onFailure { error, cause ->
-                    throw GlassesError.Transport("Meta Wearables initialize failed: $error", cause)
-                }
-            wearablesInitialized = true
+            try {
+                Wearables.initialize(activity.applicationContext)
+                    .onFailure { error, cause ->
+                        wearablesInitialized = false
+                        throw GlassesError.Transport("Meta Wearables initialize failed: $error", cause)
+                    }
+                wearablesInitialized = true
+            } catch (e: Exception) {
+                wearablesInitialized = false
+                throw e
+            }
         }
     }
 

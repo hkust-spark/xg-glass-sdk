@@ -46,6 +46,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -90,8 +92,12 @@ class RayNeoRuntimeGlassesClient(
 
     @Volatile private var activeMic: MicrophoneSession? = null
     @Volatile private var activePlayer: MediaPlayer? = null
+    private val connectMutex = Mutex()
 
-    override suspend fun connect(): Result<Unit> {
+    override suspend fun connect(): Result<Unit> = connectMutex.withLock {
+        if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
+            return Result.success(Unit)
+        }
         _state.value = ConnectionState.Connected
         return Result.success(Unit)
     }
