@@ -13,17 +13,9 @@ dependencies {
     api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     api("androidx.core:core-ktx:1.13.1")
 
-    // TODO(android-xr): developer-preview coordinate - verify exact group:artifact:version against the current Jetpack XR SDK release.
-    implementation("androidx.xr.runtime:runtime:1.0.0-alpha15")
-    // TODO(android-xr): developer-preview coordinate - verify exact group:artifact:version against the current Jetpack XR SDK release.
-    implementation("androidx.xr.projected:projected:1.0.0-alpha09")
-    // TODO(android-xr): developer-preview coordinate - verify exact group:artifact:version against the current Jetpack XR SDK release.
-    implementation("androidx.xr.glimmer:glimmer:1.0.0-alpha13")
-    // TODO(android-xr): developer-preview coordinate - verify exact group:artifact:version against the current Jetpack XR SDK release.
-    implementation("androidx.xr.glimmer:glimmer-google-fonts:1.0.0-alpha13")
-    // TODO(android-xr): developer-preview coordinate - verify exact group:artifact:version against the current Jetpack XR SDK release.
-    implementation("androidx.xr.arcore:arcore:1.0.0-alpha14")
-
-    // TODO(android-xr): developer-preview coordinate - verify exact group:artifact:version against the current Jetpack XR SDK release.
-    // testImplementation("androidx.xr.projected:projected-testing:1.0.0-alpha09")
+    // Android XR support is a preview scaffold: AndroidXrGlassesClient does not call the Jetpack XR
+    // SDK yet (it resolves a projected Context via AndroidXrOptions, or fails with
+    // GlassesError.Unsupported). When the projected-context path is implemented, add the verified
+    // Jetpack XR coordinates here (e.g. androidx.xr.runtime / androidx.xr.arcore / androidx.xr.glimmer),
+    // confirming exact group:artifact:version against the current Jetpack XR release first.
 }
