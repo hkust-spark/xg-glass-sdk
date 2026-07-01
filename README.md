@@ -152,7 +152,7 @@ For more details, see the following documentation:
 
 #### AI-assisted development
 
-We also provide [`VIBE_CODING.md`](./VIBE_CODING.md), a comprehensive reference specifically prepared for AI coding assistants such as ChatGPT, Claude, Cursor, and Copilot.
+We also provide [`docs/ai-assistant-guide.md`](./docs/ai-assistant-guide.md), a comprehensive reference specifically prepared for AI coding assistants such as ChatGPT, Claude, Cursor, and Copilot.
 
 Developers can give this document directly to their AI assistant so it can reference the xg.glass SDK APIs, patterns, and examples when helping build applications.
 
