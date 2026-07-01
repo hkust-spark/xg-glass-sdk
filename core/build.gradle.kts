@@ -9,4 +9,7 @@ android {
 dependencies {
     api(libs.kotlinx.coroutines.core)
     api(libs.kotlinx.coroutines.android)
+
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("junit:junit:4.13.2")
 }
