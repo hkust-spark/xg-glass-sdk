@@ -180,8 +180,7 @@ interface UniversalAppEntry {
     /**
      * Provide the actions this app supports in the given host/device environment.
      *
-     * Example: for RayNeo, you might return capture/display actions for [HostKind.GLASSES],
-     * and return an empty list for [HostKind.PHONE] (phone is only the installer).
+     * Example: an app may choose different commands for [HostKind.PHONE] and [HostKind.GLASSES].
      */
     fun commands(env: HostEnvironment): List<UniversalCommand>
 
@@ -213,17 +212,14 @@ interface UniversalAppEntrySimple : UniversalAppEntry {
 /**
  * Default host-side command filtering policy provided by the SDK.
  *
- * This exists so app developers don't have to repeat common "host quirks" in every entry implementation.
+ * This is currently a passthrough extension point for future host/device defaults.
  */
 object UniversalCommandPolicy {
     /**
      * Apply SDK defaults for which commands should be exposed in a given host environment.
-     *
-     * Current default:
-     * - RayNeo on PHONE host is installer-only, so we hide commands there by default.
      */
     fun filterCommands(env: HostEnvironment, commands: List<UniversalCommand>): List<UniversalCommand> {
-        return if (env.hostKind == HostKind.PHONE && env.model == GlassesModel.RAYNEO) emptyList() else commands
+        return commands
     }
 }
 

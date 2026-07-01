@@ -26,6 +26,8 @@ import com.universalglasses.appcontract.UserSettingField
 import com.universalglasses.appcontract.UserSettingInputType
 import com.universalglasses.appcontract.commandsWithDefaults
 import com.universalglasses.core.ConnectionState
+import com.universalglasses.core.DeviceManager
+import com.universalglasses.core.DeviceManagerState
 import com.universalglasses.core.ExternalActivityBridge
 import com.universalglasses.core.ExternalActivityResult
 import com.universalglasses.core.GlassesEvent
@@ -33,8 +35,8 @@ import com.universalglasses.core.GlassesClient
 import com.universalglasses.core.GlassesModel
 import com.universalglasses.device.frame.embedded.EmbeddedFrameGlassesClient
 import com.universalglasses.device.rayneo.installer.RayNeoApkSource
+import com.universalglasses.device.rayneo.installer.RayNeoDeviceManager
 import com.universalglasses.device.rayneo.installer.RayNeoInstallerConfig
-import com.universalglasses.device.rayneo.installer.RayNeoInstallerGlassesClient
 import com.universalglasses.device.rokid.RokidGlassesClient
 import com.universalglasses.device.omi.OmiGlassesClient
 import com.universalglasses.device.sim.SimulatorGlassesClient
@@ -82,6 +84,7 @@ class MainActivity : AppCompatActivity() {
     private var appliedSettings: Map<String, String> = emptyMap()
 
     private var client: GlassesClient? = null
+    private var deviceManager: DeviceManager? = null
     private var connectJob: Job? = null
     private var stateJob: Job? = null
     private var eventsJob: Job? = null
@@ -232,6 +235,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun connect(model: GlassesModel) {
+        if (model == GlassesModel.RAYNEO) {
+            installRayNeo()
+            return
+        }
+
         connectJob?.cancel()
         connectJob = scope.launch {
             btnConnect.isEnabled = false
@@ -256,24 +264,10 @@ class MainActivity : AppCompatActivity() {
                     GlassesModel.ROKID -> createRokidClient()
                     GlassesModel.META -> createMetaClient()
                     GlassesModel.FRAME -> {
-                    // SDK-owned Flutter engine + bridge
-                    EmbeddedFrameGlassesClient(this@MainActivity)
+                        // SDK-owned Flutter engine + bridge
+                        EmbeddedFrameGlassesClient(this@MainActivity)
                     }
-                    GlassesModel.RAYNEO -> {
-                        val host = etRayNeoIp.text?.toString()?.trim().orEmpty()
-                        if (host.isBlank()) {
-                            appendLog("RayNeo: please input glasses IP address first.")
-                            tvStatus.text = "Status: RayNeo IP missing"
-                            return@launch
-                        }
-                        RayNeoInstallerGlassesClient(
-                            context = this@MainActivity,
-                            config = RayNeoInstallerConfig(
-                                host = host,
-                                apk = RayNeoApkSource.Asset("rayneo_glass_app.apk"),
-                            )
-                        )
-                    }
+                    GlassesModel.RAYNEO -> error("RayNeo is handled via DeviceManager")
                     GlassesModel.OMI -> OmiGlassesClient(this@MainActivity)
                     GlassesModel.ANDROID_XR -> {
                         appendLog("Android XR: preview scaffold is not enabled in this app.")
@@ -283,6 +277,13 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 client = newClient
+                val oldManager = deviceManager
+                deviceManager = null
+                try {
+                    oldManager?.close()
+                } catch (e: Exception) {
+                    appendLog("WARN: close previous device manager failed: ${e.message}")
+                }
 
                 // Restart collectors for the new client.
                 stateJob?.cancel()
@@ -308,13 +309,6 @@ class MainActivity : AppCompatActivity() {
 
                 val r = newClient.connect()
                 appendLog("connect(${model.name}) => ${r.isSuccess} ${r.exceptionOrNull()?.message ?: ""}")
-
-                // After successful RayNeo install, push the current user settings to the glasses.
-                if (r.isSuccess && newClient is RayNeoInstallerGlassesClient && appliedSettings.isNotEmpty()) {
-                    val pushR = newClient.pushUserSettings(appliedSettings)
-                    if (pushR.isSuccess) appendLog("Settings synced to RayNeo glasses.")
-                    else appendLog("Settings sync failed: ${pushR.exceptionOrNull()?.message}")
-                }
             } catch (e: Exception) {
                 client = null
                 appendLog("connect(${model.name}) crashed: ${e.message ?: e.javaClass.simpleName}")
@@ -324,6 +318,94 @@ class MainActivity : AppCompatActivity() {
                 btnConnect.isEnabled = true
             }
         }
+    }
+
+    private fun installRayNeo() {
+        connectJob?.cancel()
+        connectJob = scope.launch {
+            btnConnect.isEnabled = false
+            tvStatus.text = "Status: installing RayNeo glasses app..."
+
+            try {
+                val oldClient = client
+                client = null
+                try {
+                    oldClient?.disconnect()
+                } catch (e: Exception) {
+                    appendLog("WARN: disconnect previous client failed: ${e.message}")
+                }
+
+                val manager = createRayNeoDeviceManagerFromInput() ?: return@launch
+                val oldManager = deviceManager
+                deviceManager = manager
+                try {
+                    if (oldManager !== manager) oldManager?.close()
+                } catch (e: Exception) {
+                    appendLog("WARN: close previous device manager failed: ${e.message}")
+                }
+
+                stateJob?.cancel()
+                eventsJob?.cancel()
+
+                stateJob = launch {
+                    manager.state.collectLatest { st ->
+                        tvStatus.text = when (st) {
+                            DeviceManagerState.Idle -> "Status: RayNeo idle"
+                            DeviceManagerState.Installing -> "Status: installing RayNeo glasses app..."
+                            DeviceManagerState.Installed -> "Status: RayNeo glasses app installed"
+                            is DeviceManagerState.Error -> "Status: RayNeo install error: ${st.error.message}"
+                        }
+                        renderCommandsForCurrentSelection(connected = false)
+                    }
+                }
+
+                eventsJob = launch {
+                    manager.events.collectLatest { ev ->
+                        when (ev) {
+                            is GlassesEvent.Log -> appendLog(ev.message)
+                            is GlassesEvent.Warning -> appendLog("WARN: ${ev.message}")
+                            is GlassesEvent.Tap -> appendLog("TAP: ${ev.count}")
+                        }
+                    }
+                }
+
+                val r = manager.install()
+                appendLog("install(RAYNEO) => ${r.isSuccess} ${r.exceptionOrNull()?.message ?: ""}")
+
+                if (r.isSuccess && appliedSettings.isNotEmpty()) {
+                    val pushR = manager.pushSettings(appliedSettings)
+                    if (pushR.isSuccess) appendLog("Settings synced to RayNeo glasses.")
+                    else appendLog("Settings sync failed: ${pushR.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                deviceManager = null
+                appendLog("install(RAYNEO) crashed: ${e.message ?: e.javaClass.simpleName}")
+                tvStatus.text = "Status: RayNeo install failed"
+                renderCommandsForCurrentSelection(connected = false)
+            } finally {
+                btnConnect.isEnabled = true
+            }
+        }
+    }
+
+    private fun createRayNeoDeviceManagerFromInput(): RayNeoDeviceManager? {
+        val host = etRayNeoIp.text?.toString()?.trim().orEmpty()
+        if (host.isBlank()) {
+            appendLog("RayNeo: please input glasses IP address first.")
+            tvStatus.text = "Status: RayNeo IP missing"
+            return null
+        }
+        return createRayNeoDeviceManager(host)
+    }
+
+    private fun createRayNeoDeviceManager(host: String): RayNeoDeviceManager {
+        return RayNeoDeviceManager(
+            context = this@MainActivity,
+            config = RayNeoInstallerConfig(
+                host = host,
+                apk = RayNeoApkSource.Asset("rayneo_glass_app.apk"),
+            ),
+        )
     }
 
     private fun createRokidClient(): RokidGlassesClient {
@@ -478,6 +560,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Update UI elements that depend on the currently selected device. */
     private fun onDeviceSelectionChanged(selected: String) {
+        btnConnect.text = if (selected == "RAYNEO") "Install app to glasses" else "Connect"
         etRayNeoIp.visibility =
             if (selected == "RAYNEO") android.view.View.VISIBLE else android.view.View.GONE
         llRokidConfig.visibility =
@@ -516,6 +599,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         llCommands.removeAllViews()
+        if (model == GlassesModel.RAYNEO) {
+            llCommands.addView(TextView(this).apply {
+                text = "RayNeo uses an on-glasses app. Install it to the glasses, then run commands on the glasses."
+            })
+            return
+        }
+
         val e = entry
         if (e == null) {
             llCommands.addView(TextView(this).apply { text = "No UniversalAppEntry (meta-data com.universalglasses.app_entry_class)" })
@@ -654,25 +744,19 @@ class MainActivity : AppCompatActivity() {
     private fun pushSettingsToRayNeoIfNeeded() {
         if (appliedSettings.isEmpty()) return
 
-        // Use existing client if it's already a RayNeo installer …
-        val rayNeoClient = client as? RayNeoInstallerGlassesClient
+        // Use existing manager if the RayNeo install flow already created one.
+        val rayNeoManager = deviceManager
 
-        // … otherwise create a transient one if the user has selected RAYNEO and entered an IP.
+        // Otherwise create a transient one if the user has selected RAYNEO and entered an IP.
         val selected = spDevice.selectedItem?.toString()
         val ip = etRayNeoIp.text?.toString()?.trim().orEmpty()
 
-        if (rayNeoClient == null && (selected != "RAYNEO" || ip.isBlank())) return
+        if (rayNeoManager == null && (selected != "RAYNEO" || ip.isBlank())) return
 
         scope.launch {
             try {
-                val pusher = rayNeoClient ?: RayNeoInstallerGlassesClient(
-                    context = this@MainActivity,
-                    config = RayNeoInstallerConfig(
-                        host = ip,
-                        apk = RayNeoApkSource.Asset("rayneo_glass_app.apk"),
-                    ),
-                )
-                val r = pusher.pushUserSettings(appliedSettings)
+                val pusher = rayNeoManager ?: createRayNeoDeviceManager(ip)
+                val r = pusher.pushSettings(appliedSettings)
                 if (r.isSuccess) {
                     appendLog("Settings pushed to RayNeo glasses.")
                 } else {

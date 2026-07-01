@@ -3,11 +3,10 @@ package com.universalglasses.appcontract
 import com.universalglasses.core.GlassesModel
 import org.junit.Test
 import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
 class UniversalCommandPolicyTest {
     @Test
-    fun `filterCommands hides RayNeo phone host commands and leaves other environments unchanged`() {
+    fun `filterCommands leaves commands unchanged for all environments`() {
         // Arrange
         val commands = listOf(command("first"), command("second"))
 
@@ -26,7 +25,7 @@ class UniversalCommandPolicyTest {
         )
 
         // Assert
-        assertTrue(rayNeoPhoneCommands.isEmpty())
+        assertSame(commands, rayNeoPhoneCommands)
         assertSame(commands, simulatorPhoneCommands)
         assertSame(commands, rayNeoGlassesCommands)
     }

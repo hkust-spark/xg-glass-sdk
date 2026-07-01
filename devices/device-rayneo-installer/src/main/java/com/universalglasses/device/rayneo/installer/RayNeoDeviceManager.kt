@@ -6,21 +6,21 @@ import com.tananaev.adblib.AdbBase64
 import com.tananaev.adblib.AdbConnection
 import com.tananaev.adblib.AdbCrypto
 import com.tananaev.adblib.AdbStream
-import com.universalglasses.core.BaseGlassesClient
-import com.universalglasses.core.CaptureOptions
-import com.universalglasses.core.CapturedImage
-import com.universalglasses.core.ConnectionState
-import com.universalglasses.core.DeviceCapabilities
-import com.universalglasses.core.DisplayOptions
+import com.universalglasses.core.DeviceManager
+import com.universalglasses.core.DeviceManagerState
 import com.universalglasses.core.GlassesError
+import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
-import com.universalglasses.core.AudioSource
-import com.universalglasses.core.MicrophoneOptions
-import com.universalglasses.core.MicrophoneSession
-import com.universalglasses.core.PlayAudioOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
@@ -34,96 +34,86 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * RayNeo (phone-side) client.
+ * RayNeo phone-side device manager.
  *
- * This adapter maps `connect()` to "deploy/install the on-glasses APK" via ADB-over-TCP (adbd:5555).
- *
- * It intentionally does NOT support `capturePhoto()` / `display()` from the phone, because those
- * operations are executed inside the on-glasses app.
+ * Installs or updates the on-glasses APK via ADB-over-TCP (adbd:5555), then the actual
+ * [com.universalglasses.core.GlassesClient] runs inside the installed glasses app.
  */
-class RayNeoInstallerGlassesClient(
+class RayNeoDeviceManager(
     private val context: Context,
     private val config: RayNeoInstallerConfig,
-) : BaseGlassesClient(eventBufferOverflow = BufferOverflow.SUSPEND) {
+) : DeviceManager {
 
     override val model: GlassesModel = GlassesModel.RAYNEO
 
-    override val capabilities: DeviceCapabilities = DeviceCapabilities(
-        canCapturePhoto = false,
-        canDisplayText = false,
-        canRecordAudio = false,
-        canPlayTts = false,
-        canPlayAudioBytes = false,
-        supportsTapEvents = false,
-        supportsStreamingTextUpdates = false,
+    private val _state = MutableStateFlow<DeviceManagerState>(DeviceManagerState.Idle)
+    override val state: StateFlow<DeviceManagerState> = _state
+
+    private val _events = MutableSharedFlow<GlassesEvent>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.SUSPEND,
     )
+    override val events: Flow<GlassesEvent> = _events
 
-    override fun shouldShortCircuitConnect(state: ConnectionState): Boolean {
-        return state is ConnectionState.Connected
-    }
+    private val installMutex = Mutex()
 
-    override suspend fun doConnect() {
-        withContext(Dispatchers.IO) {
-            try {
-                withTimeout(config.connectTimeoutMs) {
-                    val installer = AdbRemoteInstaller(context.applicationContext, config.connectTimeoutMs)
-                    val apk = openApkSource(config.apk)
+    override suspend fun install(): Result<Unit> = installMutex.withLock {
+        if (_state.value is DeviceManagerState.Installed) return Result.success(Unit)
+        _state.value = DeviceManagerState.Installing
 
-                    apk.input.use { input ->
-                        val output = installer.pushAndInstall(
-                            host = config.host,
-                            input = input,
-                            totalBytes = apk.totalBytes,
-                            remoteDir = config.remoteDir,
-                            preferredRemoteFileName = config.preferredRemoteFileName,
-                            log = { msg -> emitLog("RayNeo installer: $msg") },
-                        )
+        return withContext(Dispatchers.IO) {
+            val result = try {
+                try {
+                    withTimeout(config.connectTimeoutMs) {
+                        val installer = AdbRemoteInstaller(context.applicationContext, config.connectTimeoutMs)
+                        val apk = openApkSource(config.apk)
 
-                        val ok = output.contains("Success", ignoreCase = true)
-                        if (!ok) {
-                            throw GlassesError.Transport("Install failed: $output")
+                        apk.input.use { input ->
+                            val output = installer.pushAndInstall(
+                                host = config.host,
+                                input = input,
+                                totalBytes = apk.totalBytes,
+                                remoteDir = config.remoteDir,
+                                preferredRemoteFileName = config.preferredRemoteFileName,
+                                log = { msg -> emitLog("RayNeo installer: $msg") },
+                            )
+
+                            val ok = output.contains("Success", ignoreCase = true)
+                            if (!ok) {
+                                throw GlassesError.Transport("Install failed: $output")
+                            }
                         }
                     }
+                } catch (_: TimeoutCancellationException) {
+                    throw GlassesError.Timeout("RayNeo installer connect")
                 }
-            } catch (_: TimeoutCancellationException) {
-                throw GlassesError.Timeout("RayNeo installer connect")
+
+                Result.success(Unit)
+            } catch (ce: CancellationException) {
+                _state.value = DeviceManagerState.Idle
+                Result.failure(ce)
+            } catch (e: Exception) {
+                val err = mapInstallError(e)
+                _state.value = DeviceManagerState.Error(err)
+                Result.failure(err)
             }
+
+            if (result.isSuccess) {
+                _state.value = DeviceManagerState.Installed
+            }
+            result
         }
     }
 
-    override fun mapConnectError(error: Exception): GlassesError {
+    private fun mapInstallError(error: Exception): GlassesError {
         return when (error) {
             is GlassesError -> error
             else -> GlassesError.Transport("RayNeo install/connect failed: ${error.message ?: error::class.java.simpleName}", error)
         }
     }
 
-    override suspend fun disconnect() {
-        _state.value = ConnectionState.Disconnected
-    }
-
-    override suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage> {
-        return Result.failure(
-            GlassesError.Unsupported("RayNeo capture runs on-glasses. Install/open the glasses app and trigger capture there.")
-        )
-    }
-
-    override suspend fun display(text: String, options: DisplayOptions): Result<Unit> {
-        return Result.failure(
-            GlassesError.Unsupported("RayNeo display runs on-glasses. Install/open the glasses app and display there.")
-        )
-    }
-
-    override suspend fun playAudio(source: AudioSource, options: PlayAudioOptions): Result<Unit> {
-        return Result.failure(
-            GlassesError.Unsupported("RayNeo audio playback runs on-glasses. Install/open the glasses app and play there.")
-        )
-    }
-
-    override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> {
-        return Result.failure(
-            GlassesError.Unsupported("RayNeo microphone runs on-glasses. Install/open the glasses app and record there.")
-        )
+    override suspend fun close() {
+        _state.value = DeviceManagerState.Idle
     }
 
     /**
@@ -133,7 +123,7 @@ class RayNeoInstallerGlassesClient(
      * The on-glasses host reads this file in `onCreate()` and passes the values
      * to [com.universalglasses.appcontract.UniversalAppContext.settings].
      */
-    suspend fun pushUserSettings(settings: Map<String, String>): Result<Unit> {
+    override suspend fun pushSettings(settings: Map<String, String>): Result<Unit> {
         if (settings.isEmpty()) return Result.success(Unit)
 
         return withContext(Dispatchers.IO) {
@@ -156,6 +146,10 @@ class RayNeoInstallerGlassesClient(
                 Result.failure(err)
             }
         }
+    }
+
+    private fun emitLog(message: String) {
+        _events.tryEmit(GlassesEvent.Log(message))
     }
 
     companion object {
