@@ -7,7 +7,7 @@ internal data class TemplateFile(
 
 internal object RayneoHostTemplate {
     // Bump this if you change any template content so the generator knows when to refresh.
-    const val TEMPLATE_VERSION = 23
+    const val TEMPLATE_VERSION = 24
 
     fun files(): List<TemplateFile> = listOf(
         TemplateFile(
@@ -85,9 +85,10 @@ internal object RayneoHostTemplate {
                 <!-- Needed on some devices/ROMs for adjusting stream volume programmatically -->
                 <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
+                <!-- Holds a transient settings cache; not backed up. -->
                 <application
                     android:name=".XgRayneoHostApplication"
-                    android:allowBackup="true"
+                    android:allowBackup="false"
                     android:label="XG RayNeo Host"
                     android:supportsRtl="true"
                     android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar">
@@ -439,17 +440,29 @@ internal object RayneoHostTemplate {
                 }
 
                 /**
-                 * Read user settings from the well-known JSON file that the phone-side host pushed via ADB.
+                 * Read user settings from the public ADB handoff file when present, then
+                 * ingest them into app-private storage and delete the public copy.
                  *
-                 * The file is at [SETTINGS_FILE_PATH] (`/data/local/tmp/xgglass_user_settings.json`).
-                 * On most Android devices `/data/local/tmp/` is world-readable (mode 1777), so the
-                 * glasses-side app process can read files pushed there by ADB.
+                 * Residual risk: a malicious glasses-side app could still read the public
+                 * file during the brief window between the phone push and this app's next
+                 * [onCreate]. This is inherent to delivering settings through `/data/local/tmp`
+                 * without root because it is the only viable cross-UID ADB handoff path.
                  */
                 private fun loadSettingsFromFile(): Map<String, String> {
                     return try {
-                        val file = File(SETTINGS_FILE_PATH)
-                        if (!file.exists()) return emptyMap()
-                        val json = JSONObject(file.readText(Charsets.UTF_8))
+                        val publicFile = File(PUBLIC_SETTINGS_FILE_PATH)
+                        val privateFile = File(filesDir, SETTINGS_FILE_NAME)
+                        val text = when {
+                            publicFile.exists() -> {
+                                val pushed = publicFile.readText(Charsets.UTF_8)
+                                writePrivateSettings(privateFile, pushed)
+                                publicFile.delete()
+                                pushed
+                            }
+                            privateFile.exists() -> privateFile.readText(Charsets.UTF_8)
+                            else -> return emptyMap()
+                        }
+                        val json = JSONObject(text)
                         json.keys().asSequence().associateWith { json.getString(it) }
                     } catch (e: Exception) {
                         appendLog("Failed to load settings file: ${"$"}{e.message}")
@@ -457,9 +470,19 @@ internal object RayneoHostTemplate {
                     }
                 }
 
+                private fun writePrivateSettings(privateFile: File, text: String) {
+                    val tempFile = File(filesDir, "${"$"}SETTINGS_FILE_NAME.tmp")
+                    tempFile.writeText(text, Charsets.UTF_8)
+                    if (!tempFile.renameTo(privateFile)) {
+                        tempFile.copyTo(privateFile, overwrite = true)
+                        tempFile.delete()
+                    }
+                }
+
                 companion object {
-                    /** Well-known path where the phone pushes user settings via ADB. */
-                    private const val SETTINGS_FILE_PATH = "/data/local/tmp/xgglass_user_settings.json"
+                    private const val SETTINGS_FILE_NAME = "xgglass_user_settings.json"
+                    /** Transient path where the phone pushes user settings via ADB. */
+                    private const val PUBLIC_SETTINGS_FILE_PATH = "/data/local/tmp/xgglass_user_settings.json"
                 }
             }
             """.trimIndent(),

@@ -740,6 +740,12 @@ class MyEntry : UniversalAppEntrySimple {
 
 This creates three fields: **API Base URL**, **Model**, and **API Key**.
 
+On the phone, user setting secrets such as API keys are stored through `SecureStore`
+(Tink AEAD with an Android Keystore-wrapped keyset), not plaintext preferences.
+For RayNeo, settings are briefly pushed through `/data/local/tmp/xgglass_user_settings.json`;
+the glasses app ingests that file into app-private storage and deletes the public copy.
+Settings pushed to RayNeo glasses briefly transit a world-readable ADB handoff file before ingestion, so avoid sending extremely high-value secrets when the glasses run in a shared or untrusted environment.
+
 ### Reading settings at runtime
 
 ```kotlin

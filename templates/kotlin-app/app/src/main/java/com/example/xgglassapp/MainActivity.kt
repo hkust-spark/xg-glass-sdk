@@ -33,6 +33,7 @@ import com.xgglass.core.ExternalActivityResult
 import com.xgglass.core.GlassesEvent
 import com.xgglass.core.GlassesClient
 import com.xgglass.core.GlassesModel
+import com.xgglass.core.android.SecureStore
 import com.xgglass.device.frame.embedded.EmbeddedFrameGlassesClient
 import com.xgglass.device.rayneo.installer.RayNeoApkSource
 import com.xgglass.device.rayneo.installer.RayNeoDeviceManager
@@ -137,7 +138,7 @@ class MainActivity : AppCompatActivity() {
             lcFile.writeBytes(bytes)
             // Extract a display name for the UI.
             val displayName = queryFileName(uri) ?: "sn_license.lc"
-            rokidPrefs.edit().putString(PREF_ROKID_LC_DISPLAY_NAME, displayName).apply()
+            secureRokid.putString(PREF_ROKID_LC_DISPLAY_NAME, displayName)
             tvSnLicenseFile.text = displayName
             appendLog("Rokid: SN license loaded (${bytes.size} bytes).")
         } catch (e: Exception) {
@@ -462,10 +463,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Load Rokid authorization from runtime user input (internal storage + SharedPreferences).
+     * Load Rokid authorization from runtime user input (internal storage + SecureStore).
      */
     private fun loadRokidAuthFromRuntime(): RokidGlassesClient.RokidAuthorization? {
-        val secret = rokidPrefs.getString(PREF_ROKID_CLIENT_SECRET, null)?.trim().orEmpty()
+        val secret = secureRokid.getString(PREF_ROKID_CLIENT_SECRET)?.trim().orEmpty()
         if (secret.isBlank()) return null
 
         val lcFile = File(filesDir, ROKID_LC_FILENAME)
@@ -663,13 +664,13 @@ class MainActivity : AppCompatActivity() {
     // User settings UI
     // ===================================================================
 
-    private val settingsPrefs by lazy {
-        getSharedPreferences("xgglass_user_settings", Context.MODE_PRIVATE)
+    private val secureSettings by lazy {
+        SecureStore.create(this, SECURE_SETTINGS_STORE).also(::migrateLegacySettingsIfNeeded)
     }
 
     /**
      * Render input fields for the entry's [UniversalAppEntry.userSettings].
-     * Values are pre-filled from SharedPreferences (falling back to defaults).
+     * Values are pre-filled from SecureStore (falling back to defaults).
      */
     private fun renderSettings() {
         val e = entry ?: return
@@ -707,8 +708,8 @@ class MainActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                 )
-                // Restore from prefs, or use default
-                val stored = settingsPrefs.getString(field.key, null)
+                // Restore from encrypted storage, or use default
+                val stored = secureSettings.getString(field.key)
                 setText(stored ?: field.defaultValue)
             }
             llSettings.addView(editText)
@@ -719,16 +720,14 @@ class MainActivity : AppCompatActivity() {
         appliedSettings = buildSettingsMap(fields)
     }
 
-    /** Save current input values to SharedPreferences and update [appliedSettings]. */
+    /** Save current input values to SecureStore and update [appliedSettings]. */
     private fun applySettings() {
         val e = entry ?: return
         val fields = e.userSettings()
-        val editor = settingsPrefs.edit()
         for (field in fields) {
             val value = settingEdits[field.key]?.text?.toString().orEmpty()
-            editor.putString(field.key, value)
+            secureSettings.putString(field.key, value)
         }
-        editor.apply()
         appliedSettings = buildSettingsMap(fields)
         appendLog("Settings applied.")
 
@@ -768,34 +767,60 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Build a key→value map from current SharedPreferences (or defaults). */
+    /** Build a key→value map from current SecureStore values (or defaults). */
     private fun buildSettingsMap(fields: List<UserSettingField>): Map<String, String> {
         return fields.associate { field ->
-            val stored = settingsPrefs.getString(field.key, null)
+            val stored = secureSettings.getString(field.key)
             field.key to (stored ?: field.defaultValue)
         }
+    }
+
+    private fun migrateLegacySettingsIfNeeded(store: SecureStore) {
+        if (store.getString(KEY_SETTINGS_MIGRATED) == "true") return
+        val legacyPrefs = getSharedPreferences(LEGACY_SETTINGS_PREFS, Context.MODE_PRIVATE)
+        legacyPrefs.all.forEach { (key, value) ->
+            if (value is String && store.getString(key) == null) {
+                store.putString(key, value)
+            }
+        }
+        legacyPrefs.edit().clear().apply()
+        deleteSharedPreferences(LEGACY_SETTINGS_PREFS)
+        store.putString(KEY_SETTINGS_MIGRATED, "true")
     }
 
     // ===================================================================
     // Rokid runtime credentials
     // ===================================================================
 
-    private val rokidPrefs by lazy {
-        getSharedPreferences("xgglass_rokid_credentials", Context.MODE_PRIVATE)
+    private val secureRokid by lazy {
+        SecureStore.create(this, SECURE_ROKID_STORE).also(::migrateLegacyRokidIfNeeded)
     }
 
-    /** Save the client secret from the UI into SharedPreferences. */
+    /** Save the client secret from the UI into SecureStore. */
     private fun saveRokidCredentials() {
         val secret = etRokidSecret.text?.toString().orEmpty().trim()
-        rokidPrefs.edit().putString(PREF_ROKID_CLIENT_SECRET, secret).apply()
+        secureRokid.putString(PREF_ROKID_CLIENT_SECRET, secret)
     }
 
     /** Restore previously-saved credentials into the Rokid config UI. */
     private fun restoreRokidCredentialUI() {
-        val secret = rokidPrefs.getString(PREF_ROKID_CLIENT_SECRET, null).orEmpty()
+        val secret = secureRokid.getString(PREF_ROKID_CLIENT_SECRET).orEmpty()
         if (secret.isNotBlank()) etRokidSecret.setText(secret)
-        val displayName = rokidPrefs.getString(PREF_ROKID_LC_DISPLAY_NAME, null)
+        val displayName = secureRokid.getString(PREF_ROKID_LC_DISPLAY_NAME)
         if (!displayName.isNullOrBlank()) tvSnLicenseFile.text = displayName
+    }
+
+    private fun migrateLegacyRokidIfNeeded(store: SecureStore) {
+        if (store.getString(KEY_ROKID_MIGRATED) == "true") return
+        val legacyPrefs = getSharedPreferences(LEGACY_ROKID_PREFS, Context.MODE_PRIVATE)
+        legacyPrefs.all.forEach { (key, value) ->
+            if (value is String && store.getString(key) == null) {
+                store.putString(key, value)
+            }
+        }
+        legacyPrefs.edit().clear().apply()
+        deleteSharedPreferences(LEGACY_ROKID_PREFS)
+        store.putString(KEY_ROKID_MIGRATED, "true")
     }
 
     /** Try to extract a display file name from a content URI. */
@@ -812,6 +837,12 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         /** Internal storage file name for the persisted Rokid SN license bytes. */
         const val ROKID_LC_FILENAME = "rokid_sn_license.lc"
+        const val SECURE_SETTINGS_STORE = "xgglass_user_settings_secure"
+        const val LEGACY_SETTINGS_PREFS = "xgglass_user_settings"
+        const val KEY_SETTINGS_MIGRATED = "__xgglass_settings_migrated"
+        const val SECURE_ROKID_STORE = "xgglass_rokid_credentials_secure"
+        const val LEGACY_ROKID_PREFS = "xgglass_rokid_credentials"
+        const val KEY_ROKID_MIGRATED = "__xgglass_rokid_migrated"
         const val PREF_ROKID_CLIENT_SECRET = "rokid_client_secret"
         const val PREF_ROKID_LC_DISPLAY_NAME = "rokid_lc_display_name"
     }

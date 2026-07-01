@@ -9,6 +9,8 @@ android {
 dependencies {
     // Expose the stable API surface
     api(project(":core"))
+    // Expose SecureStore + shared Android helpers
+    api(project(":core-android"))
     // Expose the universal "app entry" contracts (pure Kotlin API used by hosts/plugins).
     api(project(":app-contract"))
 

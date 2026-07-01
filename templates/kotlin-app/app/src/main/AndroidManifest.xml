@@ -21,8 +21,9 @@
         android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation" />
 
+    <!-- Holds developer secrets (encrypted); no user data worth backing up. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:label="XgGlassApp"
         android:supportsRtl="true"
         android:theme="@style/Theme.XgGlassApp">

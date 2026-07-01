@@ -154,8 +154,10 @@ class RayNeoDeviceManager(
 
     companion object {
         /**
-         * Well-known path on the glasses where the phone pushes user settings.
-         * `/data/local/tmp/` is world-readable on Android, so the glasses app process can read it.
+         * Transient path on the glasses where the phone pushes user settings.
+         *
+         * The glasses app ingests this world-readable handoff file into app-private storage
+         * and deletes the public copy on startup.
          */
         const val SETTINGS_REMOTE_PATH = "/data/local/tmp/xgglass_user_settings.json"
     }
