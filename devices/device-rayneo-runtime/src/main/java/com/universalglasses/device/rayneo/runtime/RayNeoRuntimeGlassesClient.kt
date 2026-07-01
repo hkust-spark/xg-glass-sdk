@@ -16,6 +16,7 @@ import android.media.MediaRecorder
 import android.os.Handler
 import android.os.HandlerThread
 import android.widget.Toast
+import com.universalglasses.core.AudioCaptureHint
 import com.universalglasses.core.AudioEncoding
 import com.universalglasses.core.AudioSource
 import com.universalglasses.core.BaseGlassesClient
@@ -208,7 +209,7 @@ class RayNeoRuntimeGlassesClient(
         }
         return try {
             val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val vendorMode = options.vendorMode?.trim()?.takeIf { it.isNotEmpty() }
+            val rayNeoAudioMode = options.audioHint.toRayNeoVendorMode()
 
             val session = openAndroidMicrophone(
                 options = options,
@@ -223,14 +224,14 @@ class RayNeoRuntimeGlassesClient(
                 beforeStart = {
                     // Apply vendor mode before starting.
                     try {
-                        if (vendorMode != null) am.setParameters("audio_source_record=$vendorMode")
+                        if (rayNeoAudioMode != null) am.setParameters("audio_source_record=$rayNeoAudioMode")
                     } catch (_: Exception) {
                         // ignore; still try default MIC path
                     }
                 },
                 beforeStop = {
                     // Best-effort: inform RayNeo audio HAL that we're done.
-                    if (vendorMode != null) am.setParameters("audio_source_record=off")
+                    if (rayNeoAudioMode != null) am.setParameters("audio_source_record=off")
                 },
                 afterStop = { activeMic = null },
             ).getOrThrow()
@@ -415,4 +416,11 @@ class ToastDisplaySink : RayNeoDisplaySink {
             Toast.makeText(context, text, Toast.LENGTH_LONG).show()
         }
     }
+}
+
+private fun AudioCaptureHint.toRayNeoVendorMode(): String? = when (this) {
+    AudioCaptureHint.DEFAULT -> null
+    AudioCaptureHint.VOICE_ASSISTANT -> "voiceassistant"
+    AudioCaptureHint.TRANSLATION -> "translation"
+    AudioCaptureHint.CAMCORDER -> "camcorder"
 }

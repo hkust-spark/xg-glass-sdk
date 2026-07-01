@@ -22,13 +22,21 @@ data class DeviceCapabilities(
     val supportsStreamingTextUpdates: Boolean = false,
 )
 
+enum class PhotoQuality {
+    LOWEST,
+    LOW,
+    MEDIUM,
+    HIGH,
+    HIGHEST,
+}
+
 data class CaptureOptions(
     /**
-     * A unified "quality" knob.
-     * - Rokid: mapped to JPEG quality 0..100 (default 90)
-     * - Frame: mapped to SDK quality index or preset (implementation-defined)
+     * Unified photo quality preference.
+     * Implementations map this to their native JPEG quality or preset.
+     * [PhotoQuality.HIGH] preserves the previous default behavior.
      */
-    val quality: Int? = null,
+    val photoQuality: PhotoQuality = PhotoQuality.HIGH,
     /**
      * A unified "target size" knob.
      * - Rokid: mapped to width/height

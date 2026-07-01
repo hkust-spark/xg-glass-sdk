@@ -1,5 +1,8 @@
 package com.universalglasses.device.frame.flutter
 
+import com.universalglasses.core.AudioCaptureHint
+import com.universalglasses.core.PhotoQuality
+
 /**
  * Kotlin<->Flutter contract for the embedded Frame Flutter module.
  *
@@ -44,6 +47,21 @@ object FrameFlutterChannelContract {
         const val AUDIO_SAMPLE_RATE_HZ = "sampleRateHz"
         const val AUDIO_CHANNEL_COUNT = "channelCount"
         const val AUDIO_VENDOR_MODE = "vendorMode"
+    }
+
+    fun photoQualityToWireJpegQuality(quality: PhotoQuality): Int = when (quality) {
+        PhotoQuality.LOWEST -> 25
+        PhotoQuality.LOW -> 50
+        PhotoQuality.MEDIUM -> 70
+        PhotoQuality.HIGH -> 90
+        PhotoQuality.HIGHEST -> 100
+    }
+
+    fun audioHintToWireVendorMode(hint: AudioCaptureHint): String? = when (hint) {
+        AudioCaptureHint.DEFAULT -> null
+        AudioCaptureHint.VOICE_ASSISTANT -> "voiceassistant"
+        AudioCaptureHint.TRANSLATION -> "translation"
+        AudioCaptureHint.CAMCORDER -> "camcorder"
     }
 
     object Events {

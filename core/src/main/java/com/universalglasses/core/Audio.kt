@@ -112,6 +112,13 @@ data class AudioChunk(
     }
 }
 
+enum class AudioCaptureHint {
+    DEFAULT,
+    VOICE_ASSISTANT,
+    TRANSLATION,
+    CAMCORDER,
+}
+
 data class MicrophoneOptions(
     val preferredEncoding: AudioEncoding = AudioEncoding.PCM_S16_LE,
     /** Preference only; implementations may ignore if unsupported. */
@@ -119,13 +126,13 @@ data class MicrophoneOptions(
     /** Preference only; implementations may ignore if unsupported. */
     val preferredChannelCount: Int? = 1,
     /**
-     * Vendor-specific mode/hint string.
+     * Optional capture routing hint. Only some devices honor it.
      *
-     * - RayNeo: maps to `AudioManager.setParameters("audio_source_record=<mode>")`, e.g.
-     *   "voiceassistant" / "translation" / "camcorder" (see RayNeo docs).
+     * - RayNeo: maps to `AudioManager.setParameters("audio_source_record=<mode>")`.
      * - Others: ignored.
+     * - [AudioCaptureHint.DEFAULT] preserves the platform default capture path.
      */
-    val vendorMode: String? = null,
+    val audioHint: AudioCaptureHint = AudioCaptureHint.DEFAULT,
 )
 
 /**

@@ -36,6 +36,7 @@ import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PcmFormat
+import com.universalglasses.core.PhotoQuality
 import com.universalglasses.core.PlayAudioOptions
 import com.universalglasses.core.android.playPcmViaAudioTrack
 import kotlinx.coroutines.CoroutineScope
@@ -141,7 +142,7 @@ class RokidGlassesClient(
             return Result.failure(GlassesError.NotConnected)
         }
 
-        val quality = (options.quality ?: this.options.defaultJpegQuality).coerceIn(1, 100)
+        val quality = options.photoQuality.toRokidJpegQuality(this.options.defaultJpegQuality)
         val width = options.targetWidth ?: this.options.defaultWidth
         val height = options.targetHeight ?: this.options.defaultHeight
 
@@ -681,3 +682,11 @@ class RokidGlassesClient(
         const val PREF_KEY_MAC_ADDRESS = "mac_address"
     }
 }
+
+private fun PhotoQuality.toRokidJpegQuality(defaultHigh: Int): Int = when (this) {
+    PhotoQuality.LOWEST -> 25
+    PhotoQuality.LOW -> 50
+    PhotoQuality.MEDIUM -> 75
+    PhotoQuality.HIGH -> defaultHigh
+    PhotoQuality.HIGHEST -> 100
+}.coerceIn(1, 100)

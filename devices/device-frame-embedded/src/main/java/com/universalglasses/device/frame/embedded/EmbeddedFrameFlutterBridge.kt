@@ -158,7 +158,8 @@ class EmbeddedFrameFlutterBridge(
 
     override suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage> {
         val args = mapOf(
-            FrameFlutterChannelContract.Args.QUALITY to options.quality,
+            FrameFlutterChannelContract.Args.QUALITY to
+                FrameFlutterChannelContract.photoQualityToWireJpegQuality(options.photoQuality),
             FrameFlutterChannelContract.Args.TARGET_WIDTH to options.targetWidth,
             FrameFlutterChannelContract.Args.TARGET_HEIGHT to options.targetHeight,
             FrameFlutterChannelContract.Args.TIMEOUT_MS to options.timeoutMs,
@@ -196,7 +197,8 @@ class EmbeddedFrameFlutterBridge(
             },
             FrameFlutterChannelContract.Args.AUDIO_SAMPLE_RATE_HZ to options.preferredSampleRateHz,
             FrameFlutterChannelContract.Args.AUDIO_CHANNEL_COUNT to options.preferredChannelCount,
-            FrameFlutterChannelContract.Args.AUDIO_VENDOR_MODE to options.vendorMode,
+            FrameFlutterChannelContract.Args.AUDIO_VENDOR_MODE to
+                FrameFlutterChannelContract.audioHintToWireVendorMode(options.audioHint),
         )
         val res = invoke<Map<*, *>>(FrameFlutterChannelContract.Methods.START_MICROPHONE, args)
         return res.map { m ->

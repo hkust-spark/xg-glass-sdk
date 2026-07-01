@@ -42,6 +42,7 @@ import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PcmFormat
+import com.universalglasses.core.PhotoQuality
 import com.universalglasses.core.PlayAudioOptions
 import com.universalglasses.core.android.openAndroidMicrophone
 import com.universalglasses.core.android.playEncodedViaMediaPlayer
@@ -138,7 +139,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
                     }
                     withContext(Dispatchers.Default) {
                         photo.toCapturedImage(
-                            quality = (options.quality ?: 92).coerceIn(1, 100),
+                            quality = options.photoQuality.toMetaJpegQuality(),
                             sourceModel = model,
                         )
                     }
@@ -521,6 +522,14 @@ private fun decodeHeicToBitmap(buffer: java.nio.ByteBuffer): Bitmap {
         }
         transformed
     }
+}
+
+private fun PhotoQuality.toMetaJpegQuality(): Int = when (this) {
+    PhotoQuality.LOWEST -> 25
+    PhotoQuality.LOW -> 50
+    PhotoQuality.MEDIUM -> 75
+    PhotoQuality.HIGH -> 92
+    PhotoQuality.HIGHEST -> 100
 }
 
 private fun readExifTransform(heicBytes: ByteArray): Matrix {

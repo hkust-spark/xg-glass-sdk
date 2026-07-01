@@ -195,12 +195,12 @@ interface GlassesClient {
 Captures a JPEG image from the glasses camera and returns it.
 
 ```kotlin
-// Default options (auto quality, auto size, 30s timeout)
+// Default options (high quality, auto size, 30s timeout)
 val image: CapturedImage = ctx.client.capturePhoto().getOrThrow()
 
 // With custom options
 val image = ctx.client.capturePhoto(
-    CaptureOptions(quality = 85, targetWidth = 1280, targetHeight = 720)
+    CaptureOptions(photoQuality = PhotoQuality.HIGHEST, targetWidth = 1280, targetHeight = 720)
 ).getOrThrow()
 
 // Access image data
@@ -215,8 +215,10 @@ image.sourceModel      // GlassesModel — which device captured it
 **CaptureOptions:**
 
 ```kotlin
+enum class PhotoQuality { LOWEST, LOW, MEDIUM, HIGH, HIGHEST }
+
 data class CaptureOptions(
-    val quality: Int? = null,          // JPEG quality 0..100 (Rokid default 90)
+    val photoQuality: PhotoQuality = PhotoQuality.HIGH,
     val targetWidth: Int? = null,      // Desired width in pixels
     val targetHeight: Int? = null,     // Desired height in pixels
     val timeoutMs: Long = 30_000,      // Capture timeout in milliseconds
@@ -279,7 +281,7 @@ val session = ctx.client.startMicrophone(
     MicrophoneOptions(
         preferredSampleRateHz = 44_100,
         preferredChannelCount = 2,
-        vendorMode = "voiceassistant",  // RayNeo-specific hint
+        audioHint = AudioCaptureHint.VOICE_ASSISTANT,
     )
 ).getOrThrow()
 
@@ -306,11 +308,13 @@ interface MicrophoneSession {
 **MicrophoneOptions:**
 
 ```kotlin
+enum class AudioCaptureHint { DEFAULT, VOICE_ASSISTANT, TRANSLATION, CAMCORDER }
+
 data class MicrophoneOptions(
     val preferredEncoding: AudioEncoding = AudioEncoding.PCM_S16_LE,
     val preferredSampleRateHz: Int? = 16_000,
     val preferredChannelCount: Int? = 1,
-    val vendorMode: String? = null,  // RayNeo-specific: "voiceassistant", "translation", "camcorder"
+    val audioHint: AudioCaptureHint = AudioCaptureHint.DEFAULT,  // Only some devices honor it
 )
 ```
 

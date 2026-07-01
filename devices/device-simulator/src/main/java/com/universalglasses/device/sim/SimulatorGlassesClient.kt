@@ -29,6 +29,7 @@ import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PcmFormat
+import com.universalglasses.core.PhotoQuality
 import com.universalglasses.core.PlayAudioOptions
 import com.universalglasses.core.android.openAndroidMicrophone
 import com.universalglasses.core.android.playEncodedViaMediaPlayer
@@ -146,7 +147,7 @@ class SimulatorGlassesClient(
         }
 
         return try {
-            val quality = (options.quality ?: 90).coerceIn(1, 100)
+            val quality = options.photoQuality.toSimulatorJpegQuality()
             ensureCameraUseCase(jpegQuality = quality)
             val ic = imageCapture ?: return Result.failure(GlassesError.Busy)
 
@@ -479,7 +480,7 @@ class SimulatorGlassesClient(
                 ) ?: throw GlassesError.Transport("Failed to extract frame at ${positionMs}ms")
             }
 
-            val quality = (options.quality ?: 90).coerceIn(1, 100)
+            val quality = options.photoQuality.toSimulatorJpegQuality()
             val baos = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos)
             val jpegBytes = baos.toByteArray()
@@ -573,4 +574,12 @@ class SimulatorGlassesClient(
         }
     }
 
+}
+
+private fun PhotoQuality.toSimulatorJpegQuality(): Int = when (this) {
+    PhotoQuality.LOWEST -> 25
+    PhotoQuality.LOW -> 50
+    PhotoQuality.MEDIUM -> 75
+    PhotoQuality.HIGH -> 90
+    PhotoQuality.HIGHEST -> 100
 }
