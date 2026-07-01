@@ -73,6 +73,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Initialize the project in simulator mode (enables x86_64 + simulator backend).",
     )
+    p_init.add_argument(
+        "--no-shell-setup",
+        action="store_true",
+        help="Do not update shell startup files; print export lines to add manually instead.",
+    )
 
     p_build = sub.add_parser("build", help="Build the phone-side APK.")
     _add_common_project_args(p_build)
@@ -235,7 +240,10 @@ def cmd_init(args: argparse.Namespace) -> int:
     _ensure_flutter_module_ready(dst, cfg)
     # Persist for future shells
     flutter = _find_flutter_cmd()
-    _persist_env(java_home=env.get("JAVA_HOME"), android_sdk=android_sdk, flutter_bin=flutter)
+    if bool(getattr(args, "no_shell_setup", False)):
+        _print_manual_shell_setup(java_home=env.get("JAVA_HOME"), android_sdk=android_sdk, flutter_bin=flutter)
+    else:
+        _persist_env(java_home=env.get("JAVA_HOME"), android_sdk=android_sdk, flutter_bin=flutter)
 
     if bool(getattr(args, "sim", False)):
         _apply_simulator_build_settings(dst, enabled=True)
@@ -1176,13 +1184,97 @@ def _homeify(path: str) -> str:
         return path
 
 
+def _shell_setup_values(
+    *,
+    java_home: str | None,
+    android_sdk: str | None,
+    flutter_bin: str | None,
+) -> tuple[str, str, str]:
+    """
+    Return only values that should be persisted for future shells.
+
+    If the user already has a valid JAVA_HOME or Android SDK in the current
+    environment, keep it completely out of the managed shell block.
+    """
+    persist_java = "" if _is_usable_java_home(os.environ.get("JAVA_HOME")) else (java_home or "")
+    persist_android = "" if _find_env_android_sdk(os.environ) else (android_sdk or "")
+    has_flutter = bool(os.environ.get("FLUTTER") or shutil.which("flutter"))
+    persist_flutter = "" if has_flutter or not flutter_bin else str(Path(flutter_bin).parent)
+    return persist_java, persist_android, persist_flutter
+
+
+def _manual_shell_setup_lines(
+    *,
+    java_home: str | None,
+    android_sdk: str | None,
+    flutter_bin: str | None,
+) -> list[str]:
+    java_home, android_sdk, flutter_dir = _shell_setup_values(
+        java_home=java_home,
+        android_sdk=android_sdk,
+        flutter_bin=flutter_bin,
+    )
+    lines: list[str] = []
+    if java_home:
+        lines += [
+            f'export JAVA_HOME="{_homeify(java_home)}"',
+            'export PATH="${JAVA_HOME}/bin:${PATH}"',
+        ]
+    if android_sdk:
+        android = _homeify(android_sdk)
+        lines += [
+            f'export ANDROID_SDK_ROOT="{android}"',
+            f'export ANDROID_HOME="{android}"',
+            'export PATH="${ANDROID_SDK_ROOT}/platform-tools:${PATH}"',
+            'export PATH="${ANDROID_SDK_ROOT}/emulator:${PATH}"',
+        ]
+    if flutter_dir:
+        lines.append(f'export PATH="{_homeify(flutter_dir)}:${{PATH}}"')
+    return lines
+
+
+def _print_manual_shell_setup(
+    *,
+    java_home: str | None,
+    android_sdk: str | None,
+    flutter_bin: str | None,
+) -> None:
+    lines = _manual_shell_setup_lines(java_home=java_home, android_sdk=android_sdk, flutter_bin=flutter_bin)
+    print("Shell profile setup skipped (--no-shell-setup).")
+    if not lines:
+        print("No export lines are needed for the current environment.")
+        return
+    print("Add these export lines manually if you want future shells to use the resolved tools:")
+    for line in lines:
+        print(line)
+
+
+def _profile_block_markers(block_id: str) -> tuple[str, str]:
+    return f"# >>> xg-glass {block_id} >>>", f"# <<< xg-glass {block_id} <<<"
+
+
+def _profile_block_exists(profile: Path, block_id: str) -> bool:
+    start, end = _profile_block_markers(block_id)
+    if not profile.exists():
+        return False
+    try:
+        existing = profile.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
+    return start in existing and end in existing
+
+
+def _profile_block_text(block_id: str, body: str) -> str:
+    start, end = _profile_block_markers(block_id)
+    return "\n".join([start, body.rstrip(), end, ""])
+
+
 def _upsert_profile_block(profile: Path, *, block_id: str, body: str) -> bool:
     """
     Idempotently upsert a marked block into a profile file. Returns True if modified.
     """
-    start = f"# >>> xg-glass {block_id} >>>"
-    end = f"# <<< xg-glass {block_id} <<<"
-    new_block = "\n".join([start, body.rstrip(), end, ""])
+    start, end = _profile_block_markers(block_id)
+    new_block = _profile_block_text(block_id, body)
     existing = ""
     if profile.exists():
         try:
@@ -1210,17 +1302,23 @@ def _persist_env_macos_zshrc(*, java_home: str | None, android_sdk: str | None, 
     if not _persist_env_enabled():
         return
     zshrc = Path.home() / ".zshrc"
-    force = "${XG_FORCE_ENV:-}"  # evaluated in shell
-
-    managed_java = _homeify(java_home) if java_home else ""
-    managed_android = _homeify(android_sdk) if android_sdk else ""
-    flutter_dir = _homeify(str(Path(flutter_bin).parent)) if flutter_bin else ""
+    raw_java, raw_android, raw_flutter_dir = _shell_setup_values(
+        java_home=java_home,
+        android_sdk=android_sdk,
+        flutter_bin=flutter_bin,
+    )
+    managed_java = _homeify(raw_java) if raw_java else ""
+    managed_android = _homeify(raw_android) if raw_android else ""
+    flutter_dir = _homeify(raw_flutter_dir) if raw_flutter_dir else ""
+    has_exports = bool(managed_java or managed_android or flutter_dir)
+    if not has_exports and not _profile_block_exists(zshrc, "env"):
+        print("  Shell profile setup not needed; existing environment is valid.")
+        return
 
     lines: list[str] = [
         "# xg-glass: one-click environment bootstrap (Java/Android SDK/Flutter)",
         "# - This block is managed by `xg-glass init`.",
-        "# - It does NOT override valid user settings by default.",
-        "# - Set XG_FORCE_ENV=1 to force using xg-glass managed paths.",
+        "# - It only fills in missing or unusable toolchain settings.",
         "",
         "xg_glass_prepend_path() {",
         '  case ":$PATH:" in',
@@ -1234,9 +1332,18 @@ def _persist_env_macos_zshrc(*, java_home: str | None, android_sdk: str | None, 
     if managed_java:
         lines += [
             "# Java",
-            f'if [[ "{force}" == "1" ]]; then',
-            f'  export JAVA_HOME="{managed_java}"',
-            'elif [[ -z "${JAVA_HOME:-}" || ! -x "${JAVA_HOME}/bin/java" ]]; then',
+            "xg_glass_java_home_valid() {",
+            '  [[ -n "${JAVA_HOME:-}" && -x "${JAVA_HOME}/bin/java" ]] || return 1',
+            '  local xg_glass_java_version xg_glass_java_major',
+            '  xg_glass_java_version="$("${JAVA_HOME}/bin/java" -version 2>&1 | sed -n \'s/.* version "\\([^"]*\\)".*/\\1/p\' | head -n 1)"',
+            '  xg_glass_java_major="${xg_glass_java_version%%.*}"',
+            '  if [[ "${xg_glass_java_major}" == "1" ]]; then',
+            '    xg_glass_java_major="$(printf "%s" "${xg_glass_java_version}" | cut -d. -f2)"',
+            "  fi",
+            '  [[ "${xg_glass_java_major}" =~ ^[0-9]+$ ]] || return 1',
+            f"  (( xg_glass_java_major >= 17 && xg_glass_java_major <= {_MAX_AGP_JDK_MAJOR} ))",
+            "}",
+            "if ! xg_glass_java_home_valid; then",
             f'  export JAVA_HOME="{managed_java}"',
             "fi",
             'if [[ -n "${JAVA_HOME:-}" && -x "${JAVA_HOME}/bin/java" ]]; then',
@@ -1248,18 +1355,21 @@ def _persist_env_macos_zshrc(*, java_home: str | None, android_sdk: str | None, 
     if managed_android:
         lines += [
             "# Android SDK",
-            f'if [[ "{force}" == "1" ]]; then',
-            f'  export ANDROID_SDK_ROOT="{managed_android}"',
-            f'  export ANDROID_HOME="{managed_android}"',
-            'elif [[ -z "${ANDROID_SDK_ROOT:-}" || ! -d "${ANDROID_SDK_ROOT}/platform-tools" ]]; then',
+            "xg_glass_android_sdk_valid() {",
+            '  [[ -n "${ANDROID_HOME:-}" && -d "${ANDROID_HOME}/platform-tools" ]] && return 0',
+            '  [[ -n "${ANDROID_SDK_ROOT:-}" && -d "${ANDROID_SDK_ROOT}/platform-tools" ]] && return 0',
+            "  return 1",
+            "}",
+            "if ! xg_glass_android_sdk_valid; then",
             f'  export ANDROID_SDK_ROOT="{managed_android}"',
             f'  export ANDROID_HOME="{managed_android}"',
             "fi",
-            'if [[ -n "${ANDROID_SDK_ROOT:-}" && -d "${ANDROID_SDK_ROOT}/platform-tools" ]]; then',
-            '  xg_glass_prepend_path "${ANDROID_SDK_ROOT}/platform-tools"',
+            'xg_glass_android_sdk_for_path="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"',
+            'if [[ -n "${xg_glass_android_sdk_for_path}" && -d "${xg_glass_android_sdk_for_path}/platform-tools" ]]; then',
+            '  xg_glass_prepend_path "${xg_glass_android_sdk_for_path}/platform-tools"',
             "fi",
-            'if [[ -n "${ANDROID_SDK_ROOT:-}" && -d "${ANDROID_SDK_ROOT}/emulator" ]]; then',
-            '  xg_glass_prepend_path "${ANDROID_SDK_ROOT}/emulator"',
+            'if [[ -n "${xg_glass_android_sdk_for_path}" && -d "${xg_glass_android_sdk_for_path}/emulator" ]]; then',
+            '  xg_glass_prepend_path "${xg_glass_android_sdk_for_path}/emulator"',
             "fi",
             "",
         ]
@@ -1267,16 +1377,21 @@ def _persist_env_macos_zshrc(*, java_home: str | None, android_sdk: str | None, 
     if flutter_dir:
         lines += [
             "# Flutter",
-            f'if [[ "{force}" == "1" || -z "$(command -v flutter 2>/dev/null)" ]]; then',
+            'if [[ -z "$(command -v flutter 2>/dev/null)" ]]; then',
             f'  xg_glass_prepend_path "{flutter_dir}"',
             "fi",
             "",
         ]
 
-    modified = _upsert_profile_block(zshrc, block_id="env", body="\n".join(lines))
+    body = "\n".join(lines)
+    modified = _upsert_profile_block(zshrc, block_id="env", body=body)
     if modified:
         print(f"  Updated shell profile: {zshrc}")
+        print("  Added/updated lines:")
+        print(_profile_block_text("env", body).rstrip())
         print(f"  Restart your terminal (or run `source {zshrc}`) to apply.")
+    elif has_exports:
+        print(f"  Shell profile already up to date: {zshrc}")
 
 
 def _persist_env_windows(*, java_home: str | None, android_sdk: str | None, flutter_bin: str | None) -> None:
@@ -1287,17 +1402,21 @@ def _persist_env_windows(*, java_home: str | None, android_sdk: str | None, flut
         return
     if platform.system() != "Windows":
         return
-    java_home = java_home or ""
-    android_sdk = android_sdk or ""
-    flutter_dir = str(Path(flutter_bin).parent) if flutter_bin else ""
+    java_home, android_sdk, flutter_dir = _shell_setup_values(
+        java_home=java_home,
+        android_sdk=android_sdk,
+        flutter_bin=flutter_bin,
+    )
+    if not (java_home or android_sdk or flutter_dir):
+        print("  User environment setup not needed; existing environment is valid.")
+        return
 
     ps = r"""
 $ErrorActionPreference = "Stop"
-$force = ($env:XG_FORCE_ENV -eq "1")
 function Set-UserEnvIfMissing([string]$name, [string]$value) {
   if ([string]::IsNullOrEmpty($value)) { return }
   $cur = [Environment]::GetEnvironmentVariable($name, "User")
-  if ($force -or [string]::IsNullOrEmpty($cur) -or (-not (Test-Path $cur))) {
+  if ([string]::IsNullOrEmpty($cur) -or (-not (Test-Path $cur))) {
     [Environment]::SetEnvironmentVariable($name, $value, "User")
   }
 }
@@ -1662,24 +1781,9 @@ def _maybe_infer_java_home(env: dict[str, str]) -> dict[str, str]:
     This is mainly helpful on macOS where users may have a JDK installed but
     haven't exported JAVA_HOME in their shell.
     """
-    if env.get("JAVA_HOME"):
-        return env
-    if platform.system() != "Darwin":
-        return env
-    java_home = "/usr/libexec/java_home"
-    if not Path(java_home).exists():
-        return env
-    # Prefer JDK 17 (Android baseline), fall back to default.
-    for args in ([java_home, "-v", "17"], [java_home]):
-        try:
-            p = subprocess.run(args, capture_output=True, text=True)
-        except Exception:
-            continue
-        if p.returncode == 0:
-            candidate = (p.stdout or "").strip()
-            if candidate and Path(candidate).exists():
-                env["JAVA_HOME"] = candidate
-                return env
+    discovered = _discover_existing_jdk(env)
+    if discovered:
+        env["JAVA_HOME"] = discovered
     return env
 
 
@@ -1718,6 +1822,157 @@ def _parse_java_major(java_version_output: str) -> int | None:
         return None
     head = v.split(".", 1)[0]
     return int(head) if head.isdigit() else None
+
+
+def _java_home_exe(java_home: str | Path | None) -> Path | None:
+    if not java_home:
+        return None
+    exe = Path(str(java_home)).expanduser() / "bin" / _java_exe_name()
+    if exe.is_file() and os.access(exe, os.X_OK):
+        return exe
+    return None
+
+
+def _java_home_major(java_home: str | Path | None) -> int | None:
+    exe = _java_home_exe(java_home)
+    if not exe:
+        return None
+    try:
+        p = subprocess.run([str(exe), "-version"], capture_output=True, text=True, timeout=15)
+    except Exception:
+        return None
+    if p.returncode != 0:
+        return None
+    return _parse_java_major((p.stdout or "") + "\n" + (p.stderr or ""))
+
+
+def _is_usable_java_home(java_home: str | Path | None) -> bool:
+    major = _java_home_major(java_home)
+    return major is not None and 17 <= major <= _MAX_AGP_JDK_MAJOR
+
+
+def _first_usable_java_home(candidates: list[str | Path]) -> str | None:
+    seen: set[str] = set()
+    for candidate in candidates:
+        raw = str(candidate).strip()
+        if not raw:
+            continue
+        key = str(Path(raw).expanduser())
+        if key in seen:
+            continue
+        seen.add(key)
+        if _is_usable_java_home(raw):
+            return raw
+    return None
+
+
+def _homebrew_jdk_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    if platform.system() != "Darwin":
+        return candidates
+
+    for opt_dir in (Path("/opt/homebrew/opt"), Path("/usr/local/opt")):
+        for formula in ("openjdk@17", "openjdk@21"):
+            candidates.append(opt_dir / formula / "libexec" / "openjdk.jdk" / "Contents" / "Home")
+
+    brew = shutil.which("brew")
+    if not brew:
+        return candidates
+    for formula in ("openjdk@17", "openjdk@21"):
+        try:
+            p = subprocess.run([brew, "--prefix", formula], capture_output=True, text=True, timeout=15)
+        except Exception:
+            continue
+        prefix = (p.stdout or "").strip()
+        if p.returncode == 0 and prefix:
+            candidates.append(Path(prefix) / "libexec" / "openjdk.jdk" / "Contents" / "Home")
+    return candidates
+
+
+def _gradle_java_installation_paths() -> list[str]:
+    gradle_props = Path.home() / ".gradle" / "gradle.properties"
+    if not gradle_props.exists():
+        return []
+    try:
+        text = gradle_props.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return []
+
+    key = "org.gradle.java.installations.paths"
+    paths: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("#", "!")):
+            continue
+        value: str | None = None
+        for sep in ("=", ":"):
+            prefix = key + sep
+            if line.startswith(prefix):
+                value = line[len(prefix):]
+                break
+        if value is None:
+            continue
+        for item in value.split(","):
+            path = item.strip().replace("\\ ", " ").replace("\\:", ":")
+            if path:
+                paths.append(path)
+    return paths
+
+
+def _discover_existing_jdk(env: dict[str, str] | None = None) -> str | None:
+    """
+    Discover an installed, AGP-compatible JDK before falling back to downloads.
+
+    Priority:
+      1. valid JAVA_HOME from env
+      2. Android Studio bundled JBR (macOS)
+      3. /usr/libexec/java_home -v <=_MAX_AGP_JDK_MAJOR (macOS)
+      4. Homebrew openjdk@17/openjdk@21
+      5. Gradle org.gradle.java.installations.paths
+      6. existing xg-glass managed JDK
+    """
+    env = os.environ if env is None else env
+
+    java_home = (env.get("JAVA_HOME") or "").strip()
+    if _is_usable_java_home(java_home):
+        return java_home
+
+    system = platform.system()
+    if system == "Darwin":
+        candidate = _first_usable_java_home([
+            "/Applications/Android Studio.app/Contents/jbr/Contents/Home",
+        ])
+        if candidate:
+            return candidate
+
+        java_home_tool = Path("/usr/libexec/java_home")
+        if java_home_tool.exists():
+            try:
+                p = subprocess.run(
+                    [str(java_home_tool), "-v", f"<={_MAX_AGP_JDK_MAJOR}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+            except Exception:
+                p = None
+            if p is not None and p.returncode == 0:
+                candidate = _first_usable_java_home([(p.stdout or "").strip()])
+                if candidate:
+                    return candidate
+
+    candidate = _first_usable_java_home(_homebrew_jdk_candidates())
+    if candidate:
+        return candidate
+
+    candidate = _first_usable_java_home(_gradle_java_installation_paths())
+    if candidate:
+        return candidate
+
+    managed = _find_managed_java_home()
+    if managed and _is_usable_java_home(managed):
+        return managed
+    return None
 
 
 def _find_managed_java_home() -> str | None:
@@ -1955,7 +2210,7 @@ def _ensure_java_runtime(env: dict[str, str]) -> None:
             return False, "java executable not found", None
         out = ((p.stdout or "") + "\n" + (p.stderr or "")).strip()
         major = _parse_java_major(out)
-        ok = p.returncode == 0 and (major is None or major >= 17)
+        ok = p.returncode == 0 and major is not None and 17 <= major <= _MAX_AGP_JDK_MAJOR
         return ok, out, major
 
     ok, out, major = check()
@@ -1971,6 +2226,13 @@ def _ensure_java_runtime(env: dict[str, str]) -> None:
                 "macOS: brew install --cask temurin@17 && export JAVA_HOME=$(/usr/libexec/java_home -v 17)\n"
                 "Windows (PowerShell): winget install EclipseAdoptium.Temurin.17.JDK"
             )
+        if major is not None and major > _MAX_AGP_JDK_MAJOR:
+            raise RuntimeError(
+                f"Java {major} detected, but this Android Gradle Plugin supports up to JDK {_MAX_AGP_JDK_MAJOR}.\n"
+                "Please install JDK 17 or 21 and set JAVA_HOME to it.\n"
+                "macOS: brew install openjdk@17 && export JAVA_HOME=$(/usr/libexec/java_home -v 17)\n"
+                "Windows (PowerShell): winget install EclipseAdoptium.Temurin.17.JDK"
+            )
         raise RuntimeError(
             "Java runtime is not available, and auto-download is disabled (XG_NO_JAVA_DOWNLOAD=1).\n"
             "Please install JDK 17+ and ensure `java -version` works.\n"
@@ -1979,11 +2241,11 @@ def _ensure_java_runtime(env: dict[str, str]) -> None:
             f"`java -version` output:\n{out}"
         )
 
-    managed = _find_managed_java_home()
-    if not managed:
-        managed = _auto_download_jdk(_default_managed_jdk_major())
-    env["JAVA_HOME"] = managed
-    env["PATH"] = str(Path(managed) / "bin") + os.pathsep + env.get("PATH", "")
+    java_home = _discover_existing_jdk(env)
+    if not java_home:
+        java_home = _auto_download_jdk(_default_managed_jdk_major())
+    env["JAVA_HOME"] = java_home
+    env["PATH"] = str(Path(java_home) / "bin") + os.pathsep + env.get("PATH", "")
 
     ok2, out2, major2 = check()
     if ok2:
@@ -2019,9 +2281,25 @@ def _find_adb_cmd() -> str:
     return "adb"  # fallback – let the OS raise a clear error
 
 
+def _android_sdk_has_platform_tools(sdk: str | Path | None) -> bool:
+    if not sdk:
+        return False
+    root = Path(str(sdk)).expanduser()
+    return root.is_dir() and (root / "platform-tools").is_dir()
+
+
+def _find_env_android_sdk(env: dict[str, str] | None = None) -> str | None:
+    env = os.environ if env is None else env
+    for name in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        sdk = (env.get(name) or "").strip()
+        if _android_sdk_has_platform_tools(sdk):
+            return sdk
+    return None
+
+
 def _find_android_sdk() -> str | None:
     """Locate the Android SDK directory from environment or common default paths."""
-    sdk = os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME")
+    sdk = _find_env_android_sdk(os.environ)
     if sdk:
         return sdk
     # Check common default locations
@@ -2040,7 +2318,7 @@ def _find_android_sdk() -> str | None:
     # Also check managed install
     candidates.append(_MANAGED_ANDROID_SDK_DIR)
     for c in candidates:
-        if c.is_dir() and (c / "platform-tools").is_dir():
+        if _android_sdk_has_platform_tools(c):
             return str(c)
     return None
 
