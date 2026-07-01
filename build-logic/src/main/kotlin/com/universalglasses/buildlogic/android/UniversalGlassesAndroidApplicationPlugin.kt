@@ -3,6 +3,7 @@ package com.universalglasses.buildlogic.android
 import com.android.build.api.dsl.ApplicationExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 class UniversalGlassesAndroidApplicationPlugin : Plugin<Project> {
@@ -16,7 +17,9 @@ class UniversalGlassesAndroidApplicationPlugin : Plugin<Project> {
         // keep those owned by the application module.
 
         project.tasks.withType(KotlinCompile::class.java).configureEach {
-            kotlinOptions.jvmTarget = "1.8"
+            compilerOptions {
+                jvmTarget.set(JvmTarget.JVM_1_8)
+            }
         }
     }
 }

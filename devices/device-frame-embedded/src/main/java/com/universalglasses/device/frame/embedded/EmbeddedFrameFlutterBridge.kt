@@ -151,9 +151,12 @@ class EmbeddedFrameFlutterBridge(
         try {
             stopMicrophone()
         } catch (_: Exception) {}
-        invoke<Boolean>(FrameFlutterChannelContract.Methods.DISCONNECT, null)
-        _state.value = FrameFlutterState.Disconnected
-        engine.destroy()
+        try {
+            invoke<Boolean>(FrameFlutterChannelContract.Methods.DISCONNECT, null)
+        } finally {
+            _state.value = FrameFlutterState.Disconnected
+            engine.destroy()
+        }
     }
 
     override suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage> {
@@ -223,6 +226,7 @@ class EmbeddedFrameFlutterBridge(
             val out: T = suspendCancellableCoroutine { cont ->
                 channel.invokeMethod(method, args, object : MethodChannel.Result {
                     override fun success(result: Any?) {
+                        // Method-channel results are dynamically typed; the caller owns T.
                         @Suppress("UNCHECKED_CAST")
                         cont.resume(result as T)
                     }
