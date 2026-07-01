@@ -24,22 +24,20 @@ import com.universalglasses.core.AudioChunk
 import com.universalglasses.core.AudioEncoding
 import com.universalglasses.core.AudioFormat
 import com.universalglasses.core.AudioSource
+import com.universalglasses.core.BaseGlassesClient
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.ConnectionState
 import com.universalglasses.core.DeviceCapabilities
 import com.universalglasses.core.DisplayMode
 import com.universalglasses.core.DisplayOptions
-import com.universalglasses.core.GlassesClient
 import com.universalglasses.core.GlassesError
-import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PcmFormat
 import com.universalglasses.core.PlayAudioOptions
 import com.universalglasses.core.android.playPcmViaAudioTrack
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -47,11 +45,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.File
@@ -77,7 +71,7 @@ import kotlin.coroutines.suspendCoroutine
 class RokidGlassesClient(
     private val activity: AppCompatActivity,
     private val options: RokidOptions = RokidOptions(),
-) : GlassesClient {
+) : BaseGlassesClient() {
 
     override val model: GlassesModel = GlassesModel.ROKID
     override val capabilities: DeviceCapabilities = DeviceCapabilities(
@@ -89,15 +83,6 @@ class RokidGlassesClient(
         supportsTapEvents = false,
         supportsStreamingTextUpdates = true,
     )
-
-    private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
-    override val state: StateFlow<ConnectionState> = _state
-
-    private val _events = MutableSharedFlow<GlassesEvent>(
-        extraBufferCapacity = 64,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-    override val events: Flow<GlassesEvent> = _events
 
     private val display = RokidDisplayController()
 
@@ -112,32 +97,20 @@ class RokidGlassesClient(
     @Volatile private var wifiReady: Boolean = false
     @Volatile private var btReady: Boolean = false
     @Volatile private var activeMic: MicrophoneSession? = null
-    private val connectMutex = Mutex()
 
-    override suspend fun connect(): Result<Unit> = connectMutex.withLock {
-        if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
-            return Result.success(Unit)
-        }
-        _state.value = ConnectionState.Connecting
+    override suspend fun doConnect() {
         emitLog("Rokid: connecting (BT + Wi‑Fi P2P)...")
 
-        return try {
-            withTimeout(options.connectTimeoutMs) {
-                // 1) Bluetooth
-                ensureBluetoothConnected()
-                // 2) Wi‑Fi P2P
-                ensureWifiP2pConnected()
-            }
-            _state.value = ConnectionState.Connected
-            Result.success(Unit)
-        } catch (ce: CancellationException) {
-            _state.value = ConnectionState.Disconnected
-            Result.failure(ce)
-        } catch (e: Exception) {
-            val err = (e as? GlassesError) ?: GlassesError.Transport("Rokid connect failed: ${e.message}", e)
-            _state.value = ConnectionState.Error(err)
-            Result.failure(err)
+        withTimeout(options.connectTimeoutMs) {
+            // 1) Bluetooth
+            ensureBluetoothConnected()
+            // 2) Wi‑Fi P2P
+            ensureWifiP2pConnected()
         }
+    }
+
+    override fun mapConnectError(error: Exception): GlassesError {
+        return (error as? GlassesError) ?: GlassesError.Transport("Rokid connect failed: ${error.message}", error)
     }
 
     override suspend fun disconnect() {
@@ -664,14 +637,6 @@ class RokidGlassesClient(
             .remove(PREF_KEY_SOCKET_UUID)
             .remove(PREF_KEY_MAC_ADDRESS)
             .apply()
-    }
-
-    private fun emitLog(msg: String) {
-        _events.tryEmit(GlassesEvent.Log(msg))
-    }
-
-    private fun emitWarn(msg: String) {
-        _events.tryEmit(GlassesEvent.Warning(msg))
     }
 
     data class RokidOptions(

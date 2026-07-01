@@ -24,14 +24,13 @@ import com.universalglasses.core.AudioChunk
 import com.universalglasses.core.AudioEncoding
 import com.universalglasses.core.AudioFormat
 import com.universalglasses.core.AudioSource
+import com.universalglasses.core.BaseGlassesClient
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.ConnectionState
 import com.universalglasses.core.DeviceCapabilities
 import com.universalglasses.core.DisplayOptions
-import com.universalglasses.core.GlassesClient
 import com.universalglasses.core.GlassesError
-import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
@@ -42,13 +41,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.util.UUID
@@ -72,7 +68,7 @@ import kotlin.coroutines.resumeWithException
 class OmiGlassesClient(
     private val context: Context,
     private val options: OmiOptions = OmiOptions(),
-) : GlassesClient {
+) : BaseGlassesClient(eventBufferOverflow = BufferOverflow.SUSPEND) {
 
     override val model: GlassesModel = GlassesModel.OMI
 
@@ -89,12 +85,6 @@ class OmiGlassesClient(
     override val capabilities: DeviceCapabilities
         get() = currentCapabilities
 
-    private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
-    override val state: StateFlow<ConnectionState> = _state
-
-    private val _events = MutableSharedFlow<GlassesEvent>(extraBufferCapacity = 64)
-    override val events: Flow<GlassesEvent> = _events
-
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // GATT plumbing
@@ -110,8 +100,6 @@ class OmiGlassesClient(
     private var lastPhotoChunkId = -1
     private var photoContinuation: kotlinx.coroutines.CancellableContinuation<Result<CapturedImage>>? = null
 
-    private val connectMutex = Mutex()
-
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         mgr?.adapter
@@ -119,12 +107,12 @@ class OmiGlassesClient(
 
     @Volatile
     private var audioSession: MicrophoneSession? = null
+    private var pendingConnectAdapter: BluetoothAdapter? = null
 
-    override suspend fun connect(): Result<Unit> = connectMutex.withLock {
-        if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
-            return Result.success(Unit)
-        }
+    override val rethrowConnectCancellation: Boolean = true
 
+    override suspend fun beforeConnect(): Result<Unit>? {
+        pendingConnectAdapter = null
         if (!hasBlePermission()) {
             return Result.failure(GlassesError.PermissionDenied)
         }
@@ -132,10 +120,19 @@ class OmiGlassesClient(
         val adapter = bluetoothAdapter
             ?: return Result.failure(GlassesError.Transport("Bluetooth adapter not available"))
 
-        _state.value = ConnectionState.Connecting
+        pendingConnectAdapter = adapter
+        return null
+    }
+
+    override suspend fun doConnect() {
+        val adapter = pendingConnectAdapter
+            ?: bluetoothAdapter
+            ?: throw GlassesError.Transport("Bluetooth adapter not available")
+        pendingConnectAdapter = null
+
         emitLog("Omi: scanning for devices with Omi service...")
 
-        return withContext(Dispatchers.IO) {
+        withContext(Dispatchers.IO) {
             try {
                 withTimeout(options.connectTimeoutMs) {
                     val device = scanFirstOmiDevice(adapter)
@@ -143,24 +140,18 @@ class OmiGlassesClient(
 
                     connectGatt(device)
                 }
-
-                Result.success(Unit)
             } catch (_: TimeoutCancellationException) {
                 closeGatt()
-                val err = GlassesError.Timeout("Omi connect")
-                _state.value = ConnectionState.Error(err)
-                Result.failure(err)
+                throw GlassesError.Timeout("Omi connect")
             } catch (ce: CancellationException) {
                 closeGatt()
-                _state.value = ConnectionState.Disconnected
                 throw ce
-            } catch (e: Exception) {
-                val err = (e as? GlassesError)
-                    ?: GlassesError.Transport("Omi connect failed: ${e.message}", e)
-                _state.value = ConnectionState.Error(err)
-                Result.failure(err)
             }
         }
+    }
+
+    override fun mapConnectError(error: Exception): GlassesError {
+        return (error as? GlassesError) ?: GlassesError.Transport("Omi connect failed: ${error.message}", error)
     }
 
     override suspend fun disconnect() {
@@ -558,10 +549,6 @@ class OmiGlassesClient(
             }
         }
         return -1
-    }
-
-    private fun emitLog(msg: String) {
-        _events.tryEmit(GlassesEvent.Log(msg))
     }
 
     data class OmiOptions(

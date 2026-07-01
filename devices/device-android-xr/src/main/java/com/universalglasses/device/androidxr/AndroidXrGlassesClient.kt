@@ -2,26 +2,17 @@ package com.universalglasses.device.androidxr
 
 import android.content.Context
 import com.universalglasses.core.AudioSource
+import com.universalglasses.core.BaseGlassesClient
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.ConnectionState
 import com.universalglasses.core.DeviceCapabilities
 import com.universalglasses.core.DisplayOptions
-import com.universalglasses.core.GlassesClient
 import com.universalglasses.core.GlassesError
-import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PlayAudioOptions
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * Proof-of-concept scaffold for Google Android XR projected AI glasses.
@@ -36,58 +27,34 @@ import kotlinx.coroutines.sync.withLock
 class AndroidXrGlassesClient(
     private val hostContext: Context,
     private val options: AndroidXrOptions = AndroidXrOptions(),
-) : GlassesClient {
+) : BaseGlassesClient() {
 
     override val model: GlassesModel = GlassesModel.ANDROID_XR
 
     override val capabilities: DeviceCapabilities = options.assumedCapabilities
 
-    private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
-    override val state: StateFlow<ConnectionState> = _state
-
-    private val _events = MutableSharedFlow<GlassesEvent>(
-        extraBufferCapacity = 64,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-    override val events: Flow<GlassesEvent> = _events
-
-    private val connectMutex = Mutex()
-
     @Volatile private var projectedContext: Context? = null
     @Volatile private var activeMic: MicrophoneSession? = null
 
-    override suspend fun connect(): Result<Unit> = connectMutex.withLock {
-        if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
-            return Result.success(Unit)
-        }
-
-        _state.value = ConnectionState.Connecting
+    override suspend fun doConnect() {
         emitLog("Android XR: resolving projected context")
 
-        return try {
-            val context = resolveProjectedContext()
-            if (context == null) {
-                val err = GlassesError.Unsupported(
-                    "Android XR projected context is not wired. Provide AndroidXrOptions.projectedContextProvider " +
-                        "or replace resolveProjectedContext() with verified Jetpack Projected API."
-                )
-                emitWarn(err.message ?: "Android XR projected context is not wired")
-                _state.value = ConnectionState.Error(err)
-                return Result.failure(err)
-            }
-
-            projectedContext = context
-            _state.value = ConnectionState.Connected
-            emitLog("Android XR: connected to projected context scaffold")
-            Result.success(Unit)
-        } catch (ce: CancellationException) {
-            _state.value = ConnectionState.Disconnected
-            Result.failure(ce)
-        } catch (e: Exception) {
-            val err = mapError("connect", e)
-            _state.value = ConnectionState.Error(err)
-            Result.failure(err)
+        val context = resolveProjectedContext()
+        if (context == null) {
+            val err = GlassesError.Unsupported(
+                "Android XR projected context is not wired. Provide AndroidXrOptions.projectedContextProvider " +
+                    "or replace resolveProjectedContext() with verified Jetpack Projected API."
+            )
+            emitWarn(err.message ?: "Android XR projected context is not wired")
+            throw err
         }
+
+        projectedContext = context
+        emitLog("Android XR: connected to projected context scaffold")
+    }
+
+    override fun mapConnectError(error: Exception): GlassesError {
+        return mapError("connect", error)
     }
 
     override suspend fun disconnect() {
@@ -212,14 +179,6 @@ class AndroidXrGlassesClient(
     private fun mapError(operation: String, error: Exception): GlassesError {
         return (error as? GlassesError)
             ?: GlassesError.Transport("Android XR $operation failed: ${error.message}", error)
-    }
-
-    private fun emitLog(message: String) {
-        _events.tryEmit(GlassesEvent.Log(message))
-    }
-
-    private fun emitWarn(message: String) {
-        _events.tryEmit(GlassesEvent.Warning(message))
     }
 
     data class AndroidXrOptions(

@@ -6,14 +6,13 @@ import com.tananaev.adblib.AdbBase64
 import com.tananaev.adblib.AdbConnection
 import com.tananaev.adblib.AdbCrypto
 import com.tananaev.adblib.AdbStream
+import com.universalglasses.core.BaseGlassesClient
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.ConnectionState
 import com.universalglasses.core.DeviceCapabilities
 import com.universalglasses.core.DisplayOptions
-import com.universalglasses.core.GlassesClient
 import com.universalglasses.core.GlassesError
-import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.AudioSource
 import com.universalglasses.core.MicrophoneOptions
@@ -21,12 +20,7 @@ import com.universalglasses.core.MicrophoneSession
 import com.universalglasses.core.PlayAudioOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
@@ -50,7 +44,7 @@ import java.util.concurrent.TimeUnit
 class RayNeoInstallerGlassesClient(
     private val context: Context,
     private val config: RayNeoInstallerConfig,
-) : GlassesClient {
+) : BaseGlassesClient(eventBufferOverflow = BufferOverflow.SUSPEND) {
 
     override val model: GlassesModel = GlassesModel.RAYNEO
 
@@ -64,19 +58,12 @@ class RayNeoInstallerGlassesClient(
         supportsStreamingTextUpdates = false,
     )
 
-    private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
-    override val state: StateFlow<ConnectionState> = _state
+    override fun shouldShortCircuitConnect(state: ConnectionState): Boolean {
+        return state is ConnectionState.Connected
+    }
 
-    private val _events = MutableSharedFlow<GlassesEvent>(extraBufferCapacity = 64)
-    override val events: Flow<GlassesEvent> = _events
-
-    private val connectMutex = Mutex()
-
-    override suspend fun connect(): Result<Unit> = connectMutex.withLock {
-        if (_state.value is ConnectionState.Connected) return Result.success(Unit)
-        _state.value = ConnectionState.Connecting
-
-        return withContext(Dispatchers.IO) {
+    override suspend fun doConnect() {
+        withContext(Dispatchers.IO) {
             try {
                 withTimeout(config.connectTimeoutMs) {
                     val installer = AdbRemoteInstaller(context.applicationContext, config.connectTimeoutMs)
@@ -89,31 +76,25 @@ class RayNeoInstallerGlassesClient(
                             totalBytes = apk.totalBytes,
                             remoteDir = config.remoteDir,
                             preferredRemoteFileName = config.preferredRemoteFileName,
-                            log = { msg -> _events.tryEmit(GlassesEvent.Log("RayNeo installer: $msg")) },
+                            log = { msg -> emitLog("RayNeo installer: $msg") },
                         )
 
                         val ok = output.contains("Success", ignoreCase = true)
                         if (!ok) {
-                            _state.value = ConnectionState.Error(GlassesError.Transport("Install failed: $output"))
-                            return@withTimeout Result.failure(GlassesError.Transport("Install failed: $output"))
+                            throw GlassesError.Transport("Install failed: $output")
                         }
                     }
-
-                    _state.value = ConnectionState.Connected
-                    Result.success(Unit)
                 }
             } catch (_: TimeoutCancellationException) {
-                val err = GlassesError.Timeout("RayNeo installer connect")
-                _state.value = ConnectionState.Error(err)
-                Result.failure(err)
-            } catch (e: Exception) {
-                val err = when (e) {
-                    is GlassesError -> e
-                    else -> GlassesError.Transport("RayNeo install/connect failed: ${e.message ?: e::class.java.simpleName}", e)
-                }
-                _state.value = ConnectionState.Error(err)
-                Result.failure(err)
+                throw GlassesError.Timeout("RayNeo installer connect")
             }
+        }
+    }
+
+    override fun mapConnectError(error: Exception): GlassesError {
+        return when (error) {
+            is GlassesError -> error
+            else -> GlassesError.Transport("RayNeo install/connect failed: ${error.message ?: error::class.java.simpleName}", error)
         }
     }
 
@@ -166,7 +147,7 @@ class RayNeoInstallerGlassesClient(
                     remotePath = SETTINGS_REMOTE_PATH,
                     input = ByteArrayInputStream(jsonBytes),
                     totalBytes = jsonBytes.size.toLong(),
-                    log = { msg -> _events.tryEmit(GlassesEvent.Log("RayNeo settings: $msg")) },
+                    log = { msg -> emitLog("RayNeo settings: $msg") },
                 )
 
                 Result.success(Unit)

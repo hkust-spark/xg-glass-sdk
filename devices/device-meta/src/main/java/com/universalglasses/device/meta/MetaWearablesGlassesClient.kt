@@ -29,6 +29,7 @@ import com.meta.wearable.dat.core.types.PermissionStatus
 import com.meta.wearable.dat.core.types.RegistrationState
 import com.universalglasses.core.AudioEncoding
 import com.universalglasses.core.AudioSource
+import com.universalglasses.core.BaseGlassesClient
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.ConnectionState
@@ -36,9 +37,7 @@ import com.universalglasses.core.DeviceCapabilities
 import com.universalglasses.core.DisplayOptions
 import com.universalglasses.core.ExternalActivityBridge
 import com.universalglasses.core.ExternalActivityResult
-import com.universalglasses.core.GlassesClient
 import com.universalglasses.core.GlassesError
-import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
@@ -51,19 +50,12 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.coroutines.resume
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
@@ -79,7 +71,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
     private val activity: AppCompatActivity,
     private val externalActivityBridge: ExternalActivityBridge? = null,
     private val options: MetaWearablesOptions = MetaWearablesOptions(),
-) : GlassesClient {
+) : BaseGlassesClient() {
 
     override val model: GlassesModel = GlassesModel.META
 
@@ -98,47 +90,25 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
     }
     private val deviceSelector: DeviceSelector = options.deviceSelector ?: AutoDeviceSelector()
 
-    private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
-    override val state: StateFlow<ConnectionState> = _state
-
-    private val _events = MutableSharedFlow<GlassesEvent>(
-        extraBufferCapacity = 64,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-    override val events: Flow<GlassesEvent> = _events
-
     @Volatile private var activeDeviceId: DeviceIdentifier? = null
     @Volatile private var activeMic: MicrophoneSession? = null
     @Volatile private var activePlayer: MediaPlayer? = null
-    private val connectMutex = Mutex()
 
     private val audioRouteLock = Any()
     private var audioRouteRefCount = 0
     private var previousAudioMode: Int? = null
 
-    override suspend fun connect(): Result<Unit> = connectMutex.withLock {
-        if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
-            return Result.success(Unit)
-        }
+    override suspend fun doConnect() {
+        ensureWearablesInitialized()
+        ensureRegistered()
+        val deviceId = awaitActiveDevice()
+        activeDeviceId = deviceId
+        emitCompatibilityWarningIfNeeded(deviceId)
+        emitLog("Meta: connected to device $deviceId")
+    }
 
-        _state.value = ConnectionState.Connecting
-        return try {
-            ensureWearablesInitialized()
-            ensureRegistered()
-            val deviceId = awaitActiveDevice()
-            activeDeviceId = deviceId
-            emitCompatibilityWarningIfNeeded(deviceId)
-            emitLog("Meta: connected to device $deviceId")
-            _state.value = ConnectionState.Connected
-            Result.success(Unit)
-        } catch (ce: CancellationException) {
-            _state.value = ConnectionState.Disconnected
-            Result.failure(ce)
-        } catch (e: Exception) {
-            val err = (e as? GlassesError) ?: GlassesError.Transport("Meta connect failed: ${e.message}", e)
-            _state.value = ConnectionState.Error(err)
-            Result.failure(err)
-        }
+    override fun mapConnectError(error: Exception): GlassesError {
+        return (error as? GlassesError) ?: GlassesError.Transport("Meta connect failed: ${error.message}", error)
     }
 
     override suspend fun disconnect() {
@@ -500,14 +470,6 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
 
     private fun hasRecordAudioPermission(): Boolean {
         return activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-    }
-
-    private fun emitLog(message: String) {
-        _events.tryEmit(GlassesEvent.Log(message))
-    }
-
-    private fun emitWarn(message: String) {
-        _events.tryEmit(GlassesEvent.Warning(message))
     }
 
     data class MetaWearablesOptions(

@@ -18,14 +18,13 @@ import android.os.HandlerThread
 import android.widget.Toast
 import com.universalglasses.core.AudioEncoding
 import com.universalglasses.core.AudioSource
+import com.universalglasses.core.BaseGlassesClient
 import com.universalglasses.core.CaptureOptions
 import com.universalglasses.core.CapturedImage
 import com.universalglasses.core.ConnectionState
 import com.universalglasses.core.DeviceCapabilities
 import com.universalglasses.core.DisplayOptions
-import com.universalglasses.core.GlassesClient
 import com.universalglasses.core.GlassesError
-import com.universalglasses.core.GlassesEvent
 import com.universalglasses.core.GlassesModel
 import com.universalglasses.core.MicrophoneOptions
 import com.universalglasses.core.MicrophoneSession
@@ -36,13 +35,8 @@ import com.universalglasses.core.android.playEncodedViaMediaPlayer
 import com.universalglasses.core.android.playPcmViaAudioTrack
 import com.universalglasses.core.android.rayNeoPcmBufferSize
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -62,7 +56,7 @@ import kotlin.coroutines.resumeWithException
 class RayNeoRuntimeGlassesClient(
     private val context: Context,
     private val displaySink: RayNeoDisplaySink = ToastDisplaySink(),
-) : GlassesClient {
+) : BaseGlassesClient(eventBufferOverflow = BufferOverflow.SUSPEND) {
 
     override val model: GlassesModel = GlassesModel.RAYNEO
 
@@ -76,23 +70,12 @@ class RayNeoRuntimeGlassesClient(
         supportsStreamingTextUpdates = false,
     )
 
-    private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
-    override val state: StateFlow<ConnectionState> = _state
-
-    private val _events = MutableSharedFlow<GlassesEvent>(extraBufferCapacity = 64)
-    override val events: Flow<GlassesEvent> = _events
-
     @Volatile private var activeMic: MicrophoneSession? = null
     @Volatile private var activePlayer: MediaPlayer? = null
-    private val connectMutex = Mutex()
 
-    override suspend fun connect(): Result<Unit> = connectMutex.withLock {
-        if (_state.value is ConnectionState.Connected || _state.value is ConnectionState.Connecting) {
-            return Result.success(Unit)
-        }
-        _state.value = ConnectionState.Connected
-        return Result.success(Unit)
-    }
+    override val markConnectingOnConnect: Boolean = false
+
+    override suspend fun doConnect() = Unit
 
     override suspend fun disconnect() {
         try { activeMic?.stop() } catch (_: Exception) {}
