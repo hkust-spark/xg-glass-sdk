@@ -7,7 +7,7 @@ internal data class TemplateFile(
 
 internal object RayneoHostTemplate {
     // Bump this if you change any template content so the generator knows when to refresh.
-    const val TEMPLATE_VERSION = 24
+    const val TEMPLATE_VERSION = 25
 
     fun files(): List<TemplateFile> = listOf(
         TemplateFile(
@@ -204,9 +204,11 @@ internal object RayneoHostTemplate {
             import com.xgglass.device.rayneo.runtime.RayNeoDisplaySink
             import com.xgglass.device.rayneo.runtime.RayNeoRuntimeGlassesClient
             import com.xgglass.rayneo.host.databinding.ActivityXgRayneoHostBinding
+            import kotlinx.coroutines.CancellationException
             import kotlinx.coroutines.CoroutineScope
             import kotlinx.coroutines.Dispatchers
             import kotlinx.coroutines.SupervisorJob
+            import kotlinx.coroutines.cancel
             import kotlinx.coroutines.launch
             import kotlinx.coroutines.withContext
             import org.json.JSONObject
@@ -339,6 +341,11 @@ internal object RayneoHostTemplate {
                     }
                 }
 
+                override fun onDestroy() {
+                    scope.cancel()
+                    super.onDestroy()
+                }
+
                 private fun runCommand(env: HostEnvironment, cmd: com.xgglass.appcontract.UniversalCommand) {
                     if (isRunningCommand) return
                     isRunningCommand = true
@@ -363,6 +370,8 @@ internal object RayneoHostTemplate {
                             if (r.isFailure) {
                                 appendLog("Failed: ${"$"}{r.exceptionOrNull()?.message ?: "unknown"}")
                             }
+                        } catch (ce: CancellationException) {
+                            throw ce
                         } catch (e: Exception) {
                             appendLog("Command error: ${"$"}{e.javaClass.simpleName}: ${"$"}{e.message}")
                         } finally {

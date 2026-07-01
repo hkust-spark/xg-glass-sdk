@@ -41,8 +41,10 @@ import com.xgglass.device.rayneo.installer.RayNeoInstallerConfig
 import com.xgglass.device.rokid.RokidGlassesClient
 import com.xgglass.device.omi.OmiGlassesClient
 import com.xgglass.device.sim.SimulatorGlassesClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.SupervisorJob
@@ -235,6 +237,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        // Cancel SDK collectors/jobs so this Activity is not retained after destroy.
+        scope.cancel()
+        super.onDestroy()
+    }
+
     private fun connect(model: GlassesModel) {
         if (model == GlassesModel.RAYNEO) {
             installRayNeo()
@@ -252,6 +260,8 @@ class MainActivity : AppCompatActivity() {
                 client = null
                 try {
                     old?.disconnect()
+                } catch (ce: CancellationException) {
+                    throw ce
                 } catch (e: Exception) {
                     appendLog("WARN: disconnect previous client failed: ${e.message}")
                 }
@@ -282,6 +292,8 @@ class MainActivity : AppCompatActivity() {
                 deviceManager = null
                 try {
                     oldManager?.close()
+                } catch (ce: CancellationException) {
+                    throw ce
                 } catch (e: Exception) {
                     appendLog("WARN: close previous device manager failed: ${e.message}")
                 }
@@ -310,6 +322,8 @@ class MainActivity : AppCompatActivity() {
 
                 val r = newClient.connect()
                 appendLog("connect(${model.name}) => ${r.isSuccess} ${r.exceptionOrNull()?.message ?: ""}")
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e: Exception) {
                 client = null
                 appendLog("connect(${model.name}) crashed: ${e.message ?: e.javaClass.simpleName}")
@@ -332,6 +346,8 @@ class MainActivity : AppCompatActivity() {
                 client = null
                 try {
                     oldClient?.disconnect()
+                } catch (ce: CancellationException) {
+                    throw ce
                 } catch (e: Exception) {
                     appendLog("WARN: disconnect previous client failed: ${e.message}")
                 }
@@ -341,6 +357,8 @@ class MainActivity : AppCompatActivity() {
                 deviceManager = manager
                 try {
                     if (oldManager !== manager) oldManager?.close()
+                } catch (ce: CancellationException) {
+                    throw ce
                 } catch (e: Exception) {
                     appendLog("WARN: close previous device manager failed: ${e.message}")
                 }
@@ -378,6 +396,8 @@ class MainActivity : AppCompatActivity() {
                     if (pushR.isSuccess) appendLog("Settings synced to RayNeo glasses.")
                     else appendLog("Settings sync failed: ${pushR.exceptionOrNull()?.message}")
                 }
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e: Exception) {
                 deviceManager = null
                 appendLog("install(RAYNEO) crashed: ${e.message ?: e.javaClass.simpleName}")
