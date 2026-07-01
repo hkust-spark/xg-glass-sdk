@@ -487,11 +487,11 @@ class RokidGlassesClient(
     // -----------------------
 
     @SuppressLint("MissingPermission")
-    private suspend fun scanFirstDeviceSuspend(): BluetoothDevice = suspendCoroutine { cont ->
+    private suspend fun scanFirstDeviceSuspend(): BluetoothDevice = suspendCancellableCoroutine { cont ->
         val scanner = bluetoothAdapter?.bluetoothLeScanner
         if (scanner == null) {
             cont.resumeWithException(GlassesError.Transport("Bluetooth LE scanner not available"))
-            return@suspendCoroutine
+            return@suspendCancellableCoroutine
         }
 
         scanResultMap.clear()
@@ -526,6 +526,10 @@ class RokidGlassesClient(
                 }
             }
         }
+
+        // Make the scan cancellable so connect()'s withTimeout(connectTimeoutMs) actually stops it
+        // when no Rokid device is present (otherwise the BLE scan runs forever and connect hangs).
+        cont.invokeOnCancellation { stopScan(cb) }
 
         try {
             scanner.startScan(filters, settings, cb)
