@@ -14,19 +14,31 @@ import android.media.MediaRecorder
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import androidx.exifinterface.media.ExifInterface
-import com.meta.wearable.dat.camera.StreamSession
-import com.meta.wearable.dat.camera.startStreamSession
+import com.meta.wearable.dat.camera.Stream
+import com.meta.wearable.dat.camera.addStream
+import com.meta.wearable.dat.camera.removeStream
 import com.meta.wearable.dat.camera.types.PhotoData
 import com.meta.wearable.dat.camera.types.StreamConfiguration
-import com.meta.wearable.dat.camera.types.StreamSessionState
+import com.meta.wearable.dat.camera.types.StreamState
 import com.meta.wearable.dat.camera.types.VideoQuality
 import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.selectors.AutoDeviceSelector
 import com.meta.wearable.dat.core.selectors.DeviceSelector
+import com.meta.wearable.dat.core.session.DeviceSession
+import com.meta.wearable.dat.core.session.DeviceSessionState
+import com.meta.wearable.dat.core.types.DeviceCompatibility
 import com.meta.wearable.dat.core.types.DeviceIdentifier
+import com.meta.wearable.dat.core.types.DeviceSessionError
 import com.meta.wearable.dat.core.types.Permission
 import com.meta.wearable.dat.core.types.PermissionStatus
 import com.meta.wearable.dat.core.types.RegistrationState
+import com.meta.wearable.dat.display.Display
+import com.meta.wearable.dat.display.addDisplay
+import com.meta.wearable.dat.display.removeDisplay
+import com.meta.wearable.dat.display.types.DisplayState
+import com.meta.wearable.dat.display.views.Alignment
+import com.meta.wearable.dat.display.views.Direction
+import com.meta.wearable.dat.display.views.TextStyle
 import com.xgglass.core.AudioEncoding
 import com.xgglass.core.AudioSource
 import com.xgglass.core.BaseGlassesClient
@@ -51,21 +63,25 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.coroutines.resume
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Meta AI glasses adapter for Android phone hosts.
  *
  * Notes:
  * - Camera/photo capture is routed through the DAT SDK.
- * - Meta glasses do not expose a text display, so `display()` is unsupported.
+ * - Display text is routed through DAT 0.8's component display API on Meta Ray-Ban Display.
+ *   Older camera-only Ray-Ban Meta devices may reject display attach at runtime.
  * - Mic/speaker audio uses Android's Bluetooth communication stack, following DAT docs.
  */
 class MetaWearablesGlassesClient @JvmOverloads constructor(
@@ -78,7 +94,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
 
     override val capabilities: DeviceCapabilities = DeviceCapabilities(
         canCapturePhoto = true,
-        canDisplayText = false,
+        canDisplayText = true,
         canRecordAudio = true,
         canPlayTts = false,
         canPlayAudioBytes = true,
@@ -91,9 +107,13 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
     }
     private val deviceSelector: DeviceSelector = options.deviceSelector ?: AutoDeviceSelector()
 
-    @Volatile private var activeDeviceId: DeviceIdentifier? = null
+    @Volatile private var activeSession: DeviceSession? = null
+    @Volatile private var activeStream: Stream? = null
+    @Volatile private var activeDisplay: Display? = null
     @Volatile private var activeMic: MicrophoneSession? = null
     @Volatile private var activePlayer: MediaPlayer? = null
+
+    private val displayLock = Mutex()
 
     private val audioRouteLock = Any()
     private var audioRouteRefCount = 0
@@ -102,10 +122,23 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
     override suspend fun doConnect() {
         ensureWearablesInitialized()
         ensureRegistered()
-        val deviceId = awaitActiveDevice()
-        activeDeviceId = deviceId
-        emitCompatibilityWarningIfNeeded(deviceId)
-        emitLog("Meta: connected to device $deviceId")
+        val session = createDeviceSession()
+        activeSession = session
+        try {
+            session.start()
+            awaitSessionStarted(session)
+            val deviceId = awaitActiveDevice()
+            emitCompatibilityWarningIfNeeded(deviceId)
+            emitLog("Meta: connected to device $deviceId")
+        } catch (ce: CancellationException) {
+            activeSession = null
+            runCatching { session.stop() }
+            throw ce
+        } catch (e: Exception) {
+            activeSession = null
+            runCatching { session.stop() }
+            throw e
+        }
     }
 
     override fun mapConnectError(error: Exception): GlassesError {
@@ -113,12 +146,22 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
     }
 
     override suspend fun disconnect() {
+        val session = activeSession
+        detachDisplayQuietly(session)
+        stopActiveStreamQuietly(session)
+        activeSession = null
+        try {
+            session?.stop()
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            // Best-effort disconnect.
+        }
         try { activeMic?.stop() } catch (_: Exception) {}
         activeMic = null
         try { activePlayer?.release() } catch (_: Exception) {}
         activePlayer = null
         forceClearAudioRoute()
-        activeDeviceId = null
         _state.value = ConnectionState.Disconnected
     }
 
@@ -129,14 +172,19 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
             ensureCameraPermissionGranted()
 
             // DAT only exposes still capture while a stream session is active, so we start
-            // a short-lived stream, wait for STREAMING, capture once, then close it.
+            // a short-lived stream on the active device session, wait for STREAMING,
+            // capture once, then detach it.
             val captured = withTimeout(options.timeoutMs) {
-                val session = startPhotoSession(options)
+                val session = activeSession ?: throw GlassesError.NotConnected
+                val stream = startPhotoStream(session, options)
                 try {
-                    awaitStreaming(session, options.timeoutMs)
-                    val photo = session.capturePhoto().getOrElse { cause ->
-                        throw GlassesError.Transport("Meta capturePhoto failed: ${cause.message}", cause)
-                    }
+                    awaitStreaming(stream, options.timeoutMs)
+                    val photo = stream.capturePhoto().fold(
+                        onSuccess = { it },
+                        onFailure = { error, cause ->
+                            throw GlassesError.Transport("Meta capturePhoto failed: ${error.description}", cause)
+                        },
+                    )
                     withContext(Dispatchers.Default) {
                         photo.toCapturedImage(
                             quality = options.photoQuality.toMetaJpegQuality(),
@@ -144,22 +192,48 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
                         )
                     }
                 } finally {
-                    session.close()
+                    stopPhotoStream(session, stream)
                 }
             }
 
             Result.success(captured)
+        } catch (e: TimeoutCancellationException) {
+            Result.failure(GlassesError.Timeout("Meta capture"))
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (e: Exception) {
             Result.failure((e as? GlassesError) ?: GlassesError.Transport("Meta capture failed: ${e.message}", e))
         }
     }
 
     override suspend fun display(text: String, options: DisplayOptions): Result<Unit> {
-        return Result.failure(
-            GlassesError.Unsupported(
-                "Meta AI glasses do not expose a text display surface through DAT."
+        if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
+
+        return try {
+            val display = ensureDisplayStarted()
+            val displayText = text
+            display.sendContent {
+                flexBox(
+                    direction = Direction.COLUMN,
+                    padding = 24,
+                    alignment = Alignment.CENTER,
+                    crossAlignment = Alignment.CENTER,
+                ) {
+                    text(displayText, style = TextStyle.BODY)
+                }
+            }.fold(
+                onSuccess = { Result.success(Unit) },
+                onFailure = { error, cause ->
+                    Result.failure(GlassesError.Transport("Meta display sendContent failed: ${error.description}", cause))
+                },
             )
-        )
+        } catch (e: TimeoutCancellationException) {
+            Result.failure(GlassesError.Timeout("Meta display"))
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            Result.failure((e as? GlassesError) ?: GlassesError.Transport("Meta display failed: ${e.message}", e))
+        }
     }
 
     override suspend fun playAudio(source: AudioSource, options: PlayAudioOptions): Result<Unit> {
@@ -211,6 +285,9 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
             activeMic = session
             emitLog("Meta: microphone started over Bluetooth HFP")
             Result.success(session)
+        } catch (ce: CancellationException) {
+            releaseAudioRoute()
+            throw ce
         } catch (e: Exception) {
             releaseAudioRoute()
             Result.failure((e as? GlassesError) ?: GlassesError.Transport("Meta microphone failed: ${e.message}", e))
@@ -237,6 +314,8 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
                 playEncoded(bytes, preferredOutput)
             }
             Result.success(Unit)
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (e: Exception) {
             Result.failure((e as? GlassesError) ?: GlassesError.Transport("Meta playAudio failed: ${e.message}", e))
         }
@@ -276,7 +355,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
                 Wearables.initialize(activity.applicationContext)
                     .onFailure { error, cause ->
                         wearablesInitialized = false
-                        throw GlassesError.Transport("Meta Wearables initialize failed: $error", cause)
+                        throw GlassesError.Transport("Meta Wearables initialize failed: ${error.description}", cause)
                     }
                 wearablesInitialized = true
             } catch (e: Exception) {
@@ -288,11 +367,9 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
 
     private suspend fun ensureRegistered() {
         when (val current = Wearables.registrationState.value) {
-            is RegistrationState.Registered -> return
-            is RegistrationState.Unavailable -> {
-                throw GlassesError.Transport("Meta registration unavailable: ${current.error ?: "unknown"}")
-            }
-            else -> Unit
+            RegistrationState.REGISTERED -> return
+            RegistrationState.UNAVAILABLE -> emitWarn("Meta registration state is UNAVAILABLE; launching registration anyway.")
+            else -> emitLog("Meta registration state: $current")
         }
 
         emitLog("Meta: starting registration flow in Meta AI app")
@@ -300,16 +377,49 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
             Wearables.startRegistration(activity)
         }
 
-        withTimeout(options.registrationTimeoutMs) {
-            Wearables.registrationState.first { it is RegistrationState.Registered }
+        val registered = withTimeoutOrNull(options.registrationTimeoutMs) {
+            Wearables.registrationState.first { state ->
+                emitLog("Meta registration state: $state")
+                state == RegistrationState.REGISTERED
+            }
+        }
+        if (registered != RegistrationState.REGISTERED) {
+            throw GlassesError.Timeout("Meta registration")
         }
     }
 
     private suspend fun awaitActiveDevice(): DeviceIdentifier {
-        return withTimeout(options.deviceDiscoveryTimeoutMs) {
-            deviceSelector.activeDevice(Wearables.devices)
-                .filterNotNull()
-                .first()
+        val current = deviceSelector.activeDevice()
+        if (current != null) return current
+
+        return withTimeoutOrNull(options.deviceDiscoveryTimeoutMs) {
+            val selected = deviceSelector.activeDeviceFlow().first { it != null }
+            selected ?: throw GlassesError.Transport("Meta device selector emitted no active device")
+        } ?: throw GlassesError.Timeout("Meta device discovery")
+    }
+
+    private fun createDeviceSession(): DeviceSession {
+        return Wearables.createSession(deviceSelector).fold(
+            onSuccess = { it },
+            onFailure = { error, cause ->
+                throw GlassesError.Transport("Meta createSession failed: ${error.description}", cause)
+            },
+        )
+    }
+
+    private suspend fun awaitSessionStarted(session: DeviceSession) {
+        var lastState = session.state.value
+        val state = withTimeoutOrNull(options.deviceDiscoveryTimeoutMs) {
+            session.state.first { currentState ->
+                lastState = currentState
+                emitLog("Meta session state: $currentState")
+                currentState == DeviceSessionState.STARTED ||
+                    currentState == DeviceSessionState.STOPPED
+            }
+        } ?: throw GlassesError.Transport("Meta session timed out before STARTED (lastState=$lastState)")
+
+        if (state != DeviceSessionState.STARTED) {
+            throw GlassesError.Transport("Meta session stopped before STARTED: $state")
         }
     }
 
@@ -339,45 +449,186 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
 
     private suspend fun emitCompatibilityWarningIfNeeded(deviceId: DeviceIdentifier) {
         val metadata = Wearables.devicesMetadata[deviceId]?.first() ?: return
-        if (metadata.compatibility == com.meta.wearable.dat.core.types.DeviceCompatibility.DEVICE_UPDATE_REQUIRED) {
+        if (metadata.compatibility == DeviceCompatibility.DEVICE_UPDATE_REQUIRED) {
             emitWarn("Meta device '${metadata.name.ifEmpty { deviceId.toString() }}' requires a firmware update.")
         }
     }
 
-    private fun startPhotoSession(options: CaptureOptions): StreamSession {
+    private fun startPhotoStream(session: DeviceSession, options: CaptureOptions): Stream {
         val videoQuality = when {
             (options.targetWidth ?: 0) >= 1280 || (options.targetHeight ?: 0) >= 720 -> VideoQuality.HIGH
             (options.targetWidth ?: 0) >= 896 || (options.targetHeight ?: 0) >= 504 -> VideoQuality.MEDIUM
             else -> VideoQuality.LOW
         }
-        return Wearables.startStreamSession(
-            context = activity.applicationContext,
-            deviceSelector = deviceSelector,
-            streamConfiguration = StreamConfiguration(
+
+        val stream = session.addStream(
+            StreamConfiguration(
                 videoQuality = videoQuality,
                 frameRate = 15,
             ),
+        ).fold(
+            onSuccess = { it },
+            onFailure = { error, cause ->
+                throw GlassesError.Transport("Meta addStream failed: ${error.description}", cause)
+            },
         )
+        activeStream = stream
+        stream.start().fold(
+            onSuccess = { },
+            onFailure = { error, cause ->
+                // Clean up the just-added stream so it is not orphaned in the session.
+                activeStream = null
+                runCatching { stream.stop() }
+                runCatching { session.removeStream() }
+                throw GlassesError.Transport("Meta stream start failed: ${error.description}", cause)
+            },
+        )
+        return stream
     }
 
-    private suspend fun awaitStreaming(session: StreamSession, timeoutMs: Long) {
-        var lastState = session.state.value
-        val state = try {
-            withTimeout(timeoutMs) {
-                session.state.first { currentState ->
-                    lastState = currentState
-                    emitLog("Meta stream state: $currentState")
-                    currentState == StreamSessionState.STREAMING ||
-                        currentState == StreamSessionState.CLOSED
-                }
+    private suspend fun awaitStreaming(stream: Stream, timeoutMs: Long) {
+        var lastState = stream.state.value
+        val state = withTimeoutOrNull(timeoutMs) {
+            stream.state.first { currentState ->
+                lastState = currentState
+                emitLog("Meta stream state: $currentState")
+                currentState == StreamState.STREAMING ||
+                    currentState == StreamState.CLOSED
             }
-        } catch (_: TimeoutCancellationException) {
-            throw GlassesError.Transport(
-                "Meta stream timed out before reaching STREAMING (lastState=$lastState)"
-            )
-        }
-        if (state != StreamSessionState.STREAMING) {
+        } ?: throw GlassesError.Transport(
+            "Meta stream timed out before reaching STREAMING (lastState=$lastState)"
+        )
+
+        if (state != StreamState.STREAMING) {
             throw GlassesError.Transport("Meta stream closed before reaching STREAMING: $state")
+        }
+    }
+
+    private fun stopPhotoStream(session: DeviceSession, stream: Stream) {
+        if (activeStream === stream) activeStream = null
+        try {
+            stream.stop()
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            // Best-effort cleanup.
+        }
+        try {
+            session.removeStream().onFailure { error, _ ->
+                emitWarn("Meta: removeStream failed: ${error.description}")
+            }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            // Best-effort cleanup.
+        }
+    }
+
+    private fun stopActiveStreamQuietly(session: DeviceSession?) {
+        val stream = activeStream
+        activeStream = null
+        try {
+            stream?.stop()
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            // Best-effort disconnect.
+        }
+        if (session != null) {
+            try {
+                session.removeStream().onFailure { error, _ ->
+                    emitWarn("Meta: removeStream failed: ${error.description}")
+                }
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (_: Exception) {
+                // Best-effort disconnect.
+            }
+        }
+    }
+
+    private suspend fun ensureDisplayStarted(): Display = displayLock.withLock {
+        val existing = activeDisplay
+        val reusable = if (existing == null) {
+            null
+        } else when (existing.state.value) {
+            DisplayState.STARTED -> existing
+            DisplayState.STARTING -> {
+                awaitDisplayStarted(existing)
+                existing
+            }
+            DisplayState.STOPPING,
+            DisplayState.STOPPED,
+            DisplayState.CLOSED,
+            -> {
+                // Terminal state: detach before re-attaching so the session can accept a new display.
+                activeDisplay = null
+                activeSession?.let { session -> runCatching { session.removeDisplay() } }
+                null
+            }
+        }
+
+        reusable ?: run {
+            val session = activeSession ?: throw GlassesError.NotConnected
+            val display = session.addDisplay().fold(
+                onSuccess = { it },
+                onFailure = { error, cause ->
+                    throw mapDisplayAttachError(error, cause)
+                },
+            )
+            activeDisplay = display
+            awaitDisplayStarted(display)
+            display
+        }
+    }
+
+    private suspend fun awaitDisplayStarted(display: Display) {
+        var lastState = display.state.value
+        val state = withTimeoutOrNull(options.displayTimeoutMs) {
+            display.state.first { currentState ->
+                lastState = currentState
+                emitLog("Meta display state: $currentState")
+                currentState == DisplayState.STARTED ||
+                    currentState == DisplayState.STOPPED ||
+                    currentState == DisplayState.CLOSED
+            }
+        } ?: throw GlassesError.Transport("Meta display timed out before STARTED (lastState=$lastState)")
+
+        if (state != DisplayState.STARTED) {
+            activeDisplay = null
+            throw GlassesError.Transport("Meta display stopped before STARTED: $state")
+        }
+    }
+
+    private fun mapDisplayAttachError(error: DeviceSessionError, cause: Throwable?): GlassesError {
+        return when (error) {
+            DeviceSessionError.CAPABILITY_DENIED,
+            DeviceSessionError.CAPABILITY_NOT_FOUND,
+            -> GlassesError.Unsupported("Meta display unsupported or denied: ${error.description}")
+            else -> GlassesError.Transport("Meta addDisplay failed: ${error.description}", cause)
+        }
+    }
+
+    private fun detachDisplayQuietly(session: DeviceSession?) {
+        val display = activeDisplay
+        activeDisplay = null
+        if (session != null) {
+            try {
+                session.removeDisplay().onFailure { error, _ ->
+                    emitWarn("Meta: removeDisplay failed: ${error.description}")
+                }
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (_: Exception) {
+                // Best-effort disconnect.
+            }
+        }
+        try {
+            display?.stop()
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            // Best-effort disconnect.
         }
     }
 
@@ -477,6 +728,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
         val deviceSelector: DeviceSelector? = null,
         val registrationTimeoutMs: Long = 90_000,
         val deviceDiscoveryTimeoutMs: Long = 30_000,
+        val displayTimeoutMs: Long = 30_000,
         val audioRouteWarmupMs: Long = 1_000,
     )
 

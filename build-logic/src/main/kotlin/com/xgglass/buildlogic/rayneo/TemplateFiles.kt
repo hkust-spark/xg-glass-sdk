@@ -20,7 +20,7 @@ internal object RayneoHostTemplate {
 
             android {
                 namespace = "com.xgglass.rayneo.host"
-                compileSdk = 34
+                compileSdk = 35
 
                 defaultConfig {
                     applicationId = "com.xgglass.rayneo.host"

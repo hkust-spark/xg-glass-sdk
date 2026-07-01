@@ -3,7 +3,7 @@ package com.xgglass.buildlogic.android
 import com.android.build.api.dsl.CommonExtension
 import org.gradle.api.JavaVersion
 
-internal const val XG_COMPILE_SDK = 34
+internal const val XG_COMPILE_SDK = 35
 internal const val XG_MIN_SDK = 28
 
 internal fun CommonExtension<*, *, *, *, *, *>.applyXgGlassAndroidDefaults() {

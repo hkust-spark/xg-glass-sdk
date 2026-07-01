@@ -32,6 +32,10 @@
         <meta-data
             android:name="com.meta.wearable.mwdat.APPLICATION_ID"
             android:value="0" />
+        <!-- Use 0 while developing with Meta DAT developer mode enabled. -->
+        <meta-data
+            android:name="com.meta.wearable.mwdat.CLIENT_TOKEN"
+            android:value="0" />
 
         <!-- Developer entry class (loaded by phone host to render commands) -->
         <meta-data

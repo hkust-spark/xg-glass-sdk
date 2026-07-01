@@ -45,7 +45,7 @@ val appMinSdk = if (hasMetaDatAccess) 29 else 28
 
 android {
     namespace = "com.example.xgglassapp"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.xgglassapp"
