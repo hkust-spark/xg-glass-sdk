@@ -64,11 +64,8 @@ class SimulatorGlassesClient(
     private val activity: AppCompatActivity,
     private val displaySink: ((String) -> Unit)? = null,
     private val videoPath: String? = null,
-) : BaseGlassesClient() {
-
-    override val model: GlassesModel = GlassesModel.SIMULATOR
-
-    override val capabilities: DeviceCapabilities = DeviceCapabilities(
+) : BaseGlassesClient(
+    initialCapabilities = DeviceCapabilities(
         canCapturePhoto = true,
         canDisplayText = true,
         canRecordAudio = true,
@@ -76,7 +73,10 @@ class SimulatorGlassesClient(
         canPlayAudioBytes = true,
         supportsTapEvents = false,
         supportsStreamingTextUpdates = false,
-    )
+    ),
+) {
+
+    override val model: GlassesModel = GlassesModel.SIMULATOR
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageCapture: ImageCapture? = null

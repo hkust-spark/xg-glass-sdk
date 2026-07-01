@@ -27,11 +27,9 @@ import com.xgglass.core.PlayAudioOptions
 class AndroidXrGlassesClient(
     private val hostContext: Context,
     private val options: AndroidXrOptions = AndroidXrOptions(),
-) : BaseGlassesClient() {
+) : BaseGlassesClient(initialCapabilities = options.assumedCapabilities) {
 
     override val model: GlassesModel = GlassesModel.ANDROID_XR
-
-    override val capabilities: DeviceCapabilities = options.assumedCapabilities
 
     @Volatile private var projectedContext: Context? = null
     @Volatile private var activeMic: MicrophoneSession? = null

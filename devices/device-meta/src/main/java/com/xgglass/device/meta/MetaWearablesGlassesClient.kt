@@ -29,6 +29,7 @@ import com.meta.wearable.dat.core.session.DeviceSessionState
 import com.meta.wearable.dat.core.types.DeviceCompatibility
 import com.meta.wearable.dat.core.types.DeviceIdentifier
 import com.meta.wearable.dat.core.types.DeviceSessionError
+import com.meta.wearable.dat.core.types.DeviceType
 import com.meta.wearable.dat.core.types.Permission
 import com.meta.wearable.dat.core.types.PermissionStatus
 import com.meta.wearable.dat.core.types.RegistrationState
@@ -80,27 +81,27 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * Notes:
  * - Camera/photo capture is routed through the DAT SDK.
- * - Display text is routed through DAT 0.8's component display API on Meta Ray-Ban Display.
- *   Older camera-only Ray-Ban Meta devices may reject display attach at runtime.
+ * - Display text is enabled only when the connected DAT device is Meta Ray-Ban Display.
+ *   Camera-only Meta devices keep canDisplayText=false and may reject display attach at runtime.
  * - Mic/speaker audio uses Android's Bluetooth communication stack, following DAT docs.
  */
 class MetaWearablesGlassesClient @JvmOverloads constructor(
     private val activity: AppCompatActivity,
     private val externalActivityBridge: ExternalActivityBridge? = null,
     private val options: MetaWearablesOptions = MetaWearablesOptions(),
-) : BaseGlassesClient() {
-
-    override val model: GlassesModel = GlassesModel.META
-
-    override val capabilities: DeviceCapabilities = DeviceCapabilities(
+) : BaseGlassesClient(
+    initialCapabilities = DeviceCapabilities(
         canCapturePhoto = true,
-        canDisplayText = true,
+        canDisplayText = false,
         canRecordAudio = true,
         canPlayTts = false,
         canPlayAudioBytes = true,
         supportsTapEvents = false,
         supportsStreamingTextUpdates = false,
-    )
+    ),
+) {
+
+    override val model: GlassesModel = GlassesModel.META
 
     private val audioManager: AudioManager by lazy {
         activity.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -128,7 +129,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
             session.start()
             awaitSessionStarted(session)
             val deviceId = awaitActiveDevice()
-            emitCompatibilityWarningIfNeeded(deviceId)
+            applyConnectedDeviceInfo(deviceId)
             emitLog("Meta: connected to device $deviceId")
         } catch (ce: CancellationException) {
             activeSession = null
@@ -162,6 +163,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
         try { activePlayer?.release() } catch (_: Exception) {}
         activePlayer = null
         forceClearAudioRoute()
+        resetCapabilities()
         _state.value = ConnectionState.Disconnected
     }
 
@@ -447,8 +449,12 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
         }
     }
 
-    private suspend fun emitCompatibilityWarningIfNeeded(deviceId: DeviceIdentifier) {
-        val metadata = Wearables.devicesMetadata[deviceId]?.first() ?: return
+    private suspend fun applyConnectedDeviceInfo(deviceId: DeviceIdentifier) {
+        val metadata = Wearables.devicesMetadata[deviceId]?.first()
+        val deviceType = metadata?.deviceType
+        updateCapabilities { it.copy(canDisplayText = deviceType == DeviceType.META_RAYBAN_DISPLAY) }
+
+        if (metadata == null) return
         if (metadata.compatibility == DeviceCompatibility.DEVICE_UPDATE_REQUIRED) {
             emitWarn("Meta device '${metadata.name.ifEmpty { deviceId.toString() }}' requires a firmware update.")
         }

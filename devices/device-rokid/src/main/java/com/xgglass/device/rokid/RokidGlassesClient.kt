@@ -72,10 +72,8 @@ import kotlin.coroutines.suspendCoroutine
 class RokidGlassesClient(
     private val activity: AppCompatActivity,
     private val options: RokidOptions = RokidOptions(),
-) : BaseGlassesClient() {
-
-    override val model: GlassesModel = GlassesModel.ROKID
-    override val capabilities: DeviceCapabilities = DeviceCapabilities(
+) : BaseGlassesClient(
+    initialCapabilities = DeviceCapabilities(
         canCapturePhoto = true,
         canDisplayText = true,
         canRecordAudio = true,
@@ -83,7 +81,10 @@ class RokidGlassesClient(
         canPlayAudioBytes = true,
         supportsTapEvents = false,
         supportsStreamingTextUpdates = true,
-    )
+    ),
+) {
+
+    override val model: GlassesModel = GlassesModel.ROKID
 
     private val display = RokidDisplayController()
 

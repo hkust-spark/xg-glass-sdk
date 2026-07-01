@@ -57,11 +57,8 @@ import kotlin.coroutines.resumeWithException
 class RayNeoRuntimeGlassesClient(
     private val context: Context,
     private val displaySink: RayNeoDisplaySink = ToastDisplaySink(),
-) : BaseGlassesClient(eventBufferOverflow = BufferOverflow.SUSPEND) {
-
-    override val model: GlassesModel = GlassesModel.RAYNEO
-
-    override val capabilities: DeviceCapabilities = DeviceCapabilities(
+) : BaseGlassesClient(
+    initialCapabilities = DeviceCapabilities(
         canCapturePhoto = true,
         canDisplayText = true,
         canRecordAudio = true,
@@ -69,7 +66,11 @@ class RayNeoRuntimeGlassesClient(
         canPlayAudioBytes = true,
         supportsTapEvents = false,
         supportsStreamingTextUpdates = false,
-    )
+    ),
+    eventBufferOverflow = BufferOverflow.SUSPEND,
+) {
+
+    override val model: GlassesModel = GlassesModel.RAYNEO
 
     @Volatile private var activeMic: MicrophoneSession? = null
     @Volatile private var activePlayer: MediaPlayer? = null

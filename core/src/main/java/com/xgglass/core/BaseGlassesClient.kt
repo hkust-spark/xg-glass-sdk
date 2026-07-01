@@ -13,8 +13,16 @@ import kotlinx.coroutines.sync.withLock
  * Shared state, event, and connect lifecycle plumbing for device clients.
  */
 abstract class BaseGlassesClient(
+    initialCapabilities: DeviceCapabilities,
     eventBufferOverflow: BufferOverflow = BufferOverflow.DROP_OLDEST,
 ) : GlassesClient {
+    private val defaultCapabilities: DeviceCapabilities = initialCapabilities
+
+    @Volatile
+    private var currentCapabilities: DeviceCapabilities = initialCapabilities
+    override val capabilities: DeviceCapabilities
+        get() = currentCapabilities
+
     protected val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     override val state: StateFlow<ConnectionState> = _state
 
@@ -72,6 +80,16 @@ abstract class BaseGlassesClient(
     }
 
     protected abstract suspend fun doConnect()
+
+    /** Refine the reported capabilities (e.g. after the real device model is known). Thread-safe. */
+    protected fun updateCapabilities(transform: (DeviceCapabilities) -> DeviceCapabilities) {
+        currentCapabilities = transform(currentCapabilities)
+    }
+
+    /** Restore the initial (pre-connect) capabilities. Call on disconnect. */
+    protected fun resetCapabilities() {
+        currentCapabilities = defaultCapabilities
+    }
 
     protected fun emitLog(message: String) {
         _events.tryEmit(GlassesEvent.Log(message))

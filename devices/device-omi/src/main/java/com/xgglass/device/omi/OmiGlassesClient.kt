@@ -68,12 +68,8 @@ import kotlin.coroutines.resumeWithException
 class OmiGlassesClient(
     private val context: Context,
     private val options: OmiOptions = OmiOptions(),
-) : BaseGlassesClient(eventBufferOverflow = BufferOverflow.SUSPEND) {
-
-    override val model: GlassesModel = GlassesModel.OMI
-
-    @Volatile
-    private var currentCapabilities: DeviceCapabilities = DeviceCapabilities(
+) : BaseGlassesClient(
+    initialCapabilities = DeviceCapabilities(
         canCapturePhoto = false,
         canDisplayText = false,
         canRecordAudio = true,
@@ -81,9 +77,11 @@ class OmiGlassesClient(
         canPlayAudioBytes = false,
         supportsTapEvents = false,
         supportsStreamingTextUpdates = false,
-    )
-    override val capabilities: DeviceCapabilities
-        get() = currentCapabilities
+    ),
+    eventBufferOverflow = BufferOverflow.SUSPEND,
+) {
+
+    override val model: GlassesModel = GlassesModel.OMI
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -161,6 +159,7 @@ class OmiGlassesClient(
         }
         audioSession = null
         closeGatt()
+        resetCapabilities()
         _state.value = ConnectionState.Disconnected
     }
 
@@ -409,7 +408,7 @@ class OmiGlassesClient(
     }
 
     private fun updatePhotoCapability(canCapturePhoto: Boolean) {
-        currentCapabilities = currentCapabilities.copy(canCapturePhoto = canCapturePhoto)
+        updateCapabilities { it.copy(canCapturePhoto = canCapturePhoto) }
     }
 
     private fun closeGatt() {
