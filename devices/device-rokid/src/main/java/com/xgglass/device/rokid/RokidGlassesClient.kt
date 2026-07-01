@@ -55,7 +55,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 
 /**
  * Rokid implementation of [GlassesClient].
@@ -427,7 +426,7 @@ class RokidGlassesClient(
     // -----------------------
 
     private suspend fun takeGlassPhotoSuspend(width: Int, height: Int, quality: Int): String =
-        suspendCoroutine { cont ->
+        suspendCancellableCoroutine { cont ->
             val status = CxrApi.getInstance().takeGlassPhoto(width, height, quality, object : PhotoPathCallback {
                 override fun onPhotoPath(status: ValueUtil.CxrStatus?, path: String?) {
                     if (status == ValueUtil.CxrStatus.RESPONSE_SUCCEED && !path.isNullOrBlank()) {
@@ -445,11 +444,11 @@ class RokidGlassesClient(
         }
 
     private suspend fun syncSingleFileSuspend(remotePath: String): String =
-        suspendCoroutine { cont ->
+        suspendCancellableCoroutine { cont ->
             val saveDir = activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
                 ?: run {
                     cont.resumeWithException(GlassesError.Transport("No external pictures dir"))
-                    return@suspendCoroutine
+                    return@suspendCancellableCoroutine
                 }
 
             // CXR-M concatenates with string addition internally; always include trailing "/"
@@ -550,8 +549,10 @@ class RokidGlassesClient(
     }
 
     private suspend fun initBluetoothSuspend(device: BluetoothDevice): Pair<String, String> =
-        suspendCoroutine { cont ->
+        suspendCancellableCoroutine { cont ->
             val done = AtomicBoolean(false)
+            // Tear down the BT stack if connect() is cancelled/timed out mid-init.
+            cont.invokeOnCancellation { runCatching { CxrApi.getInstance().deinitBluetooth() } }
             CxrApi.getInstance().initBluetooth(activity, device, object : BluetoothStatusCallback {
                 override fun onConnectionInfo(
                     socketUuid: String?,
@@ -582,10 +583,12 @@ class RokidGlassesClient(
         }
 
     private suspend fun connectBluetoothSuspend(socketUuid: String, macAddress: String, useApplicationContext: Boolean) {
-        suspendCoroutine<Unit> { cont ->
+        suspendCancellableCoroutine<Unit> { cont ->
             val (snLc, clientSecret) = requireAuthorization()
             val ctx = if (useApplicationContext) activity.applicationContext else activity
             val done = AtomicBoolean(false)
+            // Tear down the BT stack if connect() is cancelled/timed out mid-connect.
+            cont.invokeOnCancellation { runCatching { CxrApi.getInstance().deinitBluetooth() } }
             CxrApi.getInstance().connectBluetooth(ctx, socketUuid, macAddress, object : BluetoothStatusCallback {
                 override fun onConnectionInfo(
                     socketUuid: String?,
