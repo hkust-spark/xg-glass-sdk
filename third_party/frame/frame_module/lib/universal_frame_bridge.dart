@@ -17,7 +17,7 @@ class UniversalFrameBridge {
 
   static final UniversalFrameBridge instance = UniversalFrameBridge._();
 
-  static const _methodChannel = MethodChannel("universal_glasses/frame/methods");
+  static const _methodChannel = MethodChannel("xgglass/frame/methods");
 
   static const int _msgCaptureSettings = 0x20;
   static const int _msgPlainText = 0x21;
@@ -137,7 +137,7 @@ class UniversalFrameBridge {
       _emitWarn("Frame stringResponse error: $e");
     });
 
-    // Tap is sent by ug_frame_app.lua as a 0x09 single-byte raw data packet.
+    // Tap is sent by xgglass_frame_app.lua as a 0x09 single-byte raw data packet.
     final rxTap = RxTap();
     _tapSubs = rxTap.attach(dev.dataResponse).listen((count) {
       _emitTap(count);
@@ -302,17 +302,17 @@ class UniversalFrameBridge {
     final cameraMin = await rootBundle.loadString("assets/lua/camera.min.lua");
     final plainTextMin = await rootBundle.loadString("assets/lua/plain_text.min.lua");
     final audioMin = await rootBundle.loadString("assets/lua/audio.min.lua");
-    final appLua = await rootBundle.loadString("assets/lua/ug_frame_app.lua");
+    final appLua = await rootBundle.loadString("assets/lua/xgglass_frame_app.lua");
 
-    // Upload required libs. Use the exact filenames referenced by require() in ug_frame_app.lua
+    // Upload required libs. Use the exact filenames referenced by require() in xgglass_frame_app.lua
     await dev.uploadScript("data.min.lua", dataMin);
     await dev.uploadScript("camera.min.lua", cameraMin);
     await dev.uploadScript("plain_text.min.lua", plainTextMin);
     await dev.uploadScript("audio.min.lua", audioMin);
-    await dev.uploadScript("ug_frame_app.lua", appLua);
+    await dev.uploadScript("xgglass_frame_app.lua", appLua);
 
     // Start app loop (this will prevent further Lua REPL commands; use sendMessage afterwards).
-    await dev.sendString("require('ug_frame_app');print('ug_frame_app started')", awaitResponse: false);
+    await dev.sendString("require('xgglass_frame_app');print('xgglass_frame_app started')", awaitResponse: false);
   }
 
   void _setState(String state) {

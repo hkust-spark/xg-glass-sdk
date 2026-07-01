@@ -1,6 +1,6 @@
 # xg-glass
 
-This is a minimal command-line tool for driving an Android host project based on `universal_glasses`:
+This is a minimal command-line tool for driving an Android host project based on xg.glass:
 
 - `xg-glass init <dir>`: generate a developer project from a template (default: `./templates/kotlin-app`, using `includeBuild`)
 - `xg-glass build`: build the phone host APK (for RayNeo, it will auto-generate and package the glasses host APK into assets before building)

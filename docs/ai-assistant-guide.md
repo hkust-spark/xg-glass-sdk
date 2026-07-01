@@ -480,10 +480,10 @@ This is the simplest way to write an app. Implement one class, return your comma
 ```kotlin
 package com.example.myapp.logic
 
-import com.universalglasses.appcontract.UniversalAppContext
-import com.universalglasses.appcontract.UniversalAppEntrySimple
-import com.universalglasses.appcontract.UniversalCommand
-import com.universalglasses.core.DisplayOptions
+import com.xgglass.appcontract.UniversalAppContext
+import com.xgglass.appcontract.UniversalAppEntrySimple
+import com.xgglass.appcontract.UniversalCommand
+import com.xgglass.core.DisplayOptions
 
 class MyAppEntry : UniversalAppEntrySimple {
     override val id: String = "my_app"
@@ -818,16 +818,16 @@ if (!ctx.client.capabilities.canRecordAudio) {
 
 2. **Required imports** for a typical app:
    ```kotlin
-   import com.universalglasses.appcontract.UniversalAppContext
-   import com.universalglasses.appcontract.UniversalAppEntrySimple
-   import com.universalglasses.appcontract.UniversalCommand
-   import com.universalglasses.core.DisplayOptions
+   import com.xgglass.appcontract.UniversalAppContext
+   import com.xgglass.appcontract.UniversalAppEntrySimple
+   import com.xgglass.appcontract.UniversalCommand
+   import com.xgglass.core.DisplayOptions
    ```
 
 3. **For AI-powered apps, add:**
    ```kotlin
-   import com.universalglasses.appcontract.AIApiSettings
-   import com.universalglasses.appcontract.UserSettingField
+   import com.xgglass.appcontract.AIApiSettings
+   import com.xgglass.appcontract.UserSettingField
    ```
 
 4. **The OpenAI Kotlin client** (`com.aallam.openai`) is already available in the SDK dependencies. Use it for OpenAI-compatible APIs.
@@ -855,8 +855,8 @@ if (!ctx.client.capabilities.canRecordAudio) {
 ```kotlin
 package com.example.APPNAME.logic
 
-import com.universalglasses.appcontract.*
-import com.universalglasses.core.*
+import com.xgglass.appcontract.*
+import com.xgglass.core.*
 import com.aallam.openai.api.chat.*
 import com.aallam.openai.api.model.ModelId
 import com.aallam.openai.client.OpenAI
@@ -915,14 +915,14 @@ xg-glass run               # launch app
 
 ## Appendix: Available Dependencies
 
-The following libraries are pre-configured in the app logic module (`ug_app_logic`) and can be used directly in your entry file:
+The following libraries are pre-configured in the app logic module (`xgglass_app_logic`) and can be used directly in your entry file:
 
 | Library | Usage | Import |
 |---------|-------|--------|
-| xg.glass App Contract | Entry interfaces, `AIApiSettings`, `UniversalAppContext` | `com.universalglasses.appcontract.*` |
-| xg.glass Core API | `GlassesClient`, models, options, errors | `com.universalglasses.core.*` |
+| xg.glass App Contract | Entry interfaces, `AIApiSettings`, `UniversalAppContext` | `com.xgglass.appcontract.*` |
+| xg.glass Core API | `GlassesClient`, models, options, errors | `com.xgglass.core.*` |
 | OpenAI Kotlin | ChatGPT, Whisper, DALL-E, OpenAI-compatible APIs | `com.aallam.openai.*` |
 | Ktor Client (OkHttp) | HTTP engine for OpenAI client; also usable for custom HTTP requests | `io.ktor.client.*` |
 | Kotlinx Coroutines | `delay`, `withTimeout`, `Flow`, `CoroutineScope`, etc. | `kotlinx.coroutines.*` |
 
-For additional dependencies, add them to `ug_app_logic/build.gradle.kts` in a full project.
+For additional dependencies, add them to `xgglass_app_logic/build.gradle.kts` in a full project.

@@ -6,7 +6,7 @@ val metaGithubToken = (
 val hasMetaDatAccess = metaGithubToken.isNotEmpty()
 
 pluginManagement {
-    // Provide Universal Glasses build logic (RayNeo host generator + wiring plugin)
+    // Provide xg.glass build logic (RayNeo host generator + wiring plugin)
     // Replaced by xg-glass init: __XG_SDK_PATH__/build-logic
     includeBuild("__XG_SDK_PATH__/build-logic")
     repositories {
@@ -17,8 +17,8 @@ pluginManagement {
 }
 
 plugins {
-    // Generates + includes :ug_rayneo_glass_host under build/ (no manual glass_app module needed)
-    id("com.universalglasses.rayneo.settings")
+    // Generates + includes :xgglass_rayneo_glass_host under build/ (no manual glass_app module needed)
+    id("com.xgglass.rayneo.settings")
 }
 
 dependencyResolutionManagement {
@@ -59,8 +59,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "xg-glass-app"
 include(":app")
-include(":ug_app_logic")
+include(":xgglass_app_logic")
 
-// Use universal_glasses as a composite build (no publishing step required).
+// Use the xg.glass SDK as a composite build (no publishing step required).
 // Replaced by xg-glass init: __XG_SDK_PATH__
 includeBuild("__XG_SDK_PATH__")

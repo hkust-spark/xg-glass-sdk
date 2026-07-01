@@ -3,7 +3,7 @@ plugins {
     `java-gradle-plugin`
 }
 
-group = "com.universalglasses.buildlogic"
+group = "com.xgglass.buildlogic"
 version = "0.0.1"
 
 repositories {
@@ -14,35 +14,35 @@ repositories {
 
 dependencies {
     // Needed to compile against Android Gradle Plugin DSL types (LibraryExtension / ApplicationExtension).
-    // Keep versions aligned with `universal_glasses/gradle/libs.versions.toml`.
+    // Keep versions aligned with `xg-glass-sdk/gradle/libs.versions.toml`.
     compileOnly("com.android.tools.build:gradle:8.13.1")
     compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
 }
 
 gradlePlugin {
     plugins {
-        create("ugAndroidLibrary") {
-            id = "com.universalglasses.android.library"
-            implementationClass = "com.universalglasses.buildlogic.android.UniversalGlassesAndroidLibraryPlugin"
-            displayName = "Universal Glasses Android library convention"
-            description = "Standard Android library defaults for Universal Glasses modules."
+        create("xgAndroidLibrary") {
+            id = "com.xgglass.android.library"
+            implementationClass = "com.xgglass.buildlogic.android.XgGlassAndroidLibraryPlugin"
+            displayName = "xg.glass Android library convention"
+            description = "Standard Android library defaults for xg.glass modules."
         }
-        create("ugAndroidApplication") {
-            id = "com.universalglasses.android.application"
-            implementationClass = "com.universalglasses.buildlogic.android.UniversalGlassesAndroidApplicationPlugin"
-            displayName = "Universal Glasses Android application convention"
-            description = "Standard Android application defaults for Universal Glasses modules."
+        create("xgAndroidApplication") {
+            id = "com.xgglass.android.application"
+            implementationClass = "com.xgglass.buildlogic.android.XgGlassAndroidApplicationPlugin"
+            displayName = "xg.glass Android application convention"
+            description = "Standard Android application defaults for xg.glass modules."
         }
         create("rayneoSettings") {
-            id = "com.universalglasses.rayneo.settings"
-            implementationClass = "com.universalglasses.buildlogic.rayneo.UniversalGlassesRayneoSettingsPlugin"
-            displayName = "Universal Glasses RayNeo settings plugin"
+            id = "com.xgglass.rayneo.settings"
+            implementationClass = "com.xgglass.buildlogic.rayneo.XgGlassRayneoSettingsPlugin"
+            displayName = "xg.glass RayNeo settings plugin"
             description = "Generates and includes a RayNeo glass-host module in the consumer build."
         }
         create("rayneoApp") {
-            id = "com.universalglasses.rayneo.app"
-            implementationClass = "com.universalglasses.buildlogic.rayneo.UniversalGlassesRayneoAppPlugin"
-            displayName = "Universal Glasses RayNeo app plugin"
+            id = "com.xgglass.rayneo.app"
+            implementationClass = "com.xgglass.buildlogic.rayneo.XgGlassRayneoAppPlugin"
+            displayName = "xg.glass RayNeo app plugin"
             description = "Wires the RayNeo host APK build + copy-to-assets pipeline for a phone app."
         }
     }

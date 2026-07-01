@@ -52,7 +52,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     # Copy a curated subset of the template (avoid build/ caches).
     _copy_tree(template / "app", dst / "app")
-    _copy_tree(template / "ug_app_logic", dst / "ug_app_logic")
+    _copy_tree(template / "xgglass_app_logic", dst / "xgglass_app_logic")
     _copy_tree(template / "gradle", dst / "gradle")
 
     for f in [
@@ -80,7 +80,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         s = s.replace("__XG_SDK_PATH__", rel_sdk)
         settings_file.write_text(s, encoding="utf-8")
 
-    # Patch ugRayneo config in app/build.gradle.kts (entry class + mercury dir)
+    # Patch xgRayneo config in app/build.gradle.kts (entry class + mercury dir)
     app_gradle = dst / "app" / "build.gradle.kts"
     if app_gradle.exists():
         g = app_gradle.read_text(encoding="utf-8")
@@ -230,7 +230,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         sdk = Path(args.sdk).expanduser().resolve() if getattr(args, "sdk", None) else DEFAULT_SDK
         if not sdk.exists():
-            raise FileNotFoundError("SDK path not found. Provide --sdk pointing to your universal_glasses checkout.")
+            raise FileNotFoundError("SDK path not found. Provide --sdk pointing to your xg-glass-sdk checkout.")
 
         raw_entry_class = getattr(args, "entry_class", None)
         entry_class = raw_entry_class or _infer_entry_class_from_kt(kt)

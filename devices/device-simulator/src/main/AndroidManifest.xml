@@ -12,7 +12,7 @@
 
     <application>
         <activity
-            android:name="com.universalglasses.device.sim.SimDisplayActivity"
+            android:name="com.xgglass.device.sim.SimDisplayActivity"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
     </application>

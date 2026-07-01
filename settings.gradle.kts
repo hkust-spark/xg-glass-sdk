@@ -51,7 +51,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "universal-glasses"
+rootProject.name = "xg-glass-sdk"
 
 // Single entry-point artifact for third-party apps (one dependency line).
 include(":universal")

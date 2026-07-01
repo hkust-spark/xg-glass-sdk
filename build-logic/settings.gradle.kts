@@ -1,1 +1,1 @@
-rootProject.name = "universal-glasses-build-logic"
+rootProject.name = "xg-glass-sdk-build-logic"

@@ -1,4 +1,4 @@
-# xg-glass Kotlin app template (universal_glasses)
+# xg-glass Kotlin app template
 
 This is a template project used by xg-glass init.
 
@@ -6,7 +6,7 @@ This is a template project used by xg-glass init.
 
 In most cases, developers only need to modify the business logic module’s ExampleAppEntry.kt (the sample entry; recommended to rename/replace it):
 
-- `ug_app_logic/src/main/java/.../ExampleAppEntry.kt`
+- `xgglass_app_logic/src/main/java/.../ExampleAppEntry.kt`
 
 ## How to build / install / run
 

@@ -12,7 +12,7 @@ from .constants import DEFAULT_CONFIG_FILE, DEFAULT_SDK, DEFAULT_TEMPLATE
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="xg-glass",
-        description="xg-glass: build/install/run universal_glasses-based Android host apps (MVP).",
+        description="xg-glass: build/install/run xg.glass-based Android host apps (MVP).",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 

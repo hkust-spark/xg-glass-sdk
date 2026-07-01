@@ -114,7 +114,7 @@ def _apply_cfg_to_project(project: Path, cfg: XgConfig) -> None:
         if manifest.exists():
             s = manifest.read_text(encoding="utf-8")
             s = re.sub(
-                r'(android:name="com\.universalglasses\.app_entry_class"\s+android:value=")([^"]*)(")',
+                r'(android:name="com\.xgglass\.app_entry_class"\s+android:value=")([^"]*)(")',
                 lambda m: f"{m.group(1)}{cfg.entry_class}{m.group(3)}",
                 s,
             )
@@ -162,7 +162,7 @@ def _apply_cfg_to_project(project: Path, cfg: XgConfig) -> None:
             )
             # 2) composite build includeBuild(...) anchored by the comment block
             s = re.sub(
-                r'(^\\s*//\\s*Use\\s+universal_glasses\\s+as\\s+a\\s+composite\\s+build.*\\n)\\s*includeBuild\\(".*?"\\)',
+                r'(^\\s*//\\s*Use\\s+the\\s+xg\\.glass\\s+SDK\\s+as\\s+a\\s+composite\\s+build.*\\n)\\s*includeBuild\\(".*?"\\)',
                 lambda m: f'{m.group(1)}includeBuild("{cfg.sdk_path}")',
                 s,
                 flags=re.MULTILINE,
@@ -187,7 +187,7 @@ def _infer_entry_class_from_kt(path: Path) -> str | None:
 
 def _copy_kt_into_project(project_dir: Path, kt_file: Path) -> None:
     """
-    Copy a developer-provided .kt file into ug_app_logic module, respecting its declared package.
+    Copy a developer-provided .kt file into xgglass_app_logic module, respecting its declared package.
     """
     text = kt_file.read_text(encoding="utf-8")
     pkg_match = re.search(r"^\s*package\s+([A-Za-z0-9_.]+)\s*$", text, flags=re.MULTILINE)
@@ -196,11 +196,11 @@ def _copy_kt_into_project(project_dir: Path, kt_file: Path) -> None:
     pkg = pkg_match.group(1)
 
     # Remove the template example entry to avoid accidental class/package collisions.
-    template_example = project_dir / "ug_app_logic" / "src" / "main" / "java" / "com" / "example" / "xgglassapp" / "logic" / "ExampleAppEntry.kt"
+    template_example = project_dir / "xgglass_app_logic" / "src" / "main" / "java" / "com" / "example" / "xgglassapp" / "logic" / "ExampleAppEntry.kt"
     if template_example.exists():
         template_example.unlink()
 
     rel_dir = Path(*pkg.split("."))
-    dst_dir = project_dir / "ug_app_logic" / "src" / "main" / "java" / rel_dir
+    dst_dir = project_dir / "xgglass_app_logic" / "src" / "main" / "java" / rel_dir
     dst_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(kt_file, dst_dir / kt_file.name)

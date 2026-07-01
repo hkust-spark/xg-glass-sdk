@@ -34,7 +34,7 @@
 
         <!-- Developer entry class (loaded by phone host to render commands) -->
         <meta-data
-            android:name="com.universalglasses.app_entry_class"
+            android:name="com.xgglass.app_entry_class"
             android:value="__XG_ENTRY_CLASS__" />
 
         <activity

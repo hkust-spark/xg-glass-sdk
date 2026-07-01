@@ -5,6 +5,6 @@ plugins {
 }
 
 allprojects {
-    group = "com.universalglasses"
+    group = "com.xgglass"
     version = "0.0.1"
 }

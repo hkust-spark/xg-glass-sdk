@@ -1,7 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    id("com.universalglasses.rayneo.app")
+    id("com.xgglass.rayneo.app")
 }
 
 import java.io.File
@@ -93,14 +93,14 @@ android {
     }
 }
 
-ugRayneo {
+xgRayneo {
     // The generated RayNeo glass-host APK will load this class by reflection.
     appEntryClass.set("__XG_ENTRY_CLASS__")
-    logicProjectPath.set(":ug_app_logic")
+    logicProjectPath.set(":xgglass_app_logic")
     // RayNeo/Mercury vendor AARs (used for temple gestures / navigation on glasses)
     // Replaced by xg-glass init: __XG_SDK_PATH__/third_party/rayneo/aar
     mercuryAarDir.set(File(rootDir, "__XG_SDK_PATH__/third_party/rayneo/aar").absolutePath)
-    // hostProjectPath defaults to :ug_rayneo_glass_host
+    // hostProjectPath defaults to :xgglass_rayneo_glass_host
     // assetApkName defaults to rayneo_glass_app.apk
     // variant defaults to debug
 }
@@ -108,11 +108,11 @@ ugRayneo {
 dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
-    // universal_glasses (single entry-point dependency)
-    implementation("com.universalglasses:universal:0.0.1")
+    // xg.glass SDK (single entry-point dependency)
+    implementation("com.xgglass:universal:0.0.1")
 
     // Shared developer logic module (implements UniversalAppEntry)
-    implementation(project(":ug_app_logic"))
+    implementation(project(":xgglass_app_logic"))
 
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.core:core-ktx:1.13.1")

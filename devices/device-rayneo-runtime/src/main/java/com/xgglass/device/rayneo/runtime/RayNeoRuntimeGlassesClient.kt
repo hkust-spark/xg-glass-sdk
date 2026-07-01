@@ -1,0 +1,426 @@
+package com.xgglass.device.rayneo.runtime
+
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CaptureRequest
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.ImageReader
+import android.media.MediaPlayer
+import android.media.MediaRecorder
+import android.os.Handler
+import android.os.HandlerThread
+import android.widget.Toast
+import com.xgglass.core.AudioCaptureHint
+import com.xgglass.core.AudioEncoding
+import com.xgglass.core.AudioSource
+import com.xgglass.core.BaseGlassesClient
+import com.xgglass.core.CaptureOptions
+import com.xgglass.core.CapturedImage
+import com.xgglass.core.ConnectionState
+import com.xgglass.core.DeviceCapabilities
+import com.xgglass.core.DisplayOptions
+import com.xgglass.core.GlassesError
+import com.xgglass.core.GlassesModel
+import com.xgglass.core.MicrophoneOptions
+import com.xgglass.core.MicrophoneSession
+import com.xgglass.core.PcmFormat
+import com.xgglass.core.PlayAudioOptions
+import com.xgglass.core.android.openAndroidMicrophone
+import com.xgglass.core.android.playEncodedViaMediaPlayer
+import com.xgglass.core.android.playPcmViaAudioTrack
+import com.xgglass.core.android.rayNeoPcmBufferSize
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+/**
+ * RayNeo (on-glasses) client.
+ *
+ * This runs inside the RayNeo glasses app process.
+ * - `capturePhoto()` uses Camera2 to capture a single JPEG (no preview UI).
+ * - `display()` uses a pluggable sink; default is a Toast.
+ *
+ * Note: This module is intentionally vendor-SDK-free. If you want to integrate with RayNeo Mercury
+ * SDK UI components, implement a custom [RayNeoDisplaySink] and/or your own capture pipeline.
+ */
+class RayNeoRuntimeGlassesClient(
+    private val context: Context,
+    private val displaySink: RayNeoDisplaySink = ToastDisplaySink(),
+) : BaseGlassesClient(eventBufferOverflow = BufferOverflow.SUSPEND) {
+
+    override val model: GlassesModel = GlassesModel.RAYNEO
+
+    override val capabilities: DeviceCapabilities = DeviceCapabilities(
+        canCapturePhoto = true,
+        canDisplayText = true,
+        canRecordAudio = true,
+        canPlayTts = false,
+        canPlayAudioBytes = true,
+        supportsTapEvents = false,
+        supportsStreamingTextUpdates = false,
+    )
+
+    @Volatile private var activeMic: MicrophoneSession? = null
+    @Volatile private var activePlayer: MediaPlayer? = null
+
+    override val markConnectingOnConnect: Boolean = false
+
+    override suspend fun doConnect() = Unit
+
+    override suspend fun disconnect() {
+        try { activeMic?.stop() } catch (_: Exception) {}
+        activeMic = null
+        try { activePlayer?.release() } catch (_: Exception) {}
+        activePlayer = null
+        _state.value = ConnectionState.Disconnected
+    }
+
+    override suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage> {
+        if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
+        if (!hasCameraPermission()) return Result.failure(GlassesError.PermissionDenied)
+
+        return try {
+            val timeoutMs = options.timeoutMs
+            val width = (options.targetWidth ?: 1920).coerceIn(320, 3840)
+            val height = (options.targetHeight ?: 1080).coerceIn(240, 2160)
+
+            val jpeg = withTimeoutOrNull(timeoutMs) {
+                captureJpegOnce(width, height)
+            } ?: return Result.failure(GlassesError.Timeout("capturePhoto"))
+
+            return Result.success(
+                CapturedImage(
+                    jpegBytes = jpeg,
+                    width = width,
+                    height = height,
+                    rotationDegrees = null,
+                    sourceModel = GlassesModel.RAYNEO,
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(GlassesError.Transport("RayNeo capture failed: ${e.message ?: e::class.java.simpleName}", e))
+        }
+    }
+
+    override suspend fun display(text: String, options: DisplayOptions): Result<Unit> {
+        if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
+        return try {
+            displaySink.display(context, text, options)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(GlassesError.Transport("RayNeo display failed: ${e.message ?: e::class.java.simpleName}", e))
+        }
+    }
+
+    override suspend fun playAudio(source: AudioSource, options: PlayAudioOptions): Result<Unit> {
+        if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
+
+        return when (source) {
+            is AudioSource.Tts -> Result.failure(
+                GlassesError.Unsupported(
+                    "RayNeo does not have a built-in TTS engine. " +
+                        "Convert text to audio bytes externally and use AudioSource.RawBytes instead."
+                )
+            )
+            is AudioSource.RawBytes -> playRawBytes(source, options)
+        }
+    }
+
+    private suspend fun playRawBytes(source: AudioSource.RawBytes, options: PlayAudioOptions): Result<Unit> {
+        val data = source.data
+        if (data.isEmpty()) return Result.success(Unit)
+
+        return try {
+            if (options.interrupt) {
+                try { activePlayer?.release() } catch (_: Exception) {}
+                activePlayer = null
+            }
+            ensureMusicVolumeNotZero()
+
+            val pcm = source.pcmFormat
+            if (pcm != null) {
+                playPcm(data, pcm)
+            } else {
+                playEncoded(data)
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(
+                (e as? GlassesError)
+                    ?: GlassesError.Transport("RayNeo playAudio failed: ${e.message}", e)
+            )
+        }
+    }
+
+    private suspend fun playPcm(data: ByteArray, pcm: PcmFormat) {
+        playPcmViaAudioTrack(
+            data = data,
+            format = pcm,
+            usageAttributes = AudioAttributes.USAGE_MEDIA,
+            interrupt = false,
+            legacyStreamType = AudioManager.STREAM_MUSIC,
+            unsupportedOpusMessage = "RayNeo playAudio: OPUS PCM not supported",
+            uninitializedMessage = "RayNeo AudioTrack not initialized",
+            bufferSizeInBytes = ::rayNeoPcmBufferSize,
+            fallbackToLegacyStream = true,
+        ).getOrThrow()
+    }
+
+    private suspend fun playEncoded(data: ByteArray) {
+        playEncodedViaMediaPlayer(
+            data = data,
+            usageAttributes = AudioAttributes.USAGE_MEDIA,
+            interrupt = false,
+            tempFileFactory = { File.createTempFile("xgglass_audio_", ".tmp", context.cacheDir) },
+            currentPlayer = { activePlayer },
+            setCurrentPlayer = { activePlayer = it },
+            errorMessage = { what, extra -> "RayNeo MediaPlayer error: what=$what extra=$extra" },
+        ).getOrThrow()
+    }
+
+    override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> {
+        if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
+        if (!hasRecordAudioPermission()) return Result.failure(GlassesError.PermissionDenied)
+        if (activeMic != null) return Result.failure(GlassesError.Busy)
+
+        // RayNeo runtime implementation provides raw PCM only. (Apps can encode to AAC/Opus if desired.)
+        val encoding = when (options.preferredEncoding) {
+            AudioEncoding.PCM_S16_LE -> AudioEncoding.PCM_S16_LE
+            AudioEncoding.PCM_S8 -> AudioEncoding.PCM_S8
+            AudioEncoding.OPUS -> return Result.failure(GlassesError.Unsupported("RayNeo runtime microphone: OPUS not supported (use PCM + app-side encoder)"))
+        }
+
+        val sampleRate = options.preferredSampleRateHz ?: 16_000
+        val channels = options.preferredChannelCount ?: 1
+        when (channels) {
+            1, 2 -> Unit
+            else -> return Result.failure(GlassesError.Unsupported("RayNeo runtime microphone: channelCount=$channels"))
+        }
+        return try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val rayNeoAudioMode = options.audioHint.toRayNeoVendorMode()
+
+            val session = openAndroidMicrophone(
+                options = options,
+                audioSource = MediaRecorder.AudioSource.MIC,
+                sampleRateHz = sampleRate,
+                channelCount = channels,
+                unsupportedOpusMessage = "RayNeo runtime microphone: OPUS not supported (use PCM + app-side encoder)",
+                unsupportedChannelMessage = { "RayNeo runtime microphone: channelCount=$it" },
+                minBufferErrorMessage = { "AudioRecord.getMinBufferSize failed: $it" },
+                uninitializedMessage = "AudioRecord not initialized",
+                breakOnNegativeRead = false,
+                beforeStart = {
+                    // Apply vendor mode before starting.
+                    try {
+                        if (rayNeoAudioMode != null) am.setParameters("audio_source_record=$rayNeoAudioMode")
+                    } catch (_: Exception) {
+                        // ignore; still try default MIC path
+                    }
+                },
+                beforeStop = {
+                    // Best-effort: inform RayNeo audio HAL that we're done.
+                    if (rayNeoAudioMode != null) am.setParameters("audio_source_record=off")
+                },
+                afterStop = { activeMic = null },
+            ).getOrThrow()
+            activeMic = session
+            Result.success(session)
+        } catch (e: Exception) {
+            Result.failure((e as? GlassesError) ?: GlassesError.Transport("RayNeo startMicrophone failed: ${e.message}", e))
+        }
+    }
+
+    private fun hasCameraPermission(): Boolean {
+        return context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun hasRecordAudioPermission(): Boolean {
+        return context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun ensureMusicVolumeNotZero() {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val stream = AudioManager.STREAM_MUSIC
+            val cur = am.getStreamVolume(stream)
+            val max = am.getStreamMaxVolume(stream)
+            if (cur <= 0 && max > 0) {
+                // Avoid blasting; set to a reasonable audible level.
+                val target = (max / 2).coerceAtLeast(1)
+                am.setStreamVolume(stream, target, 0)
+            }
+        } catch (_: Exception) {
+            // ignore (may fail without MODIFY_AUDIO_SETTINGS on some ROMs)
+        }
+    }
+
+    private suspend fun captureJpegOnce(width: Int, height: Int): ByteArray {
+        val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val cameraId = chooseCameraId(cameraManager)
+            ?: throw GlassesError.Transport("No camera available")
+
+        // Camera2 requires the output size to be one of the supported sizes.
+        // Pick the supported JPEG size closest to the requested resolution.
+        val (actualWidth, actualHeight) = chooseBestSize(cameraManager, cameraId, width, height)
+
+        val thread = HandlerThread("rayneo-camera").apply { start() }
+        val handler = Handler(thread.looper)
+
+        var device: CameraDevice? = null
+        var session: CameraCaptureSession? = null
+        var reader: ImageReader? = null
+
+        reader = ImageReader.newInstance(actualWidth, actualHeight, android.graphics.ImageFormat.JPEG, 2)
+
+        return suspendCancellableCoroutine { cont ->
+            fun cleanup() {
+                try {
+                    session?.close()
+                } catch (_: Exception) {}
+                try {
+                    device?.close()
+                } catch (_: Exception) {}
+                try {
+                    reader?.close()
+                } catch (_: Exception) {}
+                try {
+                    thread.quitSafely()
+                } catch (_: Exception) {}
+            }
+
+            cont.invokeOnCancellation { cleanup() }
+
+            reader.setOnImageAvailableListener({ r ->
+                if (!cont.isActive) return@setOnImageAvailableListener
+                val image = r.acquireLatestImage() ?: return@setOnImageAvailableListener
+                try {
+                    val buf = image.planes[0].buffer
+                    val bytes = ByteArray(buf.remaining())
+                    buf.get(bytes)
+                    cont.resume(bytes)
+                } catch (e: Exception) {
+                    cont.resumeWithException(e)
+                } finally {
+                    image.close()
+                    cleanup()
+                }
+            }, handler)
+
+            cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                override fun onOpened(camera: CameraDevice) {
+                    device = camera
+                    camera.createCaptureSession(
+                        listOf(reader.surface),
+                        object : CameraCaptureSession.StateCallback() {
+                            override fun onConfigured(s: CameraCaptureSession) {
+                                session = s
+                                try {
+                                    val req = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                                        addTarget(reader.surface)
+                                        set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                                    }
+                                    s.capture(req.build(), null, handler)
+                                } catch (e: Exception) {
+                                    if (cont.isActive) cont.resumeWithException(e)
+                                    cleanup()
+                                }
+                            }
+
+                            override fun onConfigureFailed(s: CameraCaptureSession) {
+                                if (cont.isActive) cont.resumeWithException(GlassesError.Transport("Camera session configure failed"))
+                                cleanup()
+                            }
+                        },
+                        handler
+                    )
+                }
+
+                override fun onDisconnected(camera: CameraDevice) {
+                    if (cont.isActive) cont.resumeWithException(GlassesError.Transport("Camera disconnected"))
+                    cleanup()
+                }
+
+                override fun onError(camera: CameraDevice, error: Int) {
+                    if (cont.isActive) cont.resumeWithException(GlassesError.Transport("Camera error: $error"))
+                    cleanup()
+                }
+            }, handler)
+        }
+    }
+
+    private fun chooseCameraId(cameraManager: CameraManager): String? {
+        val ids = cameraManager.cameraIdList
+        if (ids.isEmpty()) return null
+
+        // Prefer a back-facing camera if available.
+        for (id in ids) {
+            val chars = cameraManager.getCameraCharacteristics(id)
+            val facing = chars.get(CameraCharacteristics.LENS_FACING)
+            if (facing == CameraCharacteristics.LENS_FACING_BACK) return id
+        }
+        return ids.firstOrNull()
+    }
+
+    /**
+     * Pick the supported JPEG output size closest to the requested [targetW]×[targetH].
+     *
+     * Camera2 requires ImageReader dimensions to match one of the sizes listed in
+     * [CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP]. Using an unsupported
+     * size will cause `createCaptureSession` → `onConfigureFailed`.
+     */
+    private fun chooseBestSize(
+        cameraManager: CameraManager,
+        cameraId: String,
+        targetW: Int,
+        targetH: Int,
+    ): Pair<Int, Int> {
+        val chars = cameraManager.getCameraCharacteristics(cameraId)
+        val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+        val sizes = map?.getOutputSizes(android.graphics.ImageFormat.JPEG)
+
+        if (sizes.isNullOrEmpty()) {
+            // Fallback: try a safe default that most cameras support.
+            return 1920 to 1080
+        }
+
+        val targetPixels = targetW.toLong() * targetH
+        // Pick the size whose total pixel count is closest to the target.
+        val best = sizes.minByOrNull {
+            val px = it.width.toLong() * it.height
+            kotlin.math.abs(px - targetPixels)
+        }!!
+
+        return best.width to best.height
+    }
+}
+
+fun interface RayNeoDisplaySink {
+    suspend fun display(context: Context, text: String, options: DisplayOptions)
+}
+
+class ToastDisplaySink : RayNeoDisplaySink {
+    override suspend fun display(context: Context, text: String, options: DisplayOptions) {
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+        }
+    }
+}
+
+private fun AudioCaptureHint.toRayNeoVendorMode(): String? = when (this) {
+    AudioCaptureHint.DEFAULT -> null
+    AudioCaptureHint.VOICE_ASSISTANT -> "voiceassistant"
+    AudioCaptureHint.TRANSLATION -> "translation"
+    AudioCaptureHint.CAMCORDER -> "camcorder"
+}

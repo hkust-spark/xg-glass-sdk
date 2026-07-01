@@ -18,28 +18,28 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.universalglasses.appcontract.HostEnvironment
-import com.universalglasses.appcontract.HostKind
-import com.universalglasses.appcontract.UniversalAppContext
-import com.universalglasses.appcontract.UniversalAppEntry
-import com.universalglasses.appcontract.UserSettingField
-import com.universalglasses.appcontract.UserSettingInputType
-import com.universalglasses.appcontract.commandsWithDefaults
-import com.universalglasses.core.ConnectionState
-import com.universalglasses.core.DeviceManager
-import com.universalglasses.core.DeviceManagerState
-import com.universalglasses.core.ExternalActivityBridge
-import com.universalglasses.core.ExternalActivityResult
-import com.universalglasses.core.GlassesEvent
-import com.universalglasses.core.GlassesClient
-import com.universalglasses.core.GlassesModel
-import com.universalglasses.device.frame.embedded.EmbeddedFrameGlassesClient
-import com.universalglasses.device.rayneo.installer.RayNeoApkSource
-import com.universalglasses.device.rayneo.installer.RayNeoDeviceManager
-import com.universalglasses.device.rayneo.installer.RayNeoInstallerConfig
-import com.universalglasses.device.rokid.RokidGlassesClient
-import com.universalglasses.device.omi.OmiGlassesClient
-import com.universalglasses.device.sim.SimulatorGlassesClient
+import com.xgglass.appcontract.HostEnvironment
+import com.xgglass.appcontract.HostKind
+import com.xgglass.appcontract.UniversalAppContext
+import com.xgglass.appcontract.UniversalAppEntry
+import com.xgglass.appcontract.UserSettingField
+import com.xgglass.appcontract.UserSettingInputType
+import com.xgglass.appcontract.commandsWithDefaults
+import com.xgglass.core.ConnectionState
+import com.xgglass.core.DeviceManager
+import com.xgglass.core.DeviceManagerState
+import com.xgglass.core.ExternalActivityBridge
+import com.xgglass.core.ExternalActivityResult
+import com.xgglass.core.GlassesEvent
+import com.xgglass.core.GlassesClient
+import com.xgglass.core.GlassesModel
+import com.xgglass.device.frame.embedded.EmbeddedFrameGlassesClient
+import com.xgglass.device.rayneo.installer.RayNeoApkSource
+import com.xgglass.device.rayneo.installer.RayNeoDeviceManager
+import com.xgglass.device.rayneo.installer.RayNeoInstallerConfig
+import com.xgglass.device.rokid.RokidGlassesClient
+import com.xgglass.device.omi.OmiGlassesClient
+import com.xgglass.device.sim.SimulatorGlassesClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -432,7 +432,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun createMetaClient(): GlassesClient {
         return try {
-            val clazz = Class.forName("com.universalglasses.device.meta.MetaWearablesGlassesClient")
+            val clazz = Class.forName("com.xgglass.device.meta.MetaWearablesGlassesClient")
             val ctor = clazz.getConstructor(AppCompatActivity::class.java, ExternalActivityBridge::class.java)
             ctor.newInstance(
                 this,
@@ -608,7 +608,7 @@ class MainActivity : AppCompatActivity() {
 
         val e = entry
         if (e == null) {
-            llCommands.addView(TextView(this).apply { text = "No UniversalAppEntry (meta-data com.universalglasses.app_entry_class)" })
+            llCommands.addView(TextView(this).apply { text = "No UniversalAppEntry (meta-data com.xgglass.app_entry_class)" })
             return
         }
 
@@ -664,7 +664,7 @@ class MainActivity : AppCompatActivity() {
     // ===================================================================
 
     private val settingsPrefs by lazy {
-        getSharedPreferences("ug_user_settings", Context.MODE_PRIVATE)
+        getSharedPreferences("xgglass_user_settings", Context.MODE_PRIVATE)
     }
 
     /**
@@ -781,7 +781,7 @@ class MainActivity : AppCompatActivity() {
     // ===================================================================
 
     private val rokidPrefs by lazy {
-        getSharedPreferences("ug_rokid_credentials", Context.MODE_PRIVATE)
+        getSharedPreferences("xgglass_rokid_credentials", Context.MODE_PRIVATE)
     }
 
     /** Save the client secret from the UI into SharedPreferences. */
@@ -821,7 +821,7 @@ class MainActivity : AppCompatActivity() {
     private fun loadEntryOrNull(): UniversalAppEntry? {
         val cls = try {
             val appInfo = packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.GET_META_DATA)
-            appInfo.metaData?.getString("com.universalglasses.app_entry_class")?.trim().orEmpty()
+            appInfo.metaData?.getString("com.xgglass.app_entry_class")?.trim().orEmpty()
         } catch (_: Throwable) {
             ""
         }

@@ -1,9 +1,9 @@
 plugins {
-    id("com.universalglasses.android.library")
+    id("com.xgglass.android.library")
 }
 
 android {
-    namespace = "com.universalglasses.device.sim"
+    namespace = "com.xgglass.device.sim"
 }
 
 dependencies {
