@@ -1,1 +1,6 @@
 *.xcent
+Pods/
+flutter_export_environment.sh
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/swiftpm/Package.resolved
+xcuserdata/

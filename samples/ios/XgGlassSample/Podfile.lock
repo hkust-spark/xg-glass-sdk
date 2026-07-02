@@ -1,0 +1,30 @@
+PODS:
+  - Flutter (1.0.0)
+  - flutter_blue_plus_darwin (0.0.2):
+    - Flutter
+    - FlutterMacOS
+  - FlutterPluginRegistrant (0.0.1):
+    - Flutter
+    - flutter_blue_plus_darwin
+
+DEPENDENCIES:
+  - Flutter (from `../../../third_party/frame/frame_module/.ios/Flutter`)
+  - flutter_blue_plus_darwin (from `../../../third_party/frame/frame_module/.ios/.symlinks/plugins/flutter_blue_plus_darwin/darwin`)
+  - FlutterPluginRegistrant (from `../../../third_party/frame/frame_module/.ios/Flutter/FlutterPluginRegistrant`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: "../../../third_party/frame/frame_module/.ios/Flutter"
+  flutter_blue_plus_darwin:
+    :path: "../../../third_party/frame/frame_module/.ios/.symlinks/plugins/flutter_blue_plus_darwin/darwin"
+  FlutterPluginRegistrant:
+    :path: "../../../third_party/frame/frame_module/.ios/Flutter/FlutterPluginRegistrant"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_blue_plus_darwin: 20a08bfeaa0f7804d524858d3d8744bcc1b6dbc3
+  FlutterPluginRegistrant: 14459f8f039ffd4fccdbd27dcdc970b58fc98026
+
+PODFILE CHECKSUM: 2b1c629be169bae9ec86855ed1d12dac38effa4e
+
+COCOAPODS: 1.16.2

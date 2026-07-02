@@ -16,12 +16,17 @@
 		11111111111111111111112B /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111132 /* MWDATCamera */; };
 		11111111111111111111112C /* MWDATDisplay in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111133 /* MWDATDisplay */; };
 		11111111111111111111112D /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111134 /* MWDATMockDevice */; };
+		1524E2B63C78CE2FBD7A8AA7 /* libPods-XgGlassSampleTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 25A77010EE81497B86B84F74 /* libPods-XgGlassSampleTests.a */; };
 		222222222222222222222201 /* MetaMockRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222222222222222222222202 /* MetaMockRuntimeTests.swift */; };
 		22222222222222222222220B /* XgGlassKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 111111111111111111111116 /* XgGlassKit.xcframework */; };
 		22222222222222222222220C /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111131 /* MWDATCore */; };
 		22222222222222222222220D /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111132 /* MWDATCamera */; };
 		22222222222222222222220E /* MWDATDisplay in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111133 /* MWDATDisplay */; };
 		22222222222222222222220F /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111134 /* MWDATMockDevice */; };
+		333333333333333333333301 /* FrameFlutterRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333302 /* FrameFlutterRuntime.swift */; };
+		333333333333333333333303 /* FrameGlassesClientRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333304 /* FrameGlassesClientRuntimeTests.swift */; };
+		333333333333333333333305 /* FrameGlassesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333306 /* FrameGlassesClient.swift */; };
+		E3E6F72972D339B6265C9A24 /* libPods-XgGlassSample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 9CEED3E048D847174F02078E /* libPods-XgGlassSample.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -37,13 +42,22 @@
 /* Begin PBXFileReference section */
 		111111111111111111111112 /* XgGlassSampleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XgGlassSampleApp.swift; sourceTree = "<group>"; };
 		111111111111111111111114 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		111111111111111111111116 /* XgGlassKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = XgGlassKit.xcframework; path = ../../../app-contract/build/XCFrameworks/release/XgGlassKit.xcframework; sourceTree = "<group>"; };
+		111111111111111111111116 /* XgGlassKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = XgGlassKit.xcframework; path = "../../../app-contract/build/XCFrameworks/release/XgGlassKit.xcframework"; sourceTree = "<group>"; };
 		111111111111111111111117 /* XgGlassSample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = XgGlassSample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		111111111111111111111127 /* StubSwiftGlassesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubSwiftGlassesClient.swift; sourceTree = "<group>"; };
 		11111111111111111111112E /* MetaGlassesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaGlassesClient.swift; sourceTree = "<group>"; };
 		11111111111111111111112F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		222222222222222222222202 /* MetaMockRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaMockRuntimeTests.swift; sourceTree = "<group>"; };
 		222222222222222222222204 /* XgGlassSampleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = XgGlassSampleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		25A77010EE81497B86B84F74 /* libPods-XgGlassSampleTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-XgGlassSampleTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		333333333333333333333302 /* FrameFlutterRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameFlutterRuntime.swift; sourceTree = "<group>"; };
+		333333333333333333333304 /* FrameGlassesClientRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameGlassesClientRuntimeTests.swift; sourceTree = "<group>"; };
+		333333333333333333333306 /* FrameGlassesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameGlassesClient.swift; sourceTree = "<group>"; };
+		6231BC9123BF011F03258BA5 /* Pods-XgGlassSample.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-XgGlassSample.debug.xcconfig"; path = "Target Support Files/Pods-XgGlassSample/Pods-XgGlassSample.debug.xcconfig"; sourceTree = "<group>"; };
+		766BBFC4F2DF3430B09C162E /* Pods-XgGlassSample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-XgGlassSample.release.xcconfig"; path = "Target Support Files/Pods-XgGlassSample/Pods-XgGlassSample.release.xcconfig"; sourceTree = "<group>"; };
+		9A6F752080AE2AA18C8CAFAB /* Pods-XgGlassSampleTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-XgGlassSampleTests.release.xcconfig"; path = "Target Support Files/Pods-XgGlassSampleTests/Pods-XgGlassSampleTests.release.xcconfig"; sourceTree = "<group>"; };
+		9CEED3E048D847174F02078E /* libPods-XgGlassSample.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-XgGlassSample.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		EAE995A7B9B561E56AE9FEB3 /* Pods-XgGlassSampleTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-XgGlassSampleTests.debug.xcconfig"; path = "Target Support Files/Pods-XgGlassSampleTests/Pods-XgGlassSampleTests.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,6 +70,7 @@
 				11111111111111111111112B /* MWDATCamera in Frameworks */,
 				11111111111111111111112C /* MWDATDisplay in Frameworks */,
 				11111111111111111111112D /* MWDATMockDevice in Frameworks */,
+				E3E6F72972D339B6265C9A24 /* libPods-XgGlassSample.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -68,6 +83,7 @@
 				22222222222222222222220D /* MWDATCamera in Frameworks */,
 				22222222222222222222220E /* MWDATDisplay in Frameworks */,
 				22222222222222222222220F /* MWDATMockDevice in Frameworks */,
+				1524E2B63C78CE2FBD7A8AA7 /* libPods-XgGlassSampleTests.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -81,6 +97,8 @@
 				222222222222222222222203 /* XgGlassSampleTests */,
 				111111111111111111111116 /* XgGlassKit.xcframework */,
 				11111111111111111111111B /* Products */,
+				EB8DD82B9117DBA0302E562B /* Pods */,
+				719DA195F250B06BF6DA8294 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -91,6 +109,8 @@
 				111111111111111111111114 /* ContentView.swift */,
 				111111111111111111111127 /* StubSwiftGlassesClient.swift */,
 				11111111111111111111112E /* MetaGlassesClient.swift */,
+				333333333333333333333302 /* FrameFlutterRuntime.swift */,
+				333333333333333333333306 /* FrameGlassesClient.swift */,
 				11111111111111111111112F /* Info.plist */,
 			);
 			path = XgGlassSample;
@@ -109,8 +129,30 @@
 			isa = PBXGroup;
 			children = (
 				222222222222222222222202 /* MetaMockRuntimeTests.swift */,
+				333333333333333333333304 /* FrameGlassesClientRuntimeTests.swift */,
 			);
 			path = XgGlassSampleTests;
+			sourceTree = "<group>";
+		};
+		719DA195F250B06BF6DA8294 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				9CEED3E048D847174F02078E /* libPods-XgGlassSample.a */,
+				25A77010EE81497B86B84F74 /* libPods-XgGlassSampleTests.a */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		EB8DD82B9117DBA0302E562B /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				6231BC9123BF011F03258BA5 /* Pods-XgGlassSample.debug.xcconfig */,
+				766BBFC4F2DF3430B09C162E /* Pods-XgGlassSample.release.xcconfig */,
+				EAE995A7B9B561E56AE9FEB3 /* Pods-XgGlassSampleTests.debug.xcconfig */,
+				9A6F752080AE2AA18C8CAFAB /* Pods-XgGlassSampleTests.release.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -120,9 +162,12 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 11111111111111111111111D /* Build configuration list for PBXNativeTarget "XgGlassSample" */;
 			buildPhases = (
+				AEC4918661551FE0B7B9787E /* [CP] Check Pods Manifest.lock */,
+				3EB7AF5A93540CC3DE9B8D1D /* [CP-User] Run Flutter Build frame_module Script */,
 				11111111111111111111111E /* Sources */,
 				111111111111111111111118 /* Frameworks */,
 				11111111111111111111111F /* Resources */,
+				E7DC0E988EC1DCFF2B222FB8 /* [CP-User] Embed Flutter Build frame_module Script */,
 			);
 			buildRules = (
 			);
@@ -143,6 +188,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 222222222222222222222210 /* Build configuration list for PBXNativeTarget "XgGlassSampleTests" */;
 			buildPhases = (
+				2A429AF063BA1AADA4BF5E85 /* [CP] Check Pods Manifest.lock */,
 				222222222222222222222206 /* Sources */,
 				222222222222222222222207 /* Frameworks */,
 				222222222222222222222208 /* Resources */,
@@ -221,6 +267,73 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		2A429AF063BA1AADA4BF5E85 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-XgGlassSampleTests-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		3EB7AF5A93540CC3DE9B8D1D /* [CP-User] Run Flutter Build frame_module Script */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			name = "[CP-User] Run Flutter Build frame_module Script";
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nset -u\nsource \"${SRCROOT}/../../../third_party/frame/frame_module/.ios/Flutter/flutter_export_environment.sh\"\nexport VERBOSE_SCRIPT_LOGGING=1 && \"$FLUTTER_ROOT\"/packages/flutter_tools/bin/xcode_backend.sh build";
+		};
+		AEC4918661551FE0B7B9787E /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-XgGlassSample-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		E7DC0E988EC1DCFF2B222FB8 /* [CP-User] Embed Flutter Build frame_module Script */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			name = "[CP-User] Embed Flutter Build frame_module Script";
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nset -u\nsource \"${SRCROOT}/../../../third_party/frame/frame_module/.ios/Flutter/flutter_export_environment.sh\"\nexport VERBOSE_SCRIPT_LOGGING=1 && \"$FLUTTER_ROOT\"/packages/flutter_tools/bin/xcode_backend.sh embed_and_thin";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		11111111111111111111111E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -230,6 +343,8 @@
 				111111111111111111111113 /* ContentView.swift in Sources */,
 				111111111111111111111126 /* StubSwiftGlassesClient.swift in Sources */,
 				111111111111111111111128 /* MetaGlassesClient.swift in Sources */,
+				333333333333333333333301 /* FrameFlutterRuntime.swift in Sources */,
+				333333333333333333333305 /* FrameGlassesClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -238,6 +353,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				222222222222222222222201 /* MetaMockRuntimeTests.swift in Sources */,
+				333333333333333333333303 /* FrameGlassesClientRuntimeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -368,6 +484,7 @@
 		};
 		111111111111111111111124 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6231BC9123BF011F03258BA5 /* Pods-XgGlassSample.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLIENT_TOKEN = 0;
@@ -395,9 +512,9 @@
 					"-Xlinker",
 					"-sectcreate",
 					"-Xlinker",
-					"__TEXT",
+					__TEXT,
 					"-Xlinker",
-					"__entitlements",
+					__entitlements,
 					"-Xlinker",
 					"$(PROJECT_DIR)/XgGlassSample/XgGlassSample-Simulated.xcent",
 				);
@@ -411,6 +528,7 @@
 		};
 		111111111111111111111125 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 766BBFC4F2DF3430B09C162E /* Pods-XgGlassSample.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLIENT_TOKEN = 0;
@@ -438,9 +556,9 @@
 					"-Xlinker",
 					"-sectcreate",
 					"-Xlinker",
-					"__TEXT",
+					__TEXT,
 					"-Xlinker",
-					"__entitlements",
+					__entitlements,
 					"-Xlinker",
 					"$(PROJECT_DIR)/XgGlassSample/XgGlassSample-Simulated.xcent",
 				);
@@ -454,6 +572,7 @@
 		};
 		222222222222222222222211 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = EAE995A7B9B561E56AE9FEB3 /* Pods-XgGlassSampleTests.debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -486,6 +605,7 @@
 		};
 		222222222222222222222212 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9A6F752080AE2AA18C8CAFAB /* Pods-XgGlassSampleTests.release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -517,20 +637,20 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		111111111111111111111121 /* Build configuration list for PBXProject "XgGlassSample" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				111111111111111111111122 /* Debug */,
-				111111111111111111111123 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		11111111111111111111111D /* Build configuration list for PBXNativeTarget "XgGlassSample" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				111111111111111111111124 /* Debug */,
 				111111111111111111111125 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		111111111111111111111121 /* Build configuration list for PBXProject "XgGlassSample" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				111111111111111111111122 /* Debug */,
+				111111111111111111111123 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

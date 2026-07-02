@@ -5,6 +5,7 @@ import XgGlassKit
 enum ActiveClientKind: String, CaseIterable, Identifiable {
     case kotlinSimulator
     case swiftStub
+    case frame
     case meta
 
     var id: String { rawValue }
@@ -15,6 +16,8 @@ enum ActiveClientKind: String, CaseIterable, Identifiable {
             return "Kotlin Sim"
         case .swiftStub:
             return "Swift Stub"
+        case .frame:
+            return "Frame (Flutter)"
         case .meta:
             return "Meta"
         }
@@ -105,6 +108,7 @@ final class SampleModel: ObservableObject {
 
     private let kotlinClient: GlassesClient
     private let swiftStubClient: GlassesClient
+    private let frameClient: FrameGlassesClient
     private let metaClient: MetaGlassesClient
 
     init() {
@@ -115,6 +119,7 @@ final class SampleModel: ObservableObject {
         self.swiftStubClient = StubSwiftGlassesClient(displaySink: { text in
             displayUpdate?(.swiftStub, text)
         })
+        self.frameClient = FrameGlassesClient()
         self.metaClient = MetaGlassesClient()
         displayUpdate = { [weak self] source, text in
             Task { @MainActor in
@@ -129,6 +134,8 @@ final class SampleModel: ObservableObject {
             return kotlinClient
         case .swiftStub:
             return swiftStubClient
+        case .frame:
+            return frameClient
         case .meta:
             return metaClient
         }
@@ -152,8 +159,13 @@ final class SampleModel: ObservableObject {
         status = "Connecting \(source.title)"
         client.connect { [weak self] _, error in
             Task { @MainActor in
-                self?.status = error.map { "\(source.title) connect failed: \($0.localizedDescription)" }
-                    ?? "\(source.title) connected"
+                if let error {
+                    self?.status = "\(source.title) connect failed: \(error.localizedDescription)"
+                } else if let stateError = client.state.value as? ConnectionState.Error {
+                    self?.status = "\(source.title) connect failed: \(stateError.error)"
+                } else {
+                    self?.status = "\(source.title) connected"
+                }
             }
         }
     }
