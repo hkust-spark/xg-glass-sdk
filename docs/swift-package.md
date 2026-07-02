@@ -34,5 +34,5 @@ For a public binary release, archive `XgGlassKit.xcframework` as a zip, publish 
 Generate the checksum with:
 
 ```sh
-swift package compute-checksum XgGlassKit.xcframework.zip
+scripts/package-xcframework-release.sh
 ```
