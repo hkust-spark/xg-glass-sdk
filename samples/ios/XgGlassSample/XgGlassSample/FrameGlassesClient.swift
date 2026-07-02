@@ -1,6 +1,6 @@
 @_implementationOnly import Flutter
 import Foundation
-import XgGlassKit
+import XgGlassMeta
 
 final class FrameGlassesClient: BaseGlassesClient {
     private let runtime: FrameFlutterRuntime?
@@ -64,8 +64,8 @@ final class FrameGlassesClient: BaseGlassesClient {
         }
     }
 
-    override var model: XgGlassKit.GlassesModel {
-        XgGlassKit.GlassesModel.frame
+    override var model: GlassesModel {
+        .frame
     }
 
     override func doConnect(completionHandler: @escaping @Sendable (Error?) -> Void) {

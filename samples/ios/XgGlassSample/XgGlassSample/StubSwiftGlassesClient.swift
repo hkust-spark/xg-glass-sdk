@@ -1,6 +1,6 @@
 import Foundation
 import UIKit
-import XgGlassKit
+import XgGlassMeta
 
 final class StubSwiftGlassesClient: BaseGlassesClient {
     private let displaySink: (String) -> Void

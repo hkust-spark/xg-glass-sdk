@@ -1,8 +1,9 @@
+import AVFoundation
 import MWDATCore
 import MWDATMockDevice
 import UIKit
 import XCTest
-import XgGlassKit
+import XgGlassMeta
 @testable import XgGlassSample
 
 @MainActor
@@ -26,8 +27,7 @@ final class MetaMockRuntimeTests: XCTestCase {
         let client = MetaGlassesClient()
         self.client = client
 
-        let mockDevice = try seedRayBanMetaMockDevice()
-        try MetaDATRuntime.configureIfNeeded()
+        let mockDevice = try seedRayBanMetaMockDevice(client: client)
         print("T30_META_MOCK_DEVICE=\(mockDevice.identifier)")
         try await Task.sleep(nanoseconds: 1_000_000_000)
         print("T30_META_WEARABLES_DEVICES=\(Wearables.shared.devices)")
@@ -63,20 +63,13 @@ final class MetaMockRuntimeTests: XCTestCase {
         }
     }
 
-    private func seedRayBanMetaMockDevice() throws -> (identifier: String, imageURL: URL) {
-        let mockDeviceKit = MockDeviceKit.shared
-        mockDeviceKit.enable()
-
-        let glasses = try mockDeviceKit.pairedDevices.compactMap { $0 as? MockGlasses }.first
-            ?? mockDeviceKit.pairGlasses(model: .rayBanMeta)
-        glasses.powerOn()
-        glasses.unfold()
-        glasses.don()
-
-        let feedURL = try MetaGlassesClient.writeMockCameraFeedVideo()
-        glasses.services.camera.setCameraFeed(fileURL: feedURL)
-        let imageURL = try MetaGlassesClient.writeMockCaptureImage()
-        glasses.services.camera.setCapturedImage(fileURL: imageURL)
+    private func seedRayBanMetaMockDevice(client: MetaGlassesClient) throws -> (identifier: String, imageURL: URL) {
+        let feedURL = try writeMockCameraFeedVideo()
+        let imageURL = try writeMockCaptureImage()
+        _ = try client.enableMockDevice(cameraFeedURL: feedURL, capturedImageURL: imageURL)
+        guard let glasses = MockDeviceKit.shared.pairedDevices.compactMap({ $0 as? MockGlasses }).first else {
+            throw TestFailure("Meta mock device was not paired")
+        }
         return (glasses.deviceIdentifier, imageURL)
     }
 
@@ -148,6 +141,147 @@ final class MetaMockRuntimeTests: XCTestCase {
             group.cancelAll()
             return value
         }
+    }
+
+    private func writeMockCaptureImage() throws -> URL {
+        let size = CGSize(width: 640, height: 360)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { context in
+            UIColor(red: 0.05, green: 0.08, blue: 0.12, alpha: 1).setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+
+            UIColor(red: 0.02, green: 0.54, blue: 0.70, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: size.width, height: 72))
+
+            let title = "Meta Mock Capture"
+            let subtitle = "Ray-Ban Meta DAT simulator"
+            title.draw(
+                at: CGPoint(x: 32, y: 112),
+                withAttributes: [
+                    .font: UIFont.boldSystemFont(ofSize: 34),
+                    .foregroundColor: UIColor.white
+                ]
+            )
+            subtitle.draw(
+                at: CGPoint(x: 32, y: 164),
+                withAttributes: [
+                    .font: UIFont.systemFont(ofSize: 22),
+                    .foregroundColor: UIColor(white: 1, alpha: 0.82)
+                ]
+            )
+        }
+
+        guard let data = image.jpegData(compressionQuality: 0.92) else {
+            throw TestFailure("Could not create Meta mock capture JPEG")
+        }
+
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("xgglass-meta-mock-capture.jpg")
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    private func writeMockCameraFeedVideo() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("xgglass-meta-mock-feed.mp4")
+        try? FileManager.default.removeItem(at: url)
+
+        let width = 320
+        let height = 180
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        let input = AVAssetWriterInput(
+            mediaType: .video,
+            outputSettings: [
+                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoWidthKey: width,
+                AVVideoHeightKey: height
+            ]
+        )
+        input.expectsMediaDataInRealTime = false
+
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: input,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height
+            ]
+        )
+
+        guard writer.canAdd(input) else {
+            throw TestFailure("Could not add mock camera feed writer input")
+        }
+        writer.add(input)
+        guard writer.startWriting() else {
+            throw writer.error ?? TestFailure("Could not start mock camera feed writer")
+        }
+        writer.startSession(atSourceTime: .zero)
+
+        let frameDuration = CMTime(value: 1, timescale: 12)
+        for frameIndex in 0..<36 {
+            while !input.isReadyForMoreMediaData {
+                Thread.sleep(forTimeInterval: 0.005)
+            }
+            let pixelBuffer = try mockCameraFeedFrame(width: width, height: height, frameIndex: frameIndex)
+            let timestamp = CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex))
+            guard adaptor.append(pixelBuffer, withPresentationTime: timestamp) else {
+                throw writer.error ?? TestFailure("Could not append mock camera feed frame")
+            }
+        }
+
+        input.markAsFinished()
+        let semaphore = DispatchSemaphore(value: 0)
+        writer.finishWriting {
+            semaphore.signal()
+        }
+        semaphore.wait()
+
+        guard writer.status == .completed else {
+            throw writer.error ?? TestFailure("Could not finish mock camera feed writer")
+        }
+        return url
+    }
+
+    private func mockCameraFeedFrame(width: Int, height: Int, frameIndex: Int) throws -> CVPixelBuffer {
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32ARGB,
+            nil,
+            &pixelBuffer
+        )
+        guard status == kCVReturnSuccess, let pixelBuffer else {
+            throw TestFailure("Could not create mock camera feed frame")
+        }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
+
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+            throw TestFailure("Could not access mock camera feed frame memory")
+        }
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: baseAddress,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+        ) else {
+            throw TestFailure("Could not draw mock camera feed frame")
+        }
+
+        context.setFillColor(UIColor(red: 0.04, green: 0.06, blue: 0.10, alpha: 1).cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(UIColor(red: 0.02, green: 0.55, blue: 0.72, alpha: 1).cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: 34))
+        context.setFillColor(UIColor(red: 0.93, green: 0.34, blue: 0.20, alpha: 1).cgColor)
+        context.fill(CGRect(x: 24 + frameIndex * 4 % 240, y: 74, width: 52, height: 52))
+
+        return pixelBuffer
     }
 
 }

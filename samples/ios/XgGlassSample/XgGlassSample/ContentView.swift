@@ -1,6 +1,6 @@
 import SwiftUI
 import UIKit
-import XgGlassKit
+import XgGlassMeta
 
 enum ActiveClientKind: String, CaseIterable, Identifiable {
     case kotlinSimulator

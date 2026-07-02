@@ -15,6 +15,9 @@
 .kotlin/
 **/build/
 **/out/
+.build/
+.swiftpm/
+/artifacts/
 captures/
 build-logic/bin/
 .xg_glass_tmp/

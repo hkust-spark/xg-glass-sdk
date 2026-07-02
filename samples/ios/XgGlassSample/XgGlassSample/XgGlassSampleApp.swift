@@ -1,5 +1,5 @@
-import MWDATCore
 import SwiftUI
+import XgGlassMeta
 
 @main
 struct XgGlassSampleApp: App {
@@ -16,7 +16,7 @@ struct XgGlassSampleApp: App {
             ContentView()
                 .onOpenURL { url in
                     Task {
-                        _ = try? await Wearables.shared.handleUrl(url)
+                        try? await MetaDATRuntime.handleOpenURL(url)
                     }
                 }
         }

@@ -9,23 +9,14 @@
 /* Begin PBXBuildFile section */
 		111111111111111111111111 /* XgGlassSampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111112 /* XgGlassSampleApp.swift */; };
 		111111111111111111111113 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111114 /* ContentView.swift */; };
-		111111111111111111111115 /* XgGlassKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 111111111111111111111116 /* XgGlassKit.xcframework */; };
 		111111111111111111111126 /* StubSwiftGlassesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111127 /* StubSwiftGlassesClient.swift */; };
-		111111111111111111111128 /* MetaGlassesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11111111111111111111112E /* MetaGlassesClient.swift */; };
-		11111111111111111111112A /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111131 /* MWDATCore */; };
-		11111111111111111111112B /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111132 /* MWDATCamera */; };
-		11111111111111111111112C /* MWDATDisplay in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111133 /* MWDATDisplay */; };
-		11111111111111111111112D /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111134 /* MWDATMockDevice */; };
 		1524E2B63C78CE2FBD7A8AA7 /* libPods-XgGlassSampleTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 25A77010EE81497B86B84F74 /* libPods-XgGlassSampleTests.a */; };
 		222222222222222222222201 /* MetaMockRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222222222222222222222202 /* MetaMockRuntimeTests.swift */; };
-		22222222222222222222220B /* XgGlassKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 111111111111111111111116 /* XgGlassKit.xcframework */; };
-		22222222222222222222220C /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111131 /* MWDATCore */; };
-		22222222222222222222220D /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111132 /* MWDATCamera */; };
-		22222222222222222222220E /* MWDATDisplay in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111133 /* MWDATDisplay */; };
-		22222222222222222222220F /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111134 /* MWDATMockDevice */; };
 		333333333333333333333301 /* FrameFlutterRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333302 /* FrameFlutterRuntime.swift */; };
 		333333333333333333333303 /* FrameGlassesClientRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333304 /* FrameGlassesClientRuntimeTests.swift */; };
 		333333333333333333333305 /* FrameGlassesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333306 /* FrameGlassesClient.swift */; };
+		444444444444444444444002 /* XgGlassMeta in Frameworks */ = {isa = PBXBuildFile; productRef = 444444444444444444444102 /* XgGlassMeta */; };
+		444444444444444444444004 /* XgGlassMeta in Frameworks */ = {isa = PBXBuildFile; productRef = 444444444444444444444102 /* XgGlassMeta */; };
 		E3E6F72972D339B6265C9A24 /* libPods-XgGlassSample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 9CEED3E048D847174F02078E /* libPods-XgGlassSample.a */; };
 /* End PBXBuildFile section */
 
@@ -42,10 +33,8 @@
 /* Begin PBXFileReference section */
 		111111111111111111111112 /* XgGlassSampleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XgGlassSampleApp.swift; sourceTree = "<group>"; };
 		111111111111111111111114 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		111111111111111111111116 /* XgGlassKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = XgGlassKit.xcframework; path = "../../../app-contract/build/XCFrameworks/release/XgGlassKit.xcframework"; sourceTree = "<group>"; };
 		111111111111111111111117 /* XgGlassSample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = XgGlassSample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		111111111111111111111127 /* StubSwiftGlassesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubSwiftGlassesClient.swift; sourceTree = "<group>"; };
-		11111111111111111111112E /* MetaGlassesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaGlassesClient.swift; sourceTree = "<group>"; };
 		11111111111111111111112F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		222222222222222222222202 /* MetaMockRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaMockRuntimeTests.swift; sourceTree = "<group>"; };
 		222222222222222222222204 /* XgGlassSampleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = XgGlassSampleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -65,11 +54,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				111111111111111111111115 /* XgGlassKit.xcframework in Frameworks */,
-				11111111111111111111112A /* MWDATCore in Frameworks */,
-				11111111111111111111112B /* MWDATCamera in Frameworks */,
-				11111111111111111111112C /* MWDATDisplay in Frameworks */,
-				11111111111111111111112D /* MWDATMockDevice in Frameworks */,
+				444444444444444444444002 /* XgGlassMeta in Frameworks */,
 				E3E6F72972D339B6265C9A24 /* libPods-XgGlassSample.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -78,11 +63,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				22222222222222222222220B /* XgGlassKit.xcframework in Frameworks */,
-				22222222222222222222220C /* MWDATCore in Frameworks */,
-				22222222222222222222220D /* MWDATCamera in Frameworks */,
-				22222222222222222222220E /* MWDATDisplay in Frameworks */,
-				22222222222222222222220F /* MWDATMockDevice in Frameworks */,
+				444444444444444444444004 /* XgGlassMeta in Frameworks */,
 				1524E2B63C78CE2FBD7A8AA7 /* libPods-XgGlassSampleTests.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -95,7 +76,6 @@
 			children = (
 				11111111111111111111111A /* XgGlassSample */,
 				222222222222222222222203 /* XgGlassSampleTests */,
-				111111111111111111111116 /* XgGlassKit.xcframework */,
 				11111111111111111111111B /* Products */,
 				EB8DD82B9117DBA0302E562B /* Pods */,
 				719DA195F250B06BF6DA8294 /* Frameworks */,
@@ -108,7 +88,6 @@
 				111111111111111111111112 /* XgGlassSampleApp.swift */,
 				111111111111111111111114 /* ContentView.swift */,
 				111111111111111111111127 /* StubSwiftGlassesClient.swift */,
-				11111111111111111111112E /* MetaGlassesClient.swift */,
 				333333333333333333333302 /* FrameFlutterRuntime.swift */,
 				333333333333333333333306 /* FrameGlassesClient.swift */,
 				11111111111111111111112F /* Info.plist */,
@@ -175,10 +154,7 @@
 			);
 			name = XgGlassSample;
 			packageProductDependencies = (
-				111111111111111111111131 /* MWDATCore */,
-				111111111111111111111132 /* MWDATCamera */,
-				111111111111111111111133 /* MWDATDisplay */,
-				111111111111111111111134 /* MWDATMockDevice */,
+				444444444444444444444102 /* XgGlassMeta */,
 			);
 			productName = XgGlassSample;
 			productReference = 111111111111111111111117 /* XgGlassSample.app */;
@@ -200,10 +176,7 @@
 			);
 			name = XgGlassSampleTests;
 			packageProductDependencies = (
-				111111111111111111111131 /* MWDATCore */,
-				111111111111111111111132 /* MWDATCamera */,
-				111111111111111111111133 /* MWDATDisplay */,
-				111111111111111111111134 /* MWDATMockDevice */,
+				444444444444444444444102 /* XgGlassMeta */,
 			);
 			productName = XgGlassSampleTests;
 			productReference = 222222222222222222222204 /* XgGlassSampleTests.xctest */;
@@ -238,7 +211,7 @@
 			);
 			mainGroup = 111111111111111111111119;
 			packageReferences = (
-				111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */,
+				444444444444444444444100 /* XCLocalSwiftPackageReference "../../.." */,
 			);
 			productRefGroup = 11111111111111111111111B /* Products */;
 			projectDirPath = "";
@@ -342,7 +315,6 @@
 				111111111111111111111111 /* XgGlassSampleApp.swift in Sources */,
 				111111111111111111111113 /* ContentView.swift in Sources */,
 				111111111111111111111126 /* StubSwiftGlassesClient.swift in Sources */,
-				111111111111111111111128 /* MetaGlassesClient.swift in Sources */,
 				333333333333333333333301 /* FrameFlutterRuntime.swift in Sources */,
 				333333333333333333333305 /* FrameGlassesClient.swift in Sources */,
 			);
@@ -495,10 +467,6 @@
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_PREVIEWS = YES;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/../../../app-contract/build/XCFrameworks/release",
-				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = XgGlassSample/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -539,10 +507,6 @@
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_PREVIEWS = YES;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/../../../app-contract/build/XCFrameworks/release",
-				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = XgGlassSample/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -580,10 +544,6 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_TESTABILITY = YES;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/../../../app-contract/build/XCFrameworks/release",
-				);
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -612,10 +572,6 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/../../../app-contract/build/XCFrameworks/release",
-				);
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -666,37 +622,18 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/facebook/meta-wearables-dat-ios";
-			requirement = {
-				kind = exactVersion;
-				version = 0.8.0;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		444444444444444444444100 /* XCLocalSwiftPackageReference "../../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../..;
 		};
-/* End XCRemoteSwiftPackageReference section */
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		111111111111111111111131 /* MWDATCore */ = {
+		444444444444444444444102 /* XgGlassMeta */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
-			productName = MWDATCore;
-		};
-		111111111111111111111132 /* MWDATCamera */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
-			productName = MWDATCamera;
-		};
-		111111111111111111111133 /* MWDATDisplay */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
-			productName = MWDATDisplay;
-		};
-		111111111111111111111134 /* MWDATMockDevice */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
-			productName = MWDATMockDevice;
+			package = 444444444444444444444100 /* XCLocalSwiftPackageReference "../../.." */;
+			productName = XgGlassMeta;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

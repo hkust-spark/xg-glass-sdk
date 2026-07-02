@@ -1,23 +1,26 @@
-import AVFoundation
 import Foundation
 import MWDATCamera
 import MWDATCore
 import MWDATDisplay
 import MWDATMockDevice
-import UIKit
-import XgGlassKit
+import XgGlass
 
-enum MetaDATRuntime {
+public enum MetaDATRuntime {
     private static var isConfigured = false
 
-    static func configureIfNeeded() throws {
+    public static func configureIfNeeded() throws {
         guard !isConfigured else { return }
         try Wearables.configure()
         isConfigured = true
     }
+
+    public static func handleOpenURL(_ url: URL) async throws {
+        try configureIfNeeded()
+        _ = try await Wearables.shared.handleUrl(url)
+    }
 }
 
-final class MetaGlassesClient: BaseGlassesClient {
+public final class MetaGlassesClient: BaseGlassesClient {
     private var deviceSession: DeviceSession?
     private var stream: MWDATCamera.Stream?
     private var displayCapability: Display?
@@ -29,7 +32,7 @@ final class MetaGlassesClient: BaseGlassesClient {
     private var photoDataListenerToken: AnyListenerToken?
     private var displayStateListenerToken: AnyListenerToken?
 
-    init() {
+    public init() {
         super.init(
             initialCapabilities: DeviceCapabilities(
                 canCapturePhoto: true,
@@ -51,11 +54,11 @@ final class MetaGlassesClient: BaseGlassesClient {
         deviceSession?.stop()
     }
 
-    override var model: XgGlassKit.GlassesModel {
+    public override var model: XgGlassKit.GlassesModel {
         XgGlassKit.GlassesModel.meta
     }
 
-    override func doConnect(completionHandler: @escaping @Sendable (Error?) -> Void) {
+    public override func doConnect(completionHandler: @escaping @Sendable (Error?) -> Void) {
         Task { @MainActor in
             do {
                 try await self.connectAsync()
@@ -66,14 +69,14 @@ final class MetaGlassesClient: BaseGlassesClient {
         }
     }
 
-    override func mapConnectError(error: KotlinException) -> GlassesError {
+    public override func mapConnectError(error: KotlinException) -> GlassesError {
         if let glassesError = error as? GlassesError {
             return glassesError
         }
         return GlassesError.Transport(detail: "Meta connect failed: \(error.message ?? "unknown error")", raw: error)
     }
 
-    override func disconnect(completionHandler: @escaping @Sendable (Error?) -> Void) {
+    public override func disconnect(completionHandler: @escaping @Sendable (Error?) -> Void) {
         Task { @MainActor in
             self.cleanupSession()
             self._state.setValue(ConnectionState.Disconnected.shared)
@@ -81,7 +84,7 @@ final class MetaGlassesClient: BaseGlassesClient {
         }
     }
 
-    override func capturePhoto(options: CaptureOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
+    public override func capturePhoto(options: CaptureOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
         Task { @MainActor in
             do {
                 let image = try await self.capturePhotoAsync(options: options)
@@ -92,7 +95,7 @@ final class MetaGlassesClient: BaseGlassesClient {
         }
     }
 
-    override func display(text: String, options: DisplayOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
+    public override func display(text: String, options: DisplayOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
         Task { @MainActor in
             do {
                 try await self.displayAsync(text: text)
@@ -108,16 +111,16 @@ final class MetaGlassesClient: BaseGlassesClient {
         }
     }
 
-    override func playAudio(source: AudioSource, options: PlayAudioOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
+    public override func playAudio(source: AudioSource, options: PlayAudioOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
         completionHandler(nil, GlassesError.Unsupported(detail: "Meta iOS adapter does not implement audio playback").asError())
     }
 
-    override func startMicrophone(options: MicrophoneOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
+    public override func startMicrophone(options: MicrophoneOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
         // TODO(meta-ios-mic): the Meta DAT SDK exposes no audio API; Meta mic is Bluetooth-HFP capture via AVFoundation (like the Android HFP path) and needs the paired device -- unvalidatable on the Simulator.
         completionHandler(nil, GlassesError.Unsupported(detail: "Meta microphone on iOS requires Bluetooth-HFP audio capture (the Ray-Ban Meta acts as a Bluetooth headset); not yet implemented").asError())
     }
 
-    func startRegistration(completionHandler: @escaping @Sendable (Error?) -> Void) {
+    public func startRegistration(completionHandler: @escaping @Sendable (Error?) -> Void) {
         Task { @MainActor in
             do {
                 try MetaDATRuntime.configureIfNeeded()
@@ -130,7 +133,7 @@ final class MetaGlassesClient: BaseGlassesClient {
     }
 
     @MainActor
-    func enableMockDevice() throws -> String {
+    public func enableMockDevice(cameraFeedURL: URL? = nil, capturedImageURL: URL? = nil) throws -> String {
         let mockDeviceKit = MockDeviceKit.shared
         mockDeviceKit.enable()
         try MetaDATRuntime.configureIfNeeded()
@@ -140,10 +143,12 @@ final class MetaGlassesClient: BaseGlassesClient {
         glasses.unfold()
         glasses.don()
 
-        let feedURL = try Self.writeMockCameraFeedVideo()
-        glasses.services.camera.setCameraFeed(fileURL: feedURL)
-        let captureURL = try Self.writeMockCaptureImage()
-        glasses.services.camera.setCapturedImage(fileURL: captureURL)
+        if let cameraFeedURL {
+            glasses.services.camera.setCameraFeed(fileURL: cameraFeedURL)
+        }
+        if let capturedImageURL {
+            glasses.services.camera.setCapturedImage(fileURL: capturedImageURL)
+        }
 
         mockGlasses = glasses
         emitLog(message: "Meta mock Ray-Ban Meta device enabled")
@@ -436,147 +441,6 @@ final class MetaGlassesClient: BaseGlassesClient {
     @MainActor
     private func existingMockGlasses(in mockDeviceKit: MockDeviceKitInterface) -> MockGlasses? {
         mockDeviceKit.pairedDevices.compactMap { $0 as? MockGlasses }.first
-    }
-
-    static func writeMockCaptureImage() throws -> URL {
-        let size = CGSize(width: 640, height: 360)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let image = renderer.image { context in
-            UIColor(red: 0.05, green: 0.08, blue: 0.12, alpha: 1).setFill()
-            context.fill(CGRect(origin: .zero, size: size))
-
-            UIColor(red: 0.02, green: 0.54, blue: 0.70, alpha: 1).setFill()
-            context.fill(CGRect(x: 0, y: 0, width: size.width, height: 72))
-
-            let title = "Meta Mock Capture"
-            let subtitle = "Ray-Ban Meta DAT simulator"
-            title.draw(
-                at: CGPoint(x: 32, y: 112),
-                withAttributes: [
-                    .font: UIFont.boldSystemFont(ofSize: 34),
-                    .foregroundColor: UIColor.white
-                ]
-            )
-            subtitle.draw(
-                at: CGPoint(x: 32, y: 164),
-                withAttributes: [
-                    .font: UIFont.systemFont(ofSize: 22),
-                    .foregroundColor: UIColor(white: 1, alpha: 0.82)
-                ]
-            )
-        }
-
-        guard let data = image.jpegData(compressionQuality: 0.92) else {
-            throw MetaAdapterFailure("Could not create Meta mock capture JPEG")
-        }
-
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("xgglass-meta-mock-capture.jpg")
-        try data.write(to: url, options: .atomic)
-        return url
-    }
-
-    static func writeMockCameraFeedVideo() throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("xgglass-meta-mock-feed.mp4")
-        try? FileManager.default.removeItem(at: url)
-
-        let width = 320
-        let height = 180
-        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-        let input = AVAssetWriterInput(
-            mediaType: .video,
-            outputSettings: [
-                AVVideoCodecKey: AVVideoCodecType.h264,
-                AVVideoWidthKey: width,
-                AVVideoHeightKey: height
-            ]
-        )
-        input.expectsMediaDataInRealTime = false
-
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
-            assetWriterInput: input,
-            sourcePixelBufferAttributes: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
-                kCVPixelBufferWidthKey as String: width,
-                kCVPixelBufferHeightKey as String: height
-            ]
-        )
-
-        guard writer.canAdd(input) else {
-            throw MetaAdapterFailure("Could not add mock camera feed writer input")
-        }
-        writer.add(input)
-        guard writer.startWriting() else {
-            throw writer.error ?? MetaAdapterFailure("Could not start mock camera feed writer")
-        }
-        writer.startSession(atSourceTime: .zero)
-
-        let frameDuration = CMTime(value: 1, timescale: 12)
-        for frameIndex in 0..<36 {
-            while !input.isReadyForMoreMediaData {
-                Thread.sleep(forTimeInterval: 0.005)
-            }
-            let pixelBuffer = try mockCameraFeedFrame(width: width, height: height, frameIndex: frameIndex)
-            let timestamp = CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex))
-            guard adaptor.append(pixelBuffer, withPresentationTime: timestamp) else {
-                throw writer.error ?? MetaAdapterFailure("Could not append mock camera feed frame")
-            }
-        }
-
-        input.markAsFinished()
-        let semaphore = DispatchSemaphore(value: 0)
-        writer.finishWriting {
-            semaphore.signal()
-        }
-        semaphore.wait()
-
-        guard writer.status == .completed else {
-            throw writer.error ?? MetaAdapterFailure("Could not finish mock camera feed writer")
-        }
-        return url
-    }
-
-    private static func mockCameraFeedFrame(width: Int, height: Int, frameIndex: Int) throws -> CVPixelBuffer {
-        var pixelBuffer: CVPixelBuffer?
-        let status = CVPixelBufferCreate(
-            kCFAllocatorDefault,
-            width,
-            height,
-            kCVPixelFormatType_32ARGB,
-            nil,
-            &pixelBuffer
-        )
-        guard status == kCVReturnSuccess, let pixelBuffer else {
-            throw MetaAdapterFailure("Could not create mock camera feed frame")
-        }
-
-        CVPixelBufferLockBaseAddress(pixelBuffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
-
-        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
-            throw MetaAdapterFailure("Could not access mock camera feed frame memory")
-        }
-
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let context = CGContext(
-            data: baseAddress,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
-        ) else {
-            throw MetaAdapterFailure("Could not draw mock camera feed frame")
-        }
-
-        context.setFillColor(UIColor(red: 0.04, green: 0.06, blue: 0.10, alpha: 1).cgColor)
-        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        context.setFillColor(UIColor(red: 0.02, green: 0.55, blue: 0.72, alpha: 1).cgColor)
-        context.fill(CGRect(x: 0, y: 0, width: width, height: 34))
-        context.setFillColor(UIColor(red: 0.93, green: 0.34, blue: 0.20, alpha: 1).cgColor)
-        context.fill(CGRect(x: 24 + frameIndex * 4 % 240, y: 74, width: 52, height: 52))
-
-        return pixelBuffer
     }
 
 }
