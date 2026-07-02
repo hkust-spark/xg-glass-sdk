@@ -20,6 +20,7 @@ kotlin {
             isStatic = true
             export(project(":core"))
             export(project(":device-simulator-ios"))
+            export(project(":device-omi-ios"))
             xcf.add(this)
         }
     }
@@ -32,6 +33,7 @@ kotlin {
         iosMain.dependencies {
             // The iOS framework aggregates the shared API and available iOS device adapters.
             api(project(":device-simulator-ios"))
+            api(project(":device-omi-ios"))
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
