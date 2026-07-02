@@ -66,6 +66,7 @@ include(":device-frame-flutter")
 include(":device-rayneo-installer")
 include(":device-rayneo-runtime")
 include(":device-simulator")
+include(":device-simulator-ios")
 include(":device-omi")
 include(":device-android-xr")
 
@@ -78,6 +79,7 @@ project(":device-frame-flutter").projectDir = file("devices/device-frame-flutter
 project(":device-rayneo-installer").projectDir = file("devices/device-rayneo-installer")
 project(":device-rayneo-runtime").projectDir = file("devices/device-rayneo-runtime")
 project(":device-simulator").projectDir = file("devices/device-simulator")
+project(":device-simulator-ios").projectDir = file("devices/device-simulator-ios")
 project(":device-omi").projectDir = file("devices/device-omi")
 project(":device-android-xr").projectDir = file("devices/device-android-xr")
 

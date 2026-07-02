@@ -19,6 +19,7 @@ kotlin {
             baseName = "XgGlassKit"
             isStatic = true
             export(project(":core"))
+            export(project(":device-simulator-ios"))
             xcf.add(this)
         }
     }
@@ -27,6 +28,10 @@ kotlin {
         commonMain.dependencies {
             // Re-exports kotlinx-coroutines-core transitively for CoroutineScope in UniversalAppContext.
             api(project(":core"))
+        }
+        iosMain.dependencies {
+            // The iOS framework aggregates the shared API and available iOS device adapters.
+            api(project(":device-simulator-ios"))
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
