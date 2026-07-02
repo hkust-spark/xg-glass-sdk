@@ -10,6 +10,7 @@
 		111111111111111111111111 /* XgGlassSampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111112 /* XgGlassSampleApp.swift */; };
 		111111111111111111111113 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111114 /* ContentView.swift */; };
 		111111111111111111111115 /* XgGlassKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 111111111111111111111116 /* XgGlassKit.xcframework */; };
+		111111111111111111111126 /* StubSwiftGlassesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111127 /* StubSwiftGlassesClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -17,6 +18,7 @@
 		111111111111111111111114 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		111111111111111111111116 /* XgGlassKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = XgGlassKit.xcframework; path = ../../../app-contract/build/XCFrameworks/release/XgGlassKit.xcframework; sourceTree = "<group>"; };
 		111111111111111111111117 /* XgGlassSample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = XgGlassSample.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		111111111111111111111127 /* StubSwiftGlassesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubSwiftGlassesClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -45,6 +47,7 @@
 			children = (
 				111111111111111111111112 /* XgGlassSampleApp.swift */,
 				111111111111111111111114 /* ContentView.swift */,
+				111111111111111111111127 /* StubSwiftGlassesClient.swift */,
 			);
 			path = XgGlassSample;
 			sourceTree = "<group>";
@@ -127,6 +130,7 @@
 			files = (
 				111111111111111111111111 /* XgGlassSampleApp.swift in Sources */,
 				111111111111111111111113 /* ContentView.swift in Sources */,
+				111111111111111111111126 /* StubSwiftGlassesClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

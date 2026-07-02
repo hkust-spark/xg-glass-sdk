@@ -2,13 +2,39 @@ import SwiftUI
 import UIKit
 import XgGlassKit
 
+enum ActiveClientKind: String, CaseIterable, Identifiable {
+    case kotlinSimulator
+    case swiftStub
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .kotlinSimulator:
+            return "Kotlin Sim"
+        case .swiftStub:
+            return "Swift Stub"
+        }
+    }
+}
+
 struct ContentView: View {
     @StateObject private var model = SampleModel()
 
     var body: some View {
         NavigationView {
             List {
+                Section("Client") {
+                    Picker("Client", selection: $model.selectedClient) {
+                        ForEach(ActiveClientKind.allCases) { client in
+                            Text(client.title).tag(client)
+                        }
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                }
+
                 Section("Device") {
+                    InfoRow(title: "Implementation", value: model.selectedClient.title)
                     InfoRow(title: "Model", value: model.modelName)
                     InfoRow(title: "Can capture", value: model.canCapturePhoto ? "Yes" : "No")
                     InfoRow(title: "Can display", value: model.canDisplayText ? "Yes" : "No")
@@ -61,21 +87,35 @@ private struct InfoRow: View {
 
 @MainActor
 final class SampleModel: ObservableObject {
+    @Published var selectedClient: ActiveClientKind = .kotlinSimulator
     @Published var status = "Idle"
     @Published var displayText = ""
     @Published var image: UIImage?
 
-    private let client: SimulatorIosGlassesClient
+    private let kotlinClient: GlassesClient
+    private let swiftStubClient: GlassesClient
 
     init() {
-        var displayUpdate: ((String) -> Void)?
-        self.client = SimulatorIosGlassesClient(displaySink: { text in
-            displayUpdate?(text)
+        var displayUpdate: ((ActiveClientKind, String) -> Void)?
+        self.kotlinClient = SimulatorIosGlassesClient(displaySink: { text in
+            displayUpdate?(.kotlinSimulator, text)
         })
-        displayUpdate = { [weak self] text in
+        self.swiftStubClient = StubSwiftGlassesClient(displaySink: { text in
+            displayUpdate?(.swiftStub, text)
+        })
+        displayUpdate = { [weak self] source, text in
             Task { @MainActor in
-                self?.displayText = text
+                self?.displayText = "\(source.title): \(text)"
             }
+        }
+    }
+
+    private var client: GlassesClient {
+        switch selectedClient {
+        case .kotlinSimulator:
+            return kotlinClient
+        case .swiftStub:
+            return swiftStubClient
         }
     }
 
@@ -92,29 +132,36 @@ final class SampleModel: ObservableObject {
     }
 
     func connect() {
-        status = "Connecting"
+        let client = self.client
+        let source = selectedClient
+        status = "Connecting \(source.title)"
         client.connect { [weak self] _, error in
             Task { @MainActor in
-                self?.status = error.map { "Connect failed: \($0.localizedDescription)" } ?? "Connected"
+                self?.status = error.map { "\(source.title) connect failed: \($0.localizedDescription)" }
+                    ?? "\(source.title) connected"
             }
         }
     }
 
     func display() {
+        let client = self.client
+        let source = selectedClient
         let options = DisplayOptions(mode: .replace, force: true)
-        client.display(text: "Hello from SwiftUI", options: options) { [weak self] _, error in
+        client.display(text: "Hello from \(source.title)", options: options) { [weak self] _, error in
             Task { @MainActor in
                 if let error {
-                    self?.status = "Display failed: \(error.localizedDescription)"
+                    self?.status = "\(source.title) display failed: \(error.localizedDescription)"
                 } else {
-                    self?.status = "Displayed text"
+                    self?.status = "\(source.title) displayed text"
                 }
             }
         }
     }
 
     func capture() {
-        status = "Capturing"
+        let client = self.client
+        let source = selectedClient
+        status = "Capturing \(source.title)"
         let options = CaptureOptions(
             photoQuality: .high,
             targetWidth: nil,
@@ -124,15 +171,15 @@ final class SampleModel: ObservableObject {
         client.capturePhoto(options: options) { [weak self] result, error in
             Task { @MainActor in
                 if let error {
-                    self?.status = "Capture failed: \(error.localizedDescription)"
+                    self?.status = "\(source.title) capture failed: \(error.localizedDescription)"
                     return
                 }
                 guard let captured = result as? CapturedImage else {
-                    self?.status = "Capture returned an unexpected result"
+                    self?.status = "\(source.title) capture returned an unexpected result"
                     return
                 }
                 self?.image = UIImage(data: captured.jpegBytes.toData())
-                self?.status = "Captured \(captured.width?.int32Value ?? 0)x\(captured.height?.int32Value ?? 0)"
+                self?.status = "\(source.title) captured \(captured.width?.int32Value ?? 0)x\(captured.height?.int32Value ?? 0)"
             }
         }
     }
