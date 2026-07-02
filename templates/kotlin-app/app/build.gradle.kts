@@ -109,7 +109,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     // xg.glass SDK (single entry-point dependency)
-    implementation("io.github.hkust-spark:universal:0.1.0")
+    implementation("io.github.hkust-spark:universal-full:0.1.0")
 
     // Shared developer logic module (implements UniversalAppEntry)
     implementation(project(":xgglass_app_logic"))

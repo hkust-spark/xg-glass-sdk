@@ -21,6 +21,11 @@ This repository publishes the Android/Kotlin SDK artifacts under:
 Packages repository. Consumers that explicitly add `device-meta` must also add
 Meta's GitHub Packages repository and provide a `read:packages` token.
 
+`universal-full` is a dev-only aggregate used by the CLI template through the
+composite build. It depends on the published-shape `universal` module and, when
+available in the SDK checkout, conditionally adds `device-meta` and the
+embedded-Flutter Frame adapter. It is not published to Maven Central.
+
 The `core` Kotlin Multiplatform publication also emits platform artifacts such
 as `core-kmp-android`, `core-iosarm64`, and `core-iossimulatorarm64` as Gradle
 metadata targets. Android consumers should depend on the public coordinates
@@ -71,9 +76,3 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 If using the lower-level Vanniktech task names directly, publish to the Central
 Portal staging repository first with `publishAllPublicationsToMavenCentralRepository`
 and then release from the portal workflow.
-
-## Open Release Item
-
-This repository currently has no root `LICENSE` file. Replace the placeholder
-license metadata in the publishing convention with the final project license
-before releasing to Maven Central.

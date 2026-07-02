@@ -55,6 +55,7 @@ rootProject.name = "xg-glass-sdk"
 
 // Single entry-point artifact for third-party apps (one dependency line).
 include(":universal")
+include(":universal-full")
 include(":core")
 include(":core-android")
 include(":app-contract")
