@@ -1,6 +1,6 @@
 package com.xgglass.appcontract
 
-import org.junit.Test
+import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class AIApiSettingsTest {

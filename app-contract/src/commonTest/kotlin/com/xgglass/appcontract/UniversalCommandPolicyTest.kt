@@ -1,7 +1,7 @@
 package com.xgglass.appcontract
 
 import com.xgglass.core.GlassesModel
-import org.junit.Test
+import kotlin.test.Test
 import kotlin.test.assertSame
 
 class UniversalCommandPolicyTest {
