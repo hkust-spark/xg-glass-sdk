@@ -3,9 +3,10 @@ plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.multiplatform) apply false
+    alias(libs.plugins.maven.publish) apply false
 }
 
 allprojects {
-    group = "com.xgglass"
-    version = "0.0.1"
+    group = "io.github.hkust-spark"
+    version = "0.1.0"
 }

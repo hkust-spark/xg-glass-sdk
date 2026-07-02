@@ -1,5 +1,6 @@
 plugins {
     id("com.xgglass.android.library")
+    id("com.xgglass.maven-publish")
 }
 
 android {
@@ -16,9 +17,6 @@ dependencies {
 
     // Always include Rokid implementation
     api(project(":device-rokid"))
-    if (project.findProject(":device-meta") != null) {
-        api(project(":device-meta"))
-    }
 
     // RayNeo: installer (phone-side) + runtime (on-glasses)
     api(project(":device-rayneo-installer"))
@@ -30,9 +28,6 @@ dependencies {
     // Omi implementation (audio-focused BLE glasses)
     api(project(":device-omi"))
 
-    // Include Frame when available in this build (i.e., frame_module exists and is included).
-    // For published artifacts, ensure the build pipeline always includes device-frame-embedded.
-    if (project.findProject(":device-frame-embedded") != null) {
-        api(project(":device-frame-embedded"))
-    }
+    // Frame bridge API. The embedded Flutter host wrapper remains app-local and is not published.
+    api(project(":device-frame-flutter"))
 }

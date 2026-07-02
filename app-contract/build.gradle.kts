@@ -1,7 +1,12 @@
+import org.gradle.api.publish.PublishingExtension
+import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.api.publish.maven.tasks.PublishToMavenLocal
+import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    id("com.xgglass.maven-publish")
 }
 
 apply(plugin = "com.android.library")
@@ -51,4 +56,22 @@ extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
+}
+
+afterEvaluate {
+    extensions.configure<PublishingExtension>("publishing") {
+        publications.withType(MavenPublication::class.java).configureEach {
+            if (name == "androidRelease") {
+                artifactId = "app-contract"
+            }
+        }
+    }
+}
+
+tasks.withType(PublishToMavenLocal::class.java).configureEach {
+    onlyIf { publication.name == "androidRelease" }
+}
+
+tasks.withType(PublishToMavenRepository::class.java).configureEach {
+    onlyIf { publication.name == "androidRelease" }
 }

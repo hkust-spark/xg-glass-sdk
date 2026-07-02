@@ -1,5 +1,9 @@
+import org.gradle.api.publish.PublishingExtension
+import org.gradle.api.publish.maven.MavenPublication
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    id("com.xgglass.maven-publish")
 }
 
 apply(plugin = "com.android.library")
@@ -37,5 +41,15 @@ extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
+    }
+}
+
+afterEvaluate {
+    extensions.configure<PublishingExtension>("publishing") {
+        publications.withType(MavenPublication::class.java).configureEach {
+            if (name == "androidRelease") {
+                artifactId = "core-kmp-android"
+            }
+        }
     }
 }

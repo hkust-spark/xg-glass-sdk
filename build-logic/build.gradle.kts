@@ -17,6 +17,7 @@ dependencies {
     // Keep versions aligned with `xg-glass-sdk/gradle/libs.versions.toml`.
     compileOnly("com.android.tools.build:gradle:8.13.1")
     compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
+    implementation("com.vanniktech:gradle-maven-publish-plugin:0.30.0")
 }
 
 gradlePlugin {
@@ -44,6 +45,12 @@ gradlePlugin {
             implementationClass = "com.xgglass.buildlogic.rayneo.XgGlassRayneoAppPlugin"
             displayName = "xg.glass RayNeo app plugin"
             description = "Wires the RayNeo host APK build + copy-to-assets pipeline for a phone app."
+        }
+        create("xgMavenPublish") {
+            id = "com.xgglass.maven-publish"
+            implementationClass = "com.xgglass.buildlogic.publish.XgGlassMavenPublishPlugin"
+            displayName = "xg.glass Maven publishing convention"
+            description = "Publishes xg.glass SDK libraries to Maven Central-compatible repositories."
         }
     }
 }

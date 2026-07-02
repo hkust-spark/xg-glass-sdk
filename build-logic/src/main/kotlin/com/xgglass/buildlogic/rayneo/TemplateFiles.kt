@@ -63,10 +63,10 @@ internal object RayneoHostTemplate {
                 implementation("com.google.android.material:material:1.12.0")
 
                 // RayNeo glasses-side runtime client (Camera2 capture + display sink)
-                implementation("com.xgglass:device-rayneo-runtime:0.0.1")
+                implementation("io.github.hkust-spark:device-rayneo-runtime:0.1.0")
 
                 // Entry contracts
-                implementation("com.xgglass:app-contract:0.0.1")
+                implementation("io.github.hkust-spark:app-contract:0.1.0")
 
                 // Developer's shared logic module (filled by plugin)
                 implementation(project("__XG_LOGIC_PROJECT__"))
