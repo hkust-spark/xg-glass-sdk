@@ -57,7 +57,7 @@ data class DisplayOptions(
 
 data class CapturedImage(
     val jpegBytes: ByteArray,
-    val timestampMs: Long = System.currentTimeMillis(),
+    val timestampMs: Long = nowMillis(),
     val width: Int? = null,
     val height: Int? = null,
     val rotationDegrees: Int? = null,

@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.concurrent.Volatile
 
 /**
  * Shared state, event, and connect lifecycle plumbing for device clients.
@@ -76,7 +77,7 @@ abstract class BaseGlassesClient(
 
     protected open fun mapConnectError(error: Exception): GlassesError {
         return (error as? GlassesError)
-            ?: GlassesError.Transport("${this::class.java.simpleName} connect failed: ${error.message}", error)
+            ?: GlassesError.Transport("${this::class.simpleName ?: "GlassesClient"} connect failed: ${error.message}", error)
     }
 
     protected abstract suspend fun doConnect()

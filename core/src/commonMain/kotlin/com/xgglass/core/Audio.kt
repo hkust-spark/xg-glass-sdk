@@ -87,7 +87,7 @@ data class AudioChunk(
     val bytes: ByteArray,
     val format: AudioFormat,
     val sequence: Long,
-    val timestampMs: Long = System.currentTimeMillis(),
+    val timestampMs: Long = nowMillis(),
     /** True when this chunk indicates end-of-stream (may have empty bytes). */
     val endOfStream: Boolean = false,
 ) {

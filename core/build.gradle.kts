@@ -1,15 +1,40 @@
 plugins {
-    id("com.xgglass.android.library")
+    alias(libs.plugins.kotlin.multiplatform)
 }
 
-android {
+apply(plugin = "com.android.library")
+
+kotlin {
+    androidTarget {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+        }
+    }
+
+    iosArm64()
+    iosSimulatorArm64()
+
+    sourceSets {
+        commonMain.dependencies {
+            api(libs.kotlinx.coroutines.core)
+        }
+        androidMain.dependencies {
+            api(libs.kotlinx.coroutines.android)
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
+    }
+}
+
+extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
     namespace = "com.xgglass.core"
-}
-
-dependencies {
-    api(libs.kotlinx.coroutines.core)
-    api(libs.kotlinx.coroutines.android)
-
-    testImplementation("org.jetbrains.kotlin:kotlin-test")
-    testImplementation("junit:junit:4.13.2")
+    compileSdk = 35
+    defaultConfig {
+        minSdk = 28
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
 }
