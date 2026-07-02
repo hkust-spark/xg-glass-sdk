@@ -16,7 +16,23 @@
 		11111111111111111111112B /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111132 /* MWDATCamera */; };
 		11111111111111111111112C /* MWDATDisplay in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111133 /* MWDATDisplay */; };
 		11111111111111111111112D /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111134 /* MWDATMockDevice */; };
+		222222222222222222222201 /* MetaMockRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222222222222222222222202 /* MetaMockRuntimeTests.swift */; };
+		22222222222222222222220B /* XgGlassKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 111111111111111111111116 /* XgGlassKit.xcframework */; };
+		22222222222222222222220C /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111131 /* MWDATCore */; };
+		22222222222222222222220D /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111132 /* MWDATCamera */; };
+		22222222222222222222220E /* MWDATDisplay in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111133 /* MWDATDisplay */; };
+		22222222222222222222220F /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111134 /* MWDATMockDevice */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		222222222222222222222209 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 111111111111111111111120 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 11111111111111111111111C;
+			remoteInfo = XgGlassSample;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		111111111111111111111112 /* XgGlassSampleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XgGlassSampleApp.swift; sourceTree = "<group>"; };
@@ -26,6 +42,8 @@
 		111111111111111111111127 /* StubSwiftGlassesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubSwiftGlassesClient.swift; sourceTree = "<group>"; };
 		11111111111111111111112E /* MetaGlassesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaGlassesClient.swift; sourceTree = "<group>"; };
 		11111111111111111111112F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		222222222222222222222202 /* MetaMockRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaMockRuntimeTests.swift; sourceTree = "<group>"; };
+		222222222222222222222204 /* XgGlassSampleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = XgGlassSampleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,6 +59,18 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		222222222222222222222207 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				22222222222222222222220B /* XgGlassKit.xcframework in Frameworks */,
+				22222222222222222222220C /* MWDATCore in Frameworks */,
+				22222222222222222222220D /* MWDATCamera in Frameworks */,
+				22222222222222222222220E /* MWDATDisplay in Frameworks */,
+				22222222222222222222220F /* MWDATMockDevice in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -48,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				11111111111111111111111A /* XgGlassSample */,
+				222222222222222222222203 /* XgGlassSampleTests */,
 				111111111111111111111116 /* XgGlassKit.xcframework */,
 				11111111111111111111111B /* Products */,
 			);
@@ -69,8 +100,17 @@
 			isa = PBXGroup;
 			children = (
 				111111111111111111111117 /* XgGlassSample.app */,
+				222222222222222222222204 /* XgGlassSampleTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		222222222222222222222203 /* XgGlassSampleTests */ = {
+			isa = PBXGroup;
+			children = (
+				222222222222222222222202 /* MetaMockRuntimeTests.swift */,
+			);
+			path = XgGlassSampleTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -99,6 +139,30 @@
 			productReference = 111111111111111111111117 /* XgGlassSample.app */;
 			productType = "com.apple.product-type.application";
 		};
+		222222222222222222222205 /* XgGlassSampleTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 222222222222222222222210 /* Build configuration list for PBXNativeTarget "XgGlassSampleTests" */;
+			buildPhases = (
+				222222222222222222222206 /* Sources */,
+				222222222222222222222207 /* Frameworks */,
+				222222222222222222222208 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				22222222222222222222220A /* PBXTargetDependency */,
+			);
+			name = XgGlassSampleTests;
+			packageProductDependencies = (
+				111111111111111111111131 /* MWDATCore */,
+				111111111111111111111132 /* MWDATCamera */,
+				111111111111111111111133 /* MWDATDisplay */,
+				111111111111111111111134 /* MWDATMockDevice */,
+			);
+			productName = XgGlassSampleTests;
+			productReference = 222222222222222222222204 /* XgGlassSampleTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -111,6 +175,10 @@
 				TargetAttributes = {
 					11111111111111111111111C = {
 						CreatedOnToolsVersion = 26.5;
+					};
+					222222222222222222222205 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 11111111111111111111111C;
 					};
 				};
 			};
@@ -131,12 +199,20 @@
 			projectRoot = "";
 			targets = (
 				11111111111111111111111C /* XgGlassSample */,
+				222222222222222222222205 /* XgGlassSampleTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		11111111111111111111111F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		222222222222222222222208 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -157,7 +233,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		222222222222222222222206 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				222222222222222222222201 /* MetaMockRuntimeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		22222222222222222222220A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 11111111111111111111111C /* XgGlassSample */;
+			targetProxy = 222222222222222222222209 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		111111111111111111111122 /* Debug */ = {
@@ -278,9 +370,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLIENT_TOKEN = 0;
+				CODE_SIGN_ENTITLEMENTS = XgGlassSample/XgGlassSample.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_PREVIEWS = YES;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -294,6 +389,18 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				META_APP_ID = 0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Xlinker",
+					"-sectcreate",
+					"-Xlinker",
+					"__TEXT",
+					"-Xlinker",
+					"__entitlements",
+					"-Xlinker",
+					"$(PROJECT_DIR)/XgGlassSample/XgGlassSample-Simulated.xcent",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.xgglass.sample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -306,9 +413,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLIENT_TOKEN = 0;
+				CODE_SIGN_ENTITLEMENTS = XgGlassSample/XgGlassSample.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_PREVIEWS = YES;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -322,11 +432,85 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				META_APP_ID = 0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Xlinker",
+					"-sectcreate",
+					"-Xlinker",
+					"__TEXT",
+					"-Xlinker",
+					"__entitlements",
+					"-Xlinker",
+					"$(PROJECT_DIR)/XgGlassSample/XgGlassSample-Simulated.xcent",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.xgglass.sample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		222222222222222222222211 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_TESTABILITY = YES;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../../../app-contract/build/XCFrameworks/release",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.xgglass.sample.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/XgGlassSample.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/XgGlassSample";
+			};
+			name = Debug;
+		};
+		222222222222222222222212 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../../../app-contract/build/XCFrameworks/release",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.xgglass.sample.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/XgGlassSample.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/XgGlassSample";
 			};
 			name = Release;
 		};
@@ -347,6 +531,15 @@
 			buildConfigurations = (
 				111111111111111111111124 /* Debug */,
 				111111111111111111111125 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		222222222222222222222210 /* Build configuration list for PBXNativeTarget "XgGlassSampleTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				222222222222222222222211 /* Debug */,
+				222222222222222222222212 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -41,8 +41,12 @@
 	<dict>
 		<key>AppLinkURLScheme</key>
 		<string>xgglasssample://</string>
+		<key>ClientToken</key>
+		<string>$(CLIENT_TOKEN)</string>
 		<key>MetaAppID</key>
-		<string>0</string>
+		<string>$(META_APP_ID)</string>
+		<key>TeamID</key>
+		<string>$(DEVELOPMENT_TEAM)</string>
 	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Needed to connect to Meta wearables.</string>
