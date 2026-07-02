@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
@@ -11,8 +13,15 @@ kotlin {
         }
     }
 
-    iosArm64()
-    iosSimulatorArm64()
+    val xcf = XCFramework("XgGlassKit")
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.binaries.framework {
+            baseName = "XgGlassKit"
+            isStatic = true
+            export(project(":core"))
+            xcf.add(this)
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {
