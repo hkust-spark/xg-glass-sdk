@@ -1,5 +1,14 @@
 # KMP Migration Feasibility for xg-glass-sdk
 
+## Status
+
+Done: `:core` and `:app-contract` are now Kotlin Multiplatform modules
+(commonMain + androidMain + iosArm64/iosSimulatorArm64) and compile for both
+Android and iOS; Android consumers are unaffected. The shared layer is in place.
+Next: package the shared layer as an XCFramework and add per-device iOS
+transports (see [ios-device-support.md](ios-device-support.md) for which devices
+are feasible on iOS and in what order).
+
 ## Executive Summary
 
 Recommendation: use Kotlin Multiplatform for the SDK's shared API, app contract, and host/device orchestration logic, but keep actual glasses transport implementations platform-specific.
