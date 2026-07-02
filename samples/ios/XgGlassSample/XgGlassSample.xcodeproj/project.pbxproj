@@ -11,6 +11,11 @@
 		111111111111111111111113 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111114 /* ContentView.swift */; };
 		111111111111111111111115 /* XgGlassKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 111111111111111111111116 /* XgGlassKit.xcframework */; };
 		111111111111111111111126 /* StubSwiftGlassesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111127 /* StubSwiftGlassesClient.swift */; };
+		111111111111111111111128 /* MetaGlassesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11111111111111111111112E /* MetaGlassesClient.swift */; };
+		11111111111111111111112A /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111131 /* MWDATCore */; };
+		11111111111111111111112B /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111132 /* MWDATCamera */; };
+		11111111111111111111112C /* MWDATDisplay in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111133 /* MWDATDisplay */; };
+		11111111111111111111112D /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = 111111111111111111111134 /* MWDATMockDevice */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -19,6 +24,8 @@
 		111111111111111111111116 /* XgGlassKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = XgGlassKit.xcframework; path = ../../../app-contract/build/XCFrameworks/release/XgGlassKit.xcframework; sourceTree = "<group>"; };
 		111111111111111111111117 /* XgGlassSample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = XgGlassSample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		111111111111111111111127 /* StubSwiftGlassesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubSwiftGlassesClient.swift; sourceTree = "<group>"; };
+		11111111111111111111112E /* MetaGlassesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaGlassesClient.swift; sourceTree = "<group>"; };
+		11111111111111111111112F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -27,6 +34,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				111111111111111111111115 /* XgGlassKit.xcframework in Frameworks */,
+				11111111111111111111112A /* MWDATCore in Frameworks */,
+				11111111111111111111112B /* MWDATCamera in Frameworks */,
+				11111111111111111111112C /* MWDATDisplay in Frameworks */,
+				11111111111111111111112D /* MWDATMockDevice in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -48,6 +59,8 @@
 				111111111111111111111112 /* XgGlassSampleApp.swift */,
 				111111111111111111111114 /* ContentView.swift */,
 				111111111111111111111127 /* StubSwiftGlassesClient.swift */,
+				11111111111111111111112E /* MetaGlassesClient.swift */,
+				11111111111111111111112F /* Info.plist */,
 			);
 			path = XgGlassSample;
 			sourceTree = "<group>";
@@ -76,6 +89,12 @@
 			dependencies = (
 			);
 			name = XgGlassSample;
+			packageProductDependencies = (
+				111111111111111111111131 /* MWDATCore */,
+				111111111111111111111132 /* MWDATCamera */,
+				111111111111111111111133 /* MWDATDisplay */,
+				111111111111111111111134 /* MWDATMockDevice */,
+			);
 			productName = XgGlassSample;
 			productReference = 111111111111111111111117 /* XgGlassSample.app */;
 			productType = "com.apple.product-type.application";
@@ -104,6 +123,9 @@
 				Base,
 			);
 			mainGroup = 111111111111111111111119;
+			packageReferences = (
+				111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */,
+			);
 			productRefGroup = 11111111111111111111111B /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -131,6 +153,7 @@
 				111111111111111111111111 /* XgGlassSampleApp.swift in Sources */,
 				111111111111111111111113 /* ContentView.swift in Sources */,
 				111111111111111111111126 /* StubSwiftGlassesClient.swift in Sources */,
+				111111111111111111111128 /* MetaGlassesClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -187,7 +210,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -241,7 +264,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
@@ -264,12 +287,8 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/../../../app-contract/build/XCFrameworks/release",
 				);
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = XgGlassSample/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -296,12 +315,8 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/../../../app-contract/build/XCFrameworks/release",
 				);
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = XgGlassSample/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -337,6 +352,40 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/facebook/meta-wearables-dat-ios";
+			requirement = {
+				kind = exactVersion;
+				version = 0.8.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		111111111111111111111131 /* MWDATCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATCore;
+		};
+		111111111111111111111132 /* MWDATCamera */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATCamera;
+		};
+		111111111111111111111133 /* MWDATDisplay */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATDisplay;
+		};
+		111111111111111111111134 /* MWDATMockDevice */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 111111111111111111111130 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATMockDevice;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 111111111111111111111120 /* Project object */;
 }

@@ -5,6 +5,7 @@ import XgGlassKit
 enum ActiveClientKind: String, CaseIterable, Identifiable {
     case kotlinSimulator
     case swiftStub
+    case meta
 
     var id: String { rawValue }
 
@@ -14,6 +15,8 @@ enum ActiveClientKind: String, CaseIterable, Identifiable {
             return "Kotlin Sim"
         case .swiftStub:
             return "Swift Stub"
+        case .meta:
+            return "Meta"
         }
     }
 }
@@ -31,6 +34,14 @@ struct ContentView: View {
                         }
                     }
                     .pickerStyle(SegmentedPickerStyle())
+                    if model.selectedClient == .meta {
+                        Button("Start Meta Registration") {
+                            model.startMetaRegistration()
+                        }
+                        Button("Enable Meta Mock Device") {
+                            model.enableMetaMockDevice()
+                        }
+                    }
                 }
 
                 Section("Device") {
@@ -94,6 +105,7 @@ final class SampleModel: ObservableObject {
 
     private let kotlinClient: GlassesClient
     private let swiftStubClient: GlassesClient
+    private let metaClient: MetaGlassesClient
 
     init() {
         var displayUpdate: ((ActiveClientKind, String) -> Void)?
@@ -103,6 +115,7 @@ final class SampleModel: ObservableObject {
         self.swiftStubClient = StubSwiftGlassesClient(displaySink: { text in
             displayUpdate?(.swiftStub, text)
         })
+        self.metaClient = MetaGlassesClient()
         displayUpdate = { [weak self] source, text in
             Task { @MainActor in
                 self?.displayText = "\(source.title): \(text)"
@@ -116,6 +129,8 @@ final class SampleModel: ObservableObject {
             return kotlinClient
         case .swiftStub:
             return swiftStubClient
+        case .meta:
+            return metaClient
         }
     }
 
@@ -140,6 +155,25 @@ final class SampleModel: ObservableObject {
                 self?.status = error.map { "\(source.title) connect failed: \($0.localizedDescription)" }
                     ?? "\(source.title) connected"
             }
+        }
+    }
+
+    func startMetaRegistration() {
+        status = "Starting Meta registration"
+        metaClient.startRegistration { [weak self] error in
+            Task { @MainActor in
+                self?.status = error.map { "Meta registration failed: \($0.localizedDescription)" }
+                    ?? "Meta registration started"
+            }
+        }
+    }
+
+    func enableMetaMockDevice() {
+        status = "Enabling Meta mock device"
+        do {
+            status = try metaClient.enableMockDevice()
+        } catch {
+            status = "Meta mock failed: \(error.localizedDescription)"
         }
     }
 
