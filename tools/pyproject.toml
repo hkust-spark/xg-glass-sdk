@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xg-glass"
+version = "0.1.0"
+description = "xg-glass CLI: init/build/install/run xg.glass smart-glasses Android host apps."
+readme = "xg_glass_cli/README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "hkust-spark" }]
+keywords = ["smart-glasses", "android", "xg-glass", "sdk", "cli"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Build Tools",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/hkust-spark/xg-glass-sdk"
+Repository = "https://github.com/hkust-spark/xg-glass-sdk"
+
+[project.scripts]
+xg-glass = "xg_glass_cli.cli:main"
+
+[tool.setuptools]
+packages = ["xg_glass_cli"]
