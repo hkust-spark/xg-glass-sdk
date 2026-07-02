@@ -64,6 +64,36 @@ final class FrameGlassesClientRuntimeTests: XCTestCase {
         XCTAssertTrue(displayKotlinError is GlassesError.NotConnected)
     }
 
+    func testFrameMicrophoneRoutesThroughBridgeAndFailsHonestlyOnSimulator() throws {
+        let client = FrameGlassesClient(connectTimeoutSeconds: 3)
+        self.client = client
+
+        let expectation = expectation(description: "startMicrophone returns mapped simulator error")
+        let options = MicrophoneOptions(
+            preferredEncoding: .pcmS16Le,
+            preferredSampleRateHz: KotlinInt(int: 16_000),
+            preferredChannelCount: KotlinInt(int: 1),
+            audioHint: .default_
+        )
+        var micError: Error?
+        client.startMicrophone(options: options) { _, error in
+            micError = error
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5)
+
+        guard let micError else {
+            throw FrameAdapterTestFailure("startMicrophone unexpectedly succeeded on the simulator")
+        }
+        let micKotlinError = (micError as NSError).kotlinException
+        print("FRAME_ADAPTER_MIC_ERROR=\(describe(micKotlinError ?? micError))")
+        XCTAssertFalse(micKotlinError is GlassesError.Unsupported)
+        XCTAssertTrue(
+            micKotlinError is GlassesError.NotConnected || micKotlinError is GlassesError.Transport,
+            "Expected NotConnected or Transport, got \(describe(micKotlinError ?? micError))"
+        )
+    }
+
     private func waitForCaptureError(_ client: FrameGlassesClient) -> Error {
         let expectation = expectation(description: "capturePhoto returns mapped error")
         let options = CaptureOptions(

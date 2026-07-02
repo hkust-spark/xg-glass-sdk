@@ -9,6 +9,7 @@ final class FrameGlassesClient: BaseGlassesClient {
     private let connectTimeoutSeconds: TimeInterval
     private var eventObserverToken: UUID?
     private var stateObserverToken: UUID?
+    private var activeMicSink: PushMicrophoneSession?
 
     init(runtime: FrameFlutterRuntime? = nil, connectTimeoutSeconds: TimeInterval = 10) {
         if let runtime {
@@ -105,12 +106,14 @@ final class FrameGlassesClient: BaseGlassesClient {
 
     override func disconnect(completionHandler: @escaping @Sendable (Error?) -> Void) {
         guard let runtime else {
+            clearActiveMic()
             _state.setValue(ConnectionState.Disconnected.shared)
             completionHandler(nil)
             return
         }
 
         runtime.disconnect { [weak self] _, error in
+            self?.clearActiveMic()
             self?._state.setValue(ConnectionState.Disconnected.shared)
             if let error {
                 // frameTransportError is a free function, so a released `self` cannot collapse
@@ -177,11 +180,40 @@ final class FrameGlassesClient: BaseGlassesClient {
     }
 
     override func startMicrophone(options: MicrophoneOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
-        // TODO(frame-ios-mic): stream Flutter onEvent type=="audio" into a Kotlin SharedFlow<AudioChunk>.
-        completionHandler(
-            nil,
-            GlassesError.Unsupported(detail: "Frame microphone (iOS) not implemented yet").asError()
-        )
+        guard let runtime else {
+            completionHandler(nil, runtimeUnavailableError())
+            return
+        }
+        guard activeMicSink == nil else {
+            completionHandler(nil, GlassesError.Busy.shared.asError())
+            return
+        }
+
+        runtime.invoke(method: "startMicrophone", arguments: microphoneArguments(options)) { [weak self] response, error in
+            guard let self else {
+                completionHandler(nil, GlassesError.Transport(
+                    detail: "Frame client was released during microphone start",
+                    raw: nil
+                ).asError())
+                return
+            }
+            if let error {
+                completionHandler(nil, frameOperationError("Frame startMicrophone failed", operation: "startMicrophone", error: error))
+                return
+            }
+
+            let format = self.audioFormat(from: response)
+            let sink = PushMicrophoneSession(
+                format: format,
+                onStop: { [weak self] in
+                    self?.runtime?.invoke(method: "stopMicrophone", arguments: nil) { _, _ in }
+                    self?.clearActiveMic()
+                },
+                extraBufferCapacity: 128
+            )
+            self.activeMicSink = sink
+            completionHandler(sink, nil)
+        }
     }
 
     private func handleRuntimeState(_ state: FrameFlutterState) {
@@ -218,11 +250,30 @@ final class FrameGlassesClient: BaseGlassesClient {
         case "tap":
             let count = int32Value(payload["count"]) ?? 1
             _ = _events.tryEmit(value: GlassesEvent.Tap(count: count))
-        case "audio", "state":
-            // "state" is handled by the state observer; "audio" is deferred with the mic.
+        case "audio":
+            handleAudioEvent(payload)
+        case "state":
+            // "state" is handled by the state observer.
             break
         default:
             emitWarn(message: "Frame: ignoring unhandled event type \(payload["type"] as? String ?? "unknown")")
+        }
+    }
+
+    private func handleAudioEvent(_ payload: [String: Any]) {
+        guard let sink = activeMicSink else {
+            return
+        }
+
+        let sequence = int64Value(payload["sequence"]) ?? 0
+        if (payload["eos"] as? Bool) == true {
+            sink.emitEndOfStream(sequence: sequence)
+            clearActiveMic()
+            return
+        }
+
+        if let bytes = payload["bytes"] as? FlutterStandardTypedData {
+            _ = sink.emit(bytes: bytes.data.toKotlinByteArray(), sequence: sequence)
         }
     }
 
@@ -248,6 +299,31 @@ final class FrameGlassesClient: BaseGlassesClient {
         ]
     }
 
+    private func microphoneArguments(_ options: MicrophoneOptions) -> [String: Any] {
+        var args: [String: Any] = [
+            "audioEncoding": wireEncoding(options.preferredEncoding),
+        ]
+        if let sampleRateHz = options.preferredSampleRateHz {
+            args["sampleRateHz"] = Int(sampleRateHz.int32Value)
+        }
+        if let channelCount = options.preferredChannelCount {
+            args["channelCount"] = Int(channelCount.int32Value)
+        }
+        if let vendorMode = wireVendorMode(options.audioHint) {
+            args["vendorMode"] = vendorMode
+        }
+        return args
+    }
+
+    private func audioFormat(from response: Any?) -> AudioFormat {
+        let map = response as? [String: Any] ?? [:]
+        return AudioFormat(
+            encoding: audioEncoding(from: map["encoding"]),
+            sampleRateHz: int32Value(map["sampleRateHz"]).map { KotlinInt(int: $0) },
+            channelCount: int32Value(map["channelCount"]).map { KotlinInt(int: $0) }
+        )
+    }
+
     private func wireJpegQuality(_ quality: PhotoQuality) -> Int {
         switch quality {
         case .lowest:
@@ -262,6 +338,45 @@ final class FrameGlassesClient: BaseGlassesClient {
             return 100
         default:
             return 90
+        }
+    }
+
+    private func wireEncoding(_ encoding: AudioEncoding) -> String {
+        switch encoding {
+        case .pcmS8:
+            return "pcm_s8"
+        case .opus:
+            return "opus"
+        case .pcmS16Le:
+            return "pcm_s16_le"
+        default:
+            return "pcm_s16_le"
+        }
+    }
+
+    private func audioEncoding(from value: Any?) -> AudioEncoding {
+        switch value as? String {
+        case "pcm_s8":
+            return .pcmS8
+        case "opus":
+            return .opus
+        default:
+            return .pcmS16Le
+        }
+    }
+
+    private func wireVendorMode(_ hint: AudioCaptureHint) -> String? {
+        switch hint {
+        case .voiceAssistant:
+            return "voiceassistant"
+        case .translation:
+            return "translation"
+        case .camcorder:
+            return "camcorder"
+        case .default_:
+            return nil
+        default:
+            return nil
         }
     }
 
@@ -282,6 +397,32 @@ final class FrameGlassesClient: BaseGlassesClient {
             return value.int32Value
         }
         return nil
+    }
+
+    private func int64Value(_ value: Any?) -> Int64? {
+        if let value = value as? Int64 {
+            return value
+        }
+        if let value = value as? Int32 {
+            return Int64(value)
+        }
+        if let value = value as? Int {
+            return Int64(value)
+        }
+        if let value = value as? NSNumber {
+            return value.int64Value
+        }
+        return nil
+    }
+
+    private func clearActiveMic() {
+        if Thread.isMainThread {
+            activeMicSink = nil
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.activeMicSink = nil
+            }
+        }
     }
 }
 

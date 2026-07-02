@@ -113,7 +113,8 @@ final class MetaGlassesClient: BaseGlassesClient {
     }
 
     override func startMicrophone(options: MicrophoneOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
-        completionHandler(nil, GlassesError.Unsupported(detail: "Meta iOS adapter does not implement microphone capture").asError())
+        // TODO(meta-ios-mic): the Meta DAT SDK exposes no audio API; Meta mic is Bluetooth-HFP capture via AVFoundation (like the Android HFP path) and needs the paired device -- unvalidatable on the Simulator.
+        completionHandler(nil, GlassesError.Unsupported(detail: "Meta microphone on iOS requires Bluetooth-HFP audio capture (the Ray-Ban Meta acts as a Bluetooth headset); not yet implemented").asError())
     }
 
     func startRegistration(completionHandler: @escaping @Sendable (Error?) -> Void) {
