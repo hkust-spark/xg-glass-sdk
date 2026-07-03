@@ -1,3 +1,5 @@
+> **Status: historical design note (2026-06).** The migration described here is complete -- :core and :app-contract are Kotlin Multiplatform and the iOS adapters shipped in 0.1.0. Kept for background.
+
 # KMP Migration Feasibility for xg-glass-sdk
 
 ## Status

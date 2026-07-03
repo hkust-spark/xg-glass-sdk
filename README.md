@@ -6,6 +6,13 @@ xg.glass
 Easy, fast, glasses application development for everyone
 </h3>
 
+<p align="center">
+<a href="https://github.com/hkust-spark/xg-glass-sdk/actions/workflows/ci.yml"><img src="https://github.com/hkust-spark/xg-glass-sdk/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="https://central.sonatype.com/artifact/io.github.hkust-spark/xgglass-universal"><img src="https://img.shields.io/maven-central/v/io.github.hkust-spark/xgglass-universal" alt="Maven Central"></a>
+<a href="https://pypi.org/project/xg-glass/"><img src="https://img.shields.io/pypi/v/xg-glass" alt="PyPI"></a>
+<a href="./docs/swift-package.md"><img src="https://img.shields.io/badge/Swift_Package-iOS_16%2B-F05138?logo=swift" alt="Swift Package"></a>
+<a href="./LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
+</p>
 
 <p align="center">
 | <a href="https://xg.glass/developer-guide/"><b>Documentation</b></a> | <a href="https://xg.glass/blog/"><b>Blog</b></a> | <a href="https://github.com/hkust-spark/xg-glass-sample/"><b>Sample Applications</b></a>
@@ -202,6 +209,36 @@ For more details, see the following documentation:
 We also provide [`docs/ai-assistant-guide.md`](./docs/ai-assistant-guide.md), a comprehensive reference specifically prepared for AI coding assistants such as ChatGPT, Claude, Cursor, and Copilot.
 
 Developers can give this document directly to their AI assistant so it can reference the xg.glass SDK APIs, patterns, and examples when helping build applications.
+
+## Versioning and support
+
+xg.glass follows Semantic Versioning. While the major version is `0`, minor releases (`0.x` to `0.y`) may include breaking API changes; those changes are always listed in the [CHANGELOG](./CHANGELOG.md). Patch releases will not break public APIs.
+
+Sealed hierarchies such as `ConnectionState` and `GlassesEvent` may gain new subtypes in minor releases, so keep an `else` branch in Kotlin `when` expressions. Deprecated APIs are kept with `@Deprecated` for at least one minor release before removal.
+
+Supported toolchains:
+
+- Android minSdk 28; minSdk 29 for Meta and the RayNeo glasses host.
+- Android compileSdk 35.
+- JDK 17+.
+- Building from source needs Kotlin 2.1+ and Android Gradle Plugin 8.x.
+- iOS 16+ with Xcode 15.4+.
+- CLI Python 3.9+ on macOS/Linux.
+
+Per-device hardware-validation status is listed in the device table above.
+
+## Repository layout
+
+- `core/`, `core-android/`, `app-contract/`, `universal/` — published SDK modules.
+- `universal-full/` and `app/` — internal build scaffolding for the CLI composite flow; not published. Maven consumers use `xgglass-universal`.
+- `devices/` — per-device adapters.
+- `Sources/` and `Package.swift` — Swift Package products.
+- `tools/` — the `xg-glass` CLI.
+- `templates/` — app template used by `xg-glass init`.
+- `samples/` — iOS sample.
+- `third_party/` — Flutter Frame module and the bring-your-own RayNeo AAR directory.
+- `scripts/` — build and release helpers.
+- `docs/` — documentation and design notes.
 
 ### Contributors (extend the SDK)
 
