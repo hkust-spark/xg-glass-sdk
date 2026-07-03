@@ -1,5 +1,7 @@
 # xg.glass SDK — Vibe Coding Reference
 
+Despite the name, this is the full API reference for human developers too.
+
 > **Purpose of this document**: This is a comprehensive SDK reference designed to be fed to AI coding assistants (e.g., ChatGPT, Claude, Cursor, Copilot) so they can help you build smart glasses applications using the xg.glass SDK. It contains all API surfaces, patterns, and runnable examples needed to generate working code.
 
 ---

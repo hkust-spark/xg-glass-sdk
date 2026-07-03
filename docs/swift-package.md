@@ -20,6 +20,45 @@ dependencies: [
 
 The `XgGlassKit` binary target points at the `XgGlassKit.xcframework.zip` asset of the matching GitHub Release and is downloaded and checksum-verified automatically by SwiftPM — no local build step is needed.
 
+## Quick start
+
+The `XgGlass` product includes the core API plus the Simulator and Omi adapters. Use `XgGlassMeta` only when you need the Meta adapter and Meta Wearables DAT dependencies.
+
+After your target depends on `.product(name: "XgGlass", package: "xg-glass-sdk")`, add a small client wrapper like this:
+
+```swift
+import Foundation
+import XgGlass
+
+public final class XgQuickstart {
+    private let client = SimulatorIosGlassesClient(displaySink: { text in print("display: \(text)") })
+
+    public init() {}
+
+    public func run() {
+        client.connect { _, error in
+            if let error {
+                print("connect failed: \(error.localizedDescription)")
+                return
+            }
+
+            let options = CaptureOptions(photoQuality: .high, targetWidth: nil, targetHeight: nil, timeoutMs: 30_000)
+            self.client.capturePhoto(options: options) { result, error in
+                if let error {
+                    print("capture failed: \(error.localizedDescription)")
+                    return
+                }
+                guard let captured = result as? CapturedImage else {
+                    print("capture returned an unexpected result")
+                    return
+                }
+                print("captured \(captured.jpegBytes.size) bytes")
+            }
+        }
+    }
+}
+```
+
 ## Developing the SDK itself
 
 To test local Kotlin changes, build the XCFramework and temporarily point the binary target back at the local path (do not commit that change):

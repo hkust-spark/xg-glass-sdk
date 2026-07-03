@@ -55,6 +55,8 @@ Choose one installation channel depending on the platform you are targeting.
 
 Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.1.0`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`.
 
+New to the SDK? Follow [Your First App (Android)](./docs/getting-started-android.md).
+
 The main Android artifact is `xgglass-universal`. It includes Rokid, RayNeo, Simulator, Omi, and the Frame bridge API. The SDK minSdk is 28; Meta support and the RayNeo glasses host require minSdk 29.
 RayNeo support additionally requires the vendor AARs downloaded from RayNeo's developer docs; see [third_party/rayneo/aar/README.md](./third_party/rayneo/aar/README.md).
 
@@ -144,6 +146,7 @@ targets: [
 ```
 
 The `XgGlassKit` binary is downloaded automatically from the GitHub Release for the version you depend on — no local build step is needed. See [Swift Package setup](./docs/swift-package.md) and [iOS device support](./docs/ios-device-support.md).
+Start with the [Swift Package quick start](./docs/swift-package.md#quick-start).
 
 #### CLI (PyPI)
 
@@ -186,10 +189,13 @@ The launch of Android Emulator may take several minutes. You can keep it on to s
 For more details, see the following documentation:
 
 - [Developer Guide](https://xg.glass/developer-guide/)
-- [AI assistant guide](./docs/ai-assistant-guide.md)
+- [Your First App (Android)](./docs/getting-started-android.md)
+- [API reference (ai-assistant-guide)](./docs/ai-assistant-guide.md)
 - [Swift Package setup](./docs/swift-package.md)
 - [iOS device support](./docs/ios-device-support.md)
 - [Changelog](./CHANGELOG.md)
+- [Contributing](./CONTRIBUTING.md)
+- [Security policy](./SECURITY.md)
 
 #### AI-assisted development
 
