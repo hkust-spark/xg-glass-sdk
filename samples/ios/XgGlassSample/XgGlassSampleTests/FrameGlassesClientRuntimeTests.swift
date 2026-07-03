@@ -1,5 +1,5 @@
 import XCTest
-import XgGlassMeta
+import XgGlassMetaTesting
 @testable import XgGlassSample
 
 @MainActor

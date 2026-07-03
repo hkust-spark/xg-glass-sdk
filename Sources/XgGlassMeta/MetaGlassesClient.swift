@@ -2,7 +2,6 @@ import Foundation
 import MWDATCamera
 import MWDATCore
 import MWDATDisplay
-import MWDATMockDevice
 import XgGlass
 
 public enum MetaDATRuntime {
@@ -24,7 +23,6 @@ public final class MetaGlassesClient: BaseGlassesClient {
     private var deviceSession: DeviceSession?
     private var stream: MWDATCamera.Stream?
     private var displayCapability: Display?
-    private var mockGlasses: MockGlasses?
 
     private var sessionErrorTask: Task<Void, Never>?
     private var streamStateListenerToken: AnyListenerToken?
@@ -73,7 +71,7 @@ public final class MetaGlassesClient: BaseGlassesClient {
         if let glassesError = error as? GlassesError {
             return glassesError
         }
-        return GlassesError.Transport(detail: "Meta connect failed: \(error.message ?? "unknown error")", raw: error)
+        return GlassesError.Transport(detail: "Meta connect failed: \(error.message ?? "unknown error")", cause: error)
     }
 
     public override func disconnect(completionHandler: @escaping @Sendable (Error?) -> Void) {
@@ -130,29 +128,6 @@ public final class MetaGlassesClient: BaseGlassesClient {
                 completionHandler(self.transportError("Meta registration failed", error: error))
             }
         }
-    }
-
-    @MainActor
-    public func enableMockDevice(cameraFeedURL: URL? = nil, capturedImageURL: URL? = nil) throws -> String {
-        let mockDeviceKit = MockDeviceKit.shared
-        mockDeviceKit.enable()
-        try MetaDATRuntime.configureIfNeeded()
-
-        let glasses = try existingMockGlasses(in: mockDeviceKit) ?? mockDeviceKit.pairGlasses(model: .rayBanMeta)
-        glasses.powerOn()
-        glasses.unfold()
-        glasses.don()
-
-        if let cameraFeedURL {
-            glasses.services.camera.setCameraFeed(fileURL: cameraFeedURL)
-        }
-        if let capturedImageURL {
-            glasses.services.camera.setCapturedImage(fileURL: capturedImageURL)
-        }
-
-        mockGlasses = glasses
-        emitLog(message: "Meta mock Ray-Ban Meta device enabled")
-        return "Meta mock Ray-Ban Meta enabled"
     }
 
     @MainActor
@@ -217,7 +192,7 @@ public final class MetaGlassesClient: BaseGlassesClient {
                 for await error in errorStream {
                     throw MetaAdapterFailure("Meta device session error: \(error.localizedDescription)")
                 }
-                throw MetaAdapterFailure("Meta device session error stream ended before start")
+                try await waitUntilCancelled()
             }
 
             guard try await group.next() != nil else {
@@ -400,7 +375,6 @@ public final class MetaGlassesClient: BaseGlassesClient {
 
         deviceSession?.stop()
         deviceSession = nil
-        mockGlasses = nil
         resetCapabilities()
     }
 
@@ -435,14 +409,15 @@ public final class MetaGlassesClient: BaseGlassesClient {
     }
 
     private func transportError(_ message: String, error: Error) -> Error {
-        GlassesError.Transport(detail: "\(message): \(error.localizedDescription)", raw: nil).asError()
+        GlassesError.Transport(detail: "\(message): \(error.localizedDescription)", cause: nil).asError()
     }
 
-    @MainActor
-    private func existingMockGlasses(in mockDeviceKit: MockDeviceKitInterface) -> MockGlasses? {
-        mockDeviceKit.pairedDevices.compactMap { $0 as? MockGlasses }.first
-    }
+}
 
+private func waitUntilCancelled() async throws {
+    while !Task.isCancelled {
+        try await Task.sleep(nanoseconds: 60_000_000_000)
+    }
 }
 
 private struct MetaAdapterFailure: LocalizedError {

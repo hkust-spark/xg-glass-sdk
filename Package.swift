@@ -9,7 +9,8 @@ let package = Package(
     ],
     products: [
         .library(name: "XgGlass", targets: ["XgGlass"]),
-        .library(name: "XgGlassMeta", targets: ["XgGlassMeta"])
+        .library(name: "XgGlassMeta", targets: ["XgGlassMeta"]),
+        .library(name: "XgGlassMetaTesting", targets: ["XgGlassMetaTesting"])
     ],
     dependencies: [
         .package(url: "https://github.com/facebook/meta-wearables-dat-ios", exact: "0.8.0")
@@ -30,10 +31,18 @@ let package = Package(
                 "XgGlass",
                 .product(name: "MWDATCore", package: "meta-wearables-dat-ios"),
                 .product(name: "MWDATCamera", package: "meta-wearables-dat-ios"),
-                .product(name: "MWDATDisplay", package: "meta-wearables-dat-ios"),
-                .product(name: "MWDATMockDevice", package: "meta-wearables-dat-ios")
+                .product(name: "MWDATDisplay", package: "meta-wearables-dat-ios")
             ],
             path: "Sources/XgGlassMeta"
+        ),
+        .target(
+            name: "XgGlassMetaTesting",
+            dependencies: [
+                "XgGlassMeta",
+                .product(name: "MWDATCore", package: "meta-wearables-dat-ios"),
+                .product(name: "MWDATMockDevice", package: "meta-wearables-dat-ios")
+            ],
+            path: "Sources/XgGlassMetaTesting"
         )
     ]
 )

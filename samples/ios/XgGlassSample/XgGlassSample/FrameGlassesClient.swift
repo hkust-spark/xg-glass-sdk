@@ -1,6 +1,6 @@
 @_implementationOnly import Flutter
 import Foundation
-import XgGlassMeta
+import XgGlassMetaTesting
 
 final class FrameGlassesClient: BaseGlassesClient {
     private let runtime: FrameFlutterRuntime?
@@ -79,7 +79,7 @@ final class FrameGlassesClient: BaseGlassesClient {
         let timeout = DispatchWorkItem { [weak self] in
             let message = "Frame connect failed: timed out waiting for Flutter BLE connect after \(timeoutSeconds) seconds"
             self?.emitWarn(message: message)
-            resolver.resolve(GlassesError.Transport(detail: message, raw: nil).asError())
+            resolver.resolve(GlassesError.Transport(detail: message, cause: nil).asError())
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: timeout)
 
@@ -101,7 +101,7 @@ final class FrameGlassesClient: BaseGlassesClient {
         if let glassesError = error as? GlassesError {
             return glassesError
         }
-        return GlassesError.Transport(detail: "Frame connect failed: \(error.message ?? "unknown error")", raw: error)
+        return GlassesError.Transport(detail: "Frame connect failed: \(error.message ?? "unknown error")", cause: error)
     }
 
     override func disconnect(completionHandler: @escaping @Sendable (Error?) -> Void) {
@@ -133,7 +133,7 @@ final class FrameGlassesClient: BaseGlassesClient {
 
         runtime.capturePhoto(arguments: capturePhotoArguments(options)) { [weak self] bytes, error in
             guard let self else {
-                completionHandler(nil, GlassesError.Transport(detail: "Frame client was released during capture", raw: nil).asError())
+                completionHandler(nil, GlassesError.Transport(detail: "Frame client was released during capture", cause: nil).asError())
                 return
             }
             if let error {
@@ -141,7 +141,7 @@ final class FrameGlassesClient: BaseGlassesClient {
                 return
             }
             guard let bytes else {
-                completionHandler(nil, GlassesError.Transport(detail: "Frame photo capture returned no bytes", raw: nil).asError())
+                completionHandler(nil, GlassesError.Transport(detail: "Frame photo capture returned no bytes", cause: nil).asError())
                 return
             }
 
@@ -193,7 +193,7 @@ final class FrameGlassesClient: BaseGlassesClient {
             guard let self else {
                 completionHandler(nil, GlassesError.Transport(
                     detail: "Frame client was released during microphone start",
-                    raw: nil
+                    cause: nil
                 ).asError())
                 return
             }
@@ -232,7 +232,7 @@ final class FrameGlassesClient: BaseGlassesClient {
         case .error(let message):
             _state.setValue(ConnectionState.Error(error: GlassesError.Transport(
                 detail: "Frame error: \(message)",
-                raw: nil
+                cause: nil
             )))
         }
     }
@@ -383,7 +383,7 @@ final class FrameGlassesClient: BaseGlassesClient {
     private func runtimeUnavailableError() -> Error {
         let detail = runtimeStartupError.map { "Frame Flutter runtime failed to start: \($0.localizedDescription)" }
             ?? "Frame Flutter runtime is unavailable"
-        return GlassesError.Transport(detail: detail, raw: nil).asError()
+        return GlassesError.Transport(detail: detail, cause: nil).asError()
     }
 
     private func int32Value(_ value: Any?) -> Int32? {
@@ -443,7 +443,7 @@ private func frameOperationError(_ prefix: String, operation: String, error: Flu
 }
 
 private func frameTransportError(_ prefix: String, error: FlutterError) -> Error {
-    GlassesError.Transport(detail: "\(prefix): \(frameDescribe(error))", raw: nil).asError()
+    GlassesError.Transport(detail: "\(prefix): \(frameDescribe(error))", cause: nil).asError()
 }
 
 private func frameDescribe(_ error: FlutterError) -> String {

@@ -1,6 +1,6 @@
 import Foundation
 import UIKit
-import XgGlassMeta
+import XgGlassMetaTesting
 
 final class StubSwiftGlassesClient: BaseGlassesClient {
     private let displaySink: (String) -> Void
@@ -31,7 +31,7 @@ final class StubSwiftGlassesClient: BaseGlassesClient {
     }
 
     override func mapConnectError(error: KotlinException) -> GlassesError {
-        GlassesError.Transport(detail: "Swift stub connect failed: \(error.message ?? "unknown error")", raw: error)
+        GlassesError.Transport(detail: "Swift stub connect failed: \(error.message ?? "unknown error")", cause: error)
     }
 
     override func disconnect(completionHandler: @escaping @Sendable (Error?) -> Void) {
@@ -41,7 +41,7 @@ final class StubSwiftGlassesClient: BaseGlassesClient {
 
     override func capturePhoto(options: CaptureOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
         guard let jpegData = Self.makePlaceholderJpeg(options: options) else {
-            completionHandler(nil, GlassesError.Transport(detail: "Swift stub could not create JPEG data", raw: nil).asError())
+            completionHandler(nil, GlassesError.Transport(detail: "Swift stub could not create JPEG data", cause: nil).asError())
             return
         }
 

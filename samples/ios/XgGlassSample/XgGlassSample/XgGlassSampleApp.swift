@@ -1,5 +1,5 @@
 import SwiftUI
-import XgGlassMeta
+import XgGlassMetaTesting
 
 @main
 struct XgGlassSampleApp: App {

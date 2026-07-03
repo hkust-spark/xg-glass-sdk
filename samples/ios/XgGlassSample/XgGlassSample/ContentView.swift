@@ -1,6 +1,6 @@
 import SwiftUI
 import UIKit
-import XgGlassMeta
+import XgGlassMetaTesting
 
 enum ActiveClientKind: String, CaseIterable, Identifiable {
     case kotlinSimulator
@@ -183,7 +183,8 @@ final class SampleModel: ObservableObject {
     func enableMetaMockDevice() {
         status = "Enabling Meta mock device"
         do {
-            status = try metaClient.enableMockDevice()
+            let deviceId = try MetaMockDeviceRig.enable()
+            status = "Meta mock Ray-Ban Meta enabled: \(deviceId)"
         } catch {
             status = "Meta mock failed: \(error.localizedDescription)"
         }

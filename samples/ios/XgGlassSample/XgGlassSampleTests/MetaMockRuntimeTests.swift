@@ -1,9 +1,8 @@
 import AVFoundation
 import MWDATCore
-import MWDATMockDevice
 import UIKit
 import XCTest
-import XgGlassMeta
+import XgGlassMetaTesting
 @testable import XgGlassSample
 
 @MainActor
@@ -18,7 +17,7 @@ final class MetaMockRuntimeTests: XCTestCase {
             }
             wait(for: [expectation], timeout: 5)
         }
-        MockDeviceKit.shared.disable()
+        MetaMockDeviceRig.disable()
         client = nil
         super.tearDown()
     }
@@ -66,11 +65,8 @@ final class MetaMockRuntimeTests: XCTestCase {
     private func seedRayBanMetaMockDevice(client: MetaGlassesClient) throws -> (identifier: String, imageURL: URL) {
         let feedURL = try writeMockCameraFeedVideo()
         let imageURL = try writeMockCaptureImage()
-        _ = try client.enableMockDevice(cameraFeedURL: feedURL, capturedImageURL: imageURL)
-        guard let glasses = MockDeviceKit.shared.pairedDevices.compactMap({ $0 as? MockGlasses }).first else {
-            throw TestFailure("Meta mock device was not paired")
-        }
-        return (glasses.deviceIdentifier, imageURL)
+        let deviceIdentifier = try MetaMockDeviceRig.enable(cameraFeedURL: feedURL, capturedImageURL: imageURL)
+        return (deviceIdentifier, imageURL)
     }
 
     private func connect(_ client: MetaGlassesClient) async throws {

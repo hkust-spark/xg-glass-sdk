@@ -15,8 +15,8 @@
 		333333333333333333333301 /* FrameFlutterRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333302 /* FrameFlutterRuntime.swift */; };
 		333333333333333333333303 /* FrameGlassesClientRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333304 /* FrameGlassesClientRuntimeTests.swift */; };
 		333333333333333333333305 /* FrameGlassesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333306 /* FrameGlassesClient.swift */; };
-		444444444444444444444002 /* XgGlassMeta in Frameworks */ = {isa = PBXBuildFile; productRef = 444444444444444444444102 /* XgGlassMeta */; };
-		444444444444444444444004 /* XgGlassMeta in Frameworks */ = {isa = PBXBuildFile; productRef = 444444444444444444444102 /* XgGlassMeta */; };
+		444444444444444444444006 /* XgGlassMetaTesting in Frameworks */ = {isa = PBXBuildFile; productRef = 444444444444444444444103 /* XgGlassMetaTesting */; };
+		444444444444444444444008 /* XgGlassMetaTesting in Frameworks */ = {isa = PBXBuildFile; productRef = 444444444444444444444103 /* XgGlassMetaTesting */; };
 		E3E6F72972D339B6265C9A24 /* libPods-XgGlassSample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 9CEED3E048D847174F02078E /* libPods-XgGlassSample.a */; };
 /* End PBXBuildFile section */
 
@@ -54,7 +54,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				444444444444444444444002 /* XgGlassMeta in Frameworks */,
+				444444444444444444444006 /* XgGlassMetaTesting in Frameworks */,
 				E3E6F72972D339B6265C9A24 /* libPods-XgGlassSample.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -63,7 +63,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				444444444444444444444004 /* XgGlassMeta in Frameworks */,
+				444444444444444444444008 /* XgGlassMetaTesting in Frameworks */,
 				1524E2B63C78CE2FBD7A8AA7 /* libPods-XgGlassSampleTests.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -154,7 +154,7 @@
 			);
 			name = XgGlassSample;
 			packageProductDependencies = (
-				444444444444444444444102 /* XgGlassMeta */,
+				444444444444444444444103 /* XgGlassMetaTesting */,
 			);
 			productName = XgGlassSample;
 			productReference = 111111111111111111111117 /* XgGlassSample.app */;
@@ -176,7 +176,7 @@
 			);
 			name = XgGlassSampleTests;
 			packageProductDependencies = (
-				444444444444444444444102 /* XgGlassMeta */,
+				444444444444444444444103 /* XgGlassMetaTesting */,
 			);
 			productName = XgGlassSampleTests;
 			productReference = 222222222222222222222204 /* XgGlassSampleTests.xctest */;
@@ -634,6 +634,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 444444444444444444444100 /* XCLocalSwiftPackageReference "../../.." */;
 			productName = XgGlassMeta;
+		};
+		444444444444444444444103 /* XgGlassMetaTesting */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 444444444444444444444100 /* XCLocalSwiftPackageReference "../../.." */;
+			productName = XgGlassMetaTesting;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
