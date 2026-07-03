@@ -27,3 +27,27 @@ _ANDROID_SDK_PACKAGES = [
 
 # Well-known path on the emulator/device where the CLI pushes the video file.
 _DEVICE_VIDEO_PATH = "/data/local/tmp/xg_glass_sim_video.mp4"
+
+
+class CliUsageError(RuntimeError):
+    """User-facing CLI error that should exit without a traceback."""
+
+
+def missing_sdk_checkout_message(subcommand: str) -> str:
+    if subcommand == "init":
+        command = (
+            "xg-glass init ... --sdk /path/to/xg-glass-sdk "
+            "--template /path/to/xg-glass-sdk/templates/kotlin-app"
+        )
+    elif subcommand == "run":
+        command = "xg-glass run /path/to/MyEntry.kt --sdk /path/to/xg-glass-sdk"
+    else:
+        command = f"xg-glass {subcommand} ... --sdk /path/to/xg-glass-sdk"
+    return (
+        "xg-glass was installed without an SDK checkout (pip install). "
+        f"The '{subcommand}' command needs the xg-glass-sdk repository:\n"
+        "  git clone https://github.com/hkust-spark/xg-glass-sdk\n"
+        f"  {command}\n"
+        "Commands that read xg-glass.yaml inside an already-generated project "
+        "(build/install/run) work without --sdk."
+    )

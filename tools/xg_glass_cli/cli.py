@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 from . import commands as _commands
-from .constants import DEFAULT_CONFIG_FILE, DEFAULT_SDK, DEFAULT_TEMPLATE
+from .constants import DEFAULT_CONFIG_FILE, DEFAULT_SDK, DEFAULT_TEMPLATE, CliUsageError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -92,6 +92,9 @@ def main(argv: list[str] | None = None) -> int:
     except subprocess.CalledProcessError as e:
         print(e, file=sys.stderr)
         return e.returncode or 1
+    except CliUsageError as e:
+        print(e, file=sys.stderr)
+        return 2
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1

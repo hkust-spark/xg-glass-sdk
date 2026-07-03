@@ -7,7 +7,30 @@ This is a minimal command-line tool for driving an Android host project based on
 - `xg-glass install`: install onto the phone via `adb install`
 - `xg-glass run`: launch the app via `adb shell monkey`
 
-## Typical usage (same repo)
+## Install from PyPI
+
+```sh
+pip install xg-glass
+```
+
+From PyPI, commands that operate inside an already-generated project work out of the box because they read `xg-glass.yaml`:
+
+```sh
+cd /path/to/generated-project
+xg-glass build
+xg-glass install
+xg-glass run
+```
+
+Commands that create or synthesize a project need an `xg-glass-sdk` repository checkout because the template and SDK sources are not bundled in the wheel:
+
+```sh
+git clone https://github.com/hkust-spark/xg-glass-sdk
+xg-glass init /path/to/myapp --sdk /path/to/xg-glass-sdk --template /path/to/xg-glass-sdk/templates/kotlin-app
+xg-glass run /path/to/MyEntry.kt --sdk /path/to/xg-glass-sdk
+```
+
+## From a repository checkout (contributors)
 
 From the repository root (where `xg-glass` lives):
 

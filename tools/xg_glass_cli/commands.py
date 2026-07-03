@@ -9,7 +9,14 @@ from pathlib import Path
 
 from .adb import _find_adb_cmd, _pick_apk, _push_video_to_device, _read_application_id
 from .config import _apply_overrides, _load_config, _validate_entry_class
-from .constants import DEFAULT_CONFIG_FILE, DEFAULT_SDK, DEFAULT_TEMPLATE, _DEVICE_VIDEO_PATH
+from .constants import (
+    DEFAULT_CONFIG_FILE,
+    DEFAULT_SDK,
+    DEFAULT_TEMPLATE,
+    CliUsageError,
+    _DEVICE_VIDEO_PATH,
+    missing_sdk_checkout_message,
+)
 from .emulator import _ensure_emulator_running
 from .gradle import _cap, _gradlew_path, _run
 from .paths import _ensure_executable
@@ -35,16 +42,51 @@ from .scaffold import (
 from .video import _resolve_sim_video
 
 
+def _arg_uses_default(value: str | None, default: Path) -> bool:
+    return value is None or str(value) == str(default)
+
+
+def _resolve_required_dir(
+    raw_path: str | Path,
+    *,
+    label: str,
+    subcommand: str,
+    default_path: Path | None = None,
+) -> Path:
+    path = Path(raw_path).expanduser().resolve()
+    if path.is_dir():
+        return path
+    if default_path is not None and _arg_uses_default(str(raw_path), default_path):
+        raise CliUsageError(missing_sdk_checkout_message(subcommand))
+    raise CliUsageError(f"{label} not found: {path}")
+
+
+def _resolve_quick_run_template(sdk: Path, *, sdk_from_default: bool) -> Path:
+    if DEFAULT_TEMPLATE.is_dir():
+        return DEFAULT_TEMPLATE
+    sdk_template = sdk / "templates" / "kotlin-app"
+    if sdk_template.is_dir():
+        return sdk_template
+    if sdk_from_default:
+        raise CliUsageError(missing_sdk_checkout_message("run"))
+    raise CliUsageError(f"Template not found: {sdk_template}")
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     dst = Path(args.dir).expanduser().resolve()
-    template = Path(args.template).expanduser().resolve()
-    sdk = Path(args.sdk).expanduser().resolve()
+    template = _resolve_required_dir(
+        args.template,
+        label="Template",
+        subcommand="init",
+        default_path=DEFAULT_TEMPLATE,
+    )
+    sdk = _resolve_required_dir(
+        args.sdk,
+        label="SDK",
+        subcommand="init",
+        default_path=DEFAULT_SDK,
+    )
     entry_class = _validate_entry_class(args.entry_class, "--entry-class")
-
-    if not template.is_dir():
-        raise FileNotFoundError(f"Template not found: {template}")
-    if not sdk.is_dir():
-        raise FileNotFoundError(f"SDK not found: {sdk}")
 
     if dst.exists() and any(dst.iterdir()):
         raise RuntimeError(f"Target dir must be empty: {dst}")
@@ -158,10 +200,13 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_build(args: argparse.Namespace) -> int:
     project = Path(args.project).expanduser().resolve()
+    sdk_override = None
+    if args.sdk:
+        sdk_override = str(_resolve_required_dir(args.sdk, label="SDK", subcommand="build"))
     cfg = _load_config(project, args.config)
     cfg = _apply_overrides(
         cfg,
-        sdk=args.sdk,
+        sdk=sdk_override,
         entry_class=args.entry_class,
         rayneo_aar_dir=args.rayneo_aar_dir,
         variant=args.variant,
@@ -228,9 +273,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         if not kt.exists():
             raise FileNotFoundError(f"Kotlin file not found: {kt}")
 
-        sdk = Path(args.sdk).expanduser().resolve() if getattr(args, "sdk", None) else DEFAULT_SDK
-        if not sdk.exists():
-            raise FileNotFoundError("SDK path not found. Provide --sdk pointing to your xg-glass-sdk checkout.")
+        sdk_from_default = not getattr(args, "sdk", None)
+        if not sdk_from_default:
+            sdk = _resolve_required_dir(args.sdk, label="SDK", subcommand="run")
+        else:
+            sdk = _resolve_required_dir(
+                DEFAULT_SDK,
+                label="SDK",
+                subcommand="run",
+                default_path=DEFAULT_SDK,
+            )
+        template = _resolve_quick_run_template(sdk, sdk_from_default=sdk_from_default)
 
         raw_entry_class = getattr(args, "entry_class", None)
         entry_class = raw_entry_class or _infer_entry_class_from_kt(kt)
@@ -257,7 +310,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             project_dir = Path(tempfile.mkdtemp(prefix="run-", dir=str(base)))
             keep = bool(getattr(args, "keep_tmp", False))
 
-        _init_project(dst=project_dir, template=DEFAULT_TEMPLATE, sdk=sdk, entry_class=entry_class)
+        _init_project(dst=project_dir, template=template, sdk=sdk, entry_class=entry_class)
         _copy_kt_into_project(project_dir, kt)
 
         if bool(getattr(args, "sim", False)):
