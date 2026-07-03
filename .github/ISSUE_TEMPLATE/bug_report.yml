@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a reproducible problem in xg.glass.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: channel
+    attributes:
+      label: Channel
+      description: How are you consuming xg.glass?
+      options:
+        - Maven Central
+        - Swift Package
+        - PyPI CLI
+        - source-CLI flow
+    validations:
+      required: true
+  - type: input
+    id: sdk-version
+    attributes:
+      label: SDK version
+      description: For example, 0.1.0 or a commit SHA.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options:
+        - Rokid
+        - RayNeo x2
+        - RayNeo X3 Pro
+        - Omi
+        - Frame
+        - Meta
+        - Simulator
+        - other
+    validations:
+      required: true
+  - type: input
+    id: phone-os
+    attributes:
+      label: Phone and OS version
+      description: Include phone model and Android/iOS version.
+      placeholder: "Pixel 8, Android 15 / iPhone 15, iOS 18"
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened?
+      description: Include reproduction steps and the observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: Describe the behavior you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste relevant Gradle, adb, Xcode, CLI, or app logs. Remove secrets before posting.
+      render: text
+    validations:
+      required: false

@@ -1,0 +1,75 @@
+name: Device support request
+description: Request or help with support for a new smart-glasses device.
+title: "device: "
+labels: ["device-support"]
+body:
+  - type: input
+    id: vendor-model
+    attributes:
+      label: Vendor and model
+      placeholder: "Example: VendorName Glasses Pro"
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      description: How does the phone or host communicate with the device?
+      options:
+        - BLE
+        - Wi-Fi
+        - vendor SDK
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: sdk-docs
+    attributes:
+      label: Vendor SDK or documentation links
+      description: Link public SDKs, API docs, protocol docs, or sample apps.
+    validations:
+      required: false
+  - type: dropdown
+    id: android-sdk
+    attributes:
+      label: Android SDK available?
+      options:
+        - "Yes"
+        - "No"
+        - Unknown
+    validations:
+      required: true
+  - type: input
+    id: ios-sdk
+    attributes:
+      label: iOS SDK available?
+      description: If yes, include language or binding style, such as Objective-C, Swift, C, or Flutter.
+      placeholder: "Yes, Swift / No / Unknown"
+    validations:
+      required: true
+  - type: checkboxes
+    id: capabilities
+    attributes:
+      label: Device capabilities
+      options:
+        - label: Camera
+        - label: Microphone
+        - label: Display
+        - label: Speaker
+  - type: dropdown
+    id: hardware-testing
+    attributes:
+      label: Are you willing to test on hardware?
+      options:
+        - "Yes"
+        - "No"
+        - Maybe
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Mention licensing constraints, developer account requirements, or known platform limits.
+    validations:
+      required: false

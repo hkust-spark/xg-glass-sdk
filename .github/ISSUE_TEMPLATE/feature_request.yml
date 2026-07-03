@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest an improvement or new capability for xg.glass.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: What would you like xg.glass to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or alternative designs have you considered?
+    validations:
+      required: false
+  - type: checkboxes
+    id: channels
+    attributes:
+      label: Affected channel(s)
+      options:
+        - label: Maven Central
+        - label: Swift Package
+        - label: PyPI CLI
+        - label: source-CLI flow
+        - label: Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add links, screenshots, examples, or device details that help explain the request.
+    validations:
+      required: false
