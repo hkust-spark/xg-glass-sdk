@@ -2,24 +2,25 @@
 
 This repository publishes the Android/Kotlin SDK artifacts under:
 
-- `io.github.hkust-spark:universal:0.1.0`
-- `io.github.hkust-spark:core:0.1.0`
-- `io.github.hkust-spark:core-android:0.1.0`
-- `io.github.hkust-spark:app-contract:0.1.0`
-- `io.github.hkust-spark:device-rokid:0.1.0`
-- `io.github.hkust-spark:device-rayneo-installer:0.1.0`
-- `io.github.hkust-spark:device-rayneo-runtime:0.1.0`
-- `io.github.hkust-spark:device-simulator:0.1.0`
-- `io.github.hkust-spark:device-omi:0.1.0`
-- `io.github.hkust-spark:device-meta:0.1.0`
-- `io.github.hkust-spark:device-android-xr:0.1.0`
-- `io.github.hkust-spark:device-frame-flutter:0.1.0`
+- `io.github.hkust-spark:xgglass-universal:0.1.0`
+- `io.github.hkust-spark:xgglass-core:0.1.0`
+- `io.github.hkust-spark:xgglass-core-android:0.1.0`
+- `io.github.hkust-spark:xgglass-app-contract:0.1.0`
+- `io.github.hkust-spark:xgglass-device-rokid:0.1.0`
+- `io.github.hkust-spark:xgglass-device-rayneo-installer:0.1.0`
+- `io.github.hkust-spark:xgglass-device-rayneo-runtime:0.1.0`
+- `io.github.hkust-spark:xgglass-device-simulator:0.1.0`
+- `io.github.hkust-spark:xgglass-device-omi:0.1.0`
+- `io.github.hkust-spark:xgglass-device-meta:0.1.0`
+- `io.github.hkust-spark:xgglass-device-frame-flutter:0.1.0`
 
-`device-meta` is intentionally published as an optional artifact. The aggregate
+`xgglass-device-meta` is intentionally published as an optional artifact. The aggregate
 `universal` artifact does not depend on it, so consumers can resolve
-`io.github.hkust-spark:universal:0.1.0` without access to the Meta GitHub
-Packages repository. Consumers that explicitly add `device-meta` must also add
-Meta's GitHub Packages repository and provide a `read:packages` token.
+`io.github.hkust-spark:xgglass-universal:0.1.0` without access to the Meta GitHub
+Packages repository. Consumers that explicitly add `xgglass-device-meta` must
+also add Meta's GitHub Packages repository and provide a `read:packages` token.
+
+`device-android-xr` is a non-functional preview scaffold and is not published.
 
 `universal-full` is a dev-only aggregate used by the CLI template through the
 composite build. It depends on the published-shape `universal` module and, when

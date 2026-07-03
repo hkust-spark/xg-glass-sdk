@@ -63,4 +63,10 @@ include(":xgglass_app_logic")
 
 // Use the xg.glass SDK as a composite build (no publishing step required).
 // Replaced by xg-glass init: __XG_SDK_PATH__
-includeBuild("__XG_SDK_PATH__")
+includeBuild("__XG_SDK_PATH__") {
+    dependencySubstitution {
+        substitute(module("io.github.hkust-spark:xgglass-app-contract")).using(project(":app-contract"))
+        substitute(module("io.github.hkust-spark:xgglass-device-rayneo-runtime")).using(project(":device-rayneo-runtime"))
+        substitute(module("io.github.hkust-spark:xgglass-universal-full")).using(project(":universal-full"))
+    }
+}

@@ -5,6 +5,8 @@ import com.vanniktech.maven.publish.SonatypeHost
 import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.publish.PublishingExtension
+import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.maven.MavenPomDeveloper
 import org.gradle.api.publish.maven.MavenPomDeveloperSpec
 import org.gradle.api.publish.maven.MavenPomLicense
@@ -26,7 +28,7 @@ class XgGlassMavenPublishPlugin : Plugin<Project> {
                     }
                     publishing.coordinates(
                         groupId = "io.github.hkust-spark",
-                        artifactId = project.name,
+                        artifactId = "xgglass-${project.name}",
                         version = project.version.toString(),
                     )
                     publishing.pom(object : Action<MavenPom> {
@@ -69,6 +71,25 @@ class XgGlassMavenPublishPlugin : Plugin<Project> {
                 }
             },
         )
+
+        project.gradle.projectsEvaluated {
+            project.extensions.configure(
+                PublishingExtension::class.java,
+                object : Action<PublishingExtension> {
+                    override fun execute(publishing: PublishingExtension) {
+                        publishing.publications.withType(MavenPublication::class.java).configureEach(
+                            object : Action<MavenPublication> {
+                                override fun execute(publication: MavenPublication) {
+                                    if (!publication.artifactId.startsWith("xgglass-")) {
+                                        publication.artifactId = "xgglass-${publication.artifactId}"
+                                    }
+                                }
+                            },
+                        )
+                    }
+                },
+            )
+        }
     }
 
     private fun Project.shouldSignPublications(): Boolean {
