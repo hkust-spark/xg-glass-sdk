@@ -45,8 +45,8 @@ jobs:
       - name: Assemble Pages site
         run: |
           mkdir -p build/docs-site/core build/docs-site/app-contract
-          cp -R core/build/dokka/html/. build/docs-site/core/
-          cp -R app-contract/build/dokka/html/. build/docs-site/app-contract/
+          cp -R kotlin/core/build/dokka/html/. build/docs-site/core/
+          cp -R kotlin/app-contract/build/dokka/html/. build/docs-site/app-contract/
           cat > build/docs-site/index.html <<'HTML'
           <!doctype html>
           <html lang="en">

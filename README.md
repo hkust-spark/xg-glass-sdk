@@ -87,7 +87,7 @@ dependencyResolutionManagement {
     }
 }
 
-// app/build.gradle.kts
+// your app module's build.gradle.kts
 dependencies {
     implementation("io.github.hkust-spark:xgglass-universal:0.1.0")
 }
@@ -126,7 +126,7 @@ dependencyResolutionManagement {
     }
 }
 
-// app/build.gradle.kts
+// your app module's build.gradle.kts
 dependencies {
     implementation("io.github.hkust-spark:xgglass-device-meta:0.1.0")
 }
@@ -229,8 +229,7 @@ Per-device hardware-validation status is listed in the device table above.
 
 ## Repository layout
 
-- `core/`, `core-android/`, `app-contract/`, `universal/` — published SDK modules.
-- `universal-full/` and `app/` — internal build scaffolding for the CLI composite flow; not published. Maven consumers use `xgglass-universal`.
+- `kotlin/` — shared SDK modules (`core`, `core-android`, `app-contract`, `universal`) plus internal scaffolding (`universal-full`, `app`).
 - `devices/` — per-device adapters.
 - `Sources/` and `Package.swift` — Swift Package products.
 - `tools/` — the `xg-glass` CLI.

@@ -72,7 +72,14 @@ include(":device-omi")
 include(":device-omi-ios")
 include(":device-android-xr")
 
-// Keep Gradle module names stable, but place implementations under a dedicated folder.
+// Keep Gradle module names stable, but place shared implementations under a dedicated folder.
+project(":universal").projectDir = file("kotlin/universal")
+project(":universal-full").projectDir = file("kotlin/universal-full")
+project(":core").projectDir = file("kotlin/core")
+project(":core-android").projectDir = file("kotlin/core-android")
+project(":app-contract").projectDir = file("kotlin/app-contract")
+
+// Keep Gradle module names stable, but place device implementations under a dedicated folder.
 project(":device-rokid").projectDir = file("devices/device-rokid")
 if (hasMetaDatAccess) {
     project(":device-meta").projectDir = file("devices/device-meta")
@@ -93,6 +100,7 @@ if (flutterInclude.exists()) {
     // Flutter's Gradle plugin expects a host app project (default name ":app").
     // We provide a minimal stub here so the embedded Flutter module can be wired at build time.
     include(":app")
+    project(":app").projectDir = file("kotlin/app")
     apply(from = flutterInclude)
     include(":device-frame-embedded")
     project(":device-frame-embedded").projectDir = file("devices/device-frame-embedded")

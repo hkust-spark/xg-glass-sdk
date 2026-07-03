@@ -31,7 +31,7 @@ The generated app supports two ways to supply the `.lc` + client secret. Pick on
 - These are persisted in encrypted storage (SecureStore) for later runs.
 
 **Option B — build-time via resources + `local.properties`:**
-- Put the `.lc` under `app/src/main/res/raw/` (e.g. `res/raw/rokid_sn.lc`).
+- Put the `.lc` under the generated app module's `src/main/res/raw/` (e.g. `res/raw/rokid_sn.lc`).
 - In the project's `local.properties` (git-ignored), set:
   ```properties
   rokid.clientSecret=<your-client-secret>

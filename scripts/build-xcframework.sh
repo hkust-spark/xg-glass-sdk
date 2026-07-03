@@ -14,7 +14,7 @@ export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Con
 rm -rf "${REPO_ROOT}/artifacts/XgGlassKit.xcframework"
 mkdir -p "${REPO_ROOT}/artifacts"
 cp -R \
-  "${REPO_ROOT}/app-contract/build/XCFrameworks/release/XgGlassKit.xcframework" \
+  "${REPO_ROOT}/kotlin/app-contract/build/XCFrameworks/release/XgGlassKit.xcframework" \
   "${REPO_ROOT}/artifacts/XgGlassKit.xcframework"
 
 echo "Wrote ${REPO_ROOT}/artifacts/XgGlassKit.xcframework"

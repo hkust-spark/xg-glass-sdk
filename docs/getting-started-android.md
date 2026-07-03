@@ -51,7 +51,7 @@ plugins {
 }
 ```
 
-`app/build.gradle.kts`:
+App module `build.gradle.kts`:
 
 ```kotlin
 plugins {
@@ -93,7 +93,7 @@ dependencies {
 
 The simulator module declares camera and microphone permissions. This capture-only Activity requests `CAMERA` at runtime; request `RECORD_AUDIO` before using microphone APIs.
 
-`app/src/main/AndroidManifest.xml`:
+App module `src/main/AndroidManifest.xml`:
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -115,7 +115,7 @@ The simulator module declares camera and microphone permissions. This capture-on
 </manifest>
 ```
 
-`app/src/main/java/com/example/xgquickstart/MainActivity.kt`:
+App module `src/main/java/com/example/xgquickstart/MainActivity.kt`:
 
 ```kotlin
 package com.example.xgquickstart

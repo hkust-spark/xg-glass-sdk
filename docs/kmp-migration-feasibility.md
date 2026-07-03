@@ -15,7 +15,7 @@ are feasible on iOS and in what order).
 
 Recommendation: use Kotlin Multiplatform for the SDK's shared API, app contract, and host/device orchestration logic, but keep actual glasses transport implementations platform-specific.
 
-KMP is the best cross-platform path for this codebase because the core abstraction is already Kotlin-first and small. `GlassesClient` is a pure interface over connection state, events, photo capture, text display, audio playback, and microphone sessions in `core/src/main/java/com/xgglass/core/GlassesClient.kt:14-57`. The app developer surface in `app-contract/src/main/java/com/xgglass/appcontract/UniversalAppEntry.kt:173-198` is also mostly plain Kotlin.
+KMP is the best cross-platform path for this codebase because the core abstraction is already Kotlin-first and small. `GlassesClient` is a pure interface over connection state, events, photo capture, text display, audio playback, and microphone sessions in `kotlin/core/src/commonMain/kotlin/com/xgglass/core/GlassesClient.kt:14-57`. The app developer surface in `kotlin/app-contract/src/commonMain/kotlin/com/xgglass/appcontract/UniversalAppEntry.kt:173-198` is also mostly plain Kotlin.
 
 KMP is not a magic "one implementation runs everywhere" path for hardware support. The current device modules are Android libraries in `settings.gradle.kts:57-69`, and their transport code is dominated by Android SDKs, Android Bluetooth, Camera2, Android media, Flutter embedding, and vendor AARs. For example, Rokid uses Android Bluetooth plus Rokid CXR-M AAR APIs in `devices/device-rokid/src/main/java/com/xgglass/device/rokid/RokidGlassesClient.kt:3-21`, Meta uses Meta DAT Android APIs in `devices/device-meta/src/main/java/com/xgglass/device/meta/MetaWearablesGlassesClient.kt:17-29`, and RayNeo runtime code runs inside an Android glasses app with Camera2/AudioManager/Toast in `devices/device-rayneo-runtime/src/main/java/com/xgglass/device/rayneo/runtime/RayNeoRuntimeGlassesClient.kt:3-18`.
 
@@ -41,25 +41,25 @@ The practical answer is: yes, share business logic across Android and iOS with K
 
 The SDK is organized around a common client interface:
 
-- `GlassesClient` exposes `model`, `capabilities`, `state`, `events`, `connect`, `disconnect`, `capturePhoto`, `display`, `playAudio`, and `startMicrophone` in `core/src/main/java/com/xgglass/core/GlassesClient.kt:14-57`.
-- Models and capture/display options are in `core/src/main/java/com/xgglass/core/Models.kt:3-79`.
-- Audio playback and microphone abstractions are in `core/src/main/java/com/xgglass/core/Audio.kt:14-141`.
-- State and events are in `core/src/main/java/com/xgglass/core/StateAndEvents.kt:3-14`.
-- Errors are in `core/src/main/java/com/xgglass/core/Errors.kt:3-10`.
-- App-level command contracts live in `app-contract/src/main/java/com/xgglass/appcontract/UniversalAppEntry.kt:18-237`.
+- `GlassesClient` exposes `model`, `capabilities`, `state`, `events`, `connect`, `disconnect`, `capturePhoto`, `display`, `playAudio`, and `startMicrophone` in `kotlin/core/src/commonMain/kotlin/com/xgglass/core/GlassesClient.kt:14-57`.
+- Models and capture/display options are in `kotlin/core/src/commonMain/kotlin/com/xgglass/core/Models.kt:3-79`.
+- Audio playback and microphone abstractions are in `kotlin/core/src/commonMain/kotlin/com/xgglass/core/Audio.kt:14-141`.
+- State and events are in `kotlin/core/src/commonMain/kotlin/com/xgglass/core/StateAndEvents.kt:3-14`.
+- Errors are in `kotlin/core/src/commonMain/kotlin/com/xgglass/core/Errors.kt:3-10`.
+- App-level command contracts live in `kotlin/app-contract/src/commonMain/kotlin/com/xgglass/appcontract/UniversalAppEntry.kt:18-237`.
 
 The build is Android-first:
 
-- `core/build.gradle.kts:1-12` applies `com.xgglass.android.library`.
-- `app-contract/build.gradle.kts:1-11` also applies `com.xgglass.android.library`.
+- `kotlin/core/build.gradle.kts:1-12` applies `com.xgglass.android.library`.
+- `kotlin/app-contract/build.gradle.kts:1-11` also applies `com.xgglass.android.library`.
 - `build-logic/src/main/kotlin/com/xgglass/buildlogic/android/XgGlassAndroidLibraryPlugin.kt:8-20` applies `com.android.library` and `org.jetbrains.kotlin.android`.
 - `build-logic/src/main/kotlin/com/xgglass/buildlogic/android/AndroidConventions.kt:6-18` sets Android compile/min SDK and Java compatibility.
 - `settings.gradle.kts:57-69` includes one aggregate module, core modules, and Android device modules.
 
 The recent `:core-android` module is already the right direction:
 
-- `core-android/build.gradle.kts:1-11` is an Android-only module depending on `:core`.
-- It holds shared Android audio helpers using `AudioRecord`, `AudioTrack`, and `MediaPlayer` in `core-android/src/main/java/com/xgglass/core/android/AndroidMicrophoneSession.kt:3-36`, `core-android/src/main/java/com/xgglass/core/android/AudioTrackPlayer.kt:3-25`, and `core-android/src/main/java/com/xgglass/core/android/MediaPlayerPlayer.kt:3-26`.
+- `kotlin/core-android/build.gradle.kts:1-11` is an Android-only module depending on `:core`.
+- It holds shared Android audio helpers using `AudioRecord`, `AudioTrack`, and `MediaPlayer` in `kotlin/core-android/src/main/java/com/xgglass/core/android/AndroidMicrophoneSession.kt:3-36`, `kotlin/core-android/src/main/java/com/xgglass/core/android/AudioTrackPlayer.kt:3-25`, and `kotlin/core-android/src/main/java/com/xgglass/core/android/MediaPlayerPlayer.kt:3-26`.
 - Device modules consume it through `implementation(project(":core-android"))`, for example `devices/device-simulator/build.gradle.kts:9-12`, `devices/device-rayneo-runtime/build.gradle.kts:9-12`, `devices/device-meta/build.gradle.kts:13-15`, and `devices/device-rokid/build.gradle.kts:9-12`.
 
 ## Current Android Couplings in the Shared Layer
@@ -70,27 +70,27 @@ This section separates true shared-layer blockers from Android-only device imple
 
 | File | Coupling | Why it blocks `commonMain` | Fix |
 |---|---|---|---|
-| `core/src/main/java/com/xgglass/core/ExternalActivityBridge.kt:3-16` | Imports and exposes `android.content.Intent` in `ExternalActivityResult.data` and `ExternalActivityBridge.launch`. | `android.content.Intent` does not exist in common Kotlin or iOS. This is the strongest shared-layer blocker. | Move this to `core:androidMain`, or replace it with a common opaque request/result model plus Android actual adapters. Example: `data class ExternalActivityRequest(val action: String, val uri: String?, val extras: Map<String, String>)`. |
-| `core/src/main/java/com/xgglass/core/Models.kt:50-56` | `CapturedImage.timestampMs` defaults to `System.currentTimeMillis()`. | `java.lang.System.currentTimeMillis()` is not common Kotlin API. | Use `expect fun nowMillis(): Long`, inject a `Clock`, or require callers to pass timestamps from platform code. |
-| `core/src/main/java/com/xgglass/core/Audio.kt:86-92` | `AudioChunk.timestampMs` defaults to `System.currentTimeMillis()`. | Same JVM/Android dependency as `CapturedImage`. | Same `expect fun nowMillis(): Long` or injected clock. |
-| `core/build.gradle.kts:1-12` | Android library plugin plus `kotlinx-coroutines-android`. | A KMP common module cannot apply only `com.android.library`, and commonMain should not depend on Android dispatcher artifacts. | Convert to `kotlin("multiplatform")` with `androidTarget()` and `iosArm64`/`iosSimulatorArm64`. Put `kotlinx-coroutines-core` in `commonMain`; put `kotlinx-coroutines-android` in `androidMain` only. |
-| `gradle/libs.versions.toml:13-14` | Both `kotlinx-coroutines-core` and `kotlinx-coroutines-android` exist, but `core/build.gradle.kts:10-11` exposes both as `api`. | Coroutines are portable, but the Android artifact is not. | Keep `kotlinx-coroutines-core` in common. Move `kotlinx-coroutines-android` to Android implementations or Android source set. |
+| `kotlin/core/src/androidMain/kotlin/com/xgglass/core/ExternalActivityBridge.kt:3-16` | Imports and exposes `android.content.Intent` in `ExternalActivityResult.data` and `ExternalActivityBridge.launch`. | `android.content.Intent` does not exist in common Kotlin or iOS. This is the strongest shared-layer blocker. | Move this to `core:androidMain`, or replace it with a common opaque request/result model plus Android actual adapters. Example: `data class ExternalActivityRequest(val action: String, val uri: String?, val extras: Map<String, String>)`. |
+| `kotlin/core/src/commonMain/kotlin/com/xgglass/core/Models.kt:50-56` | `CapturedImage.timestampMs` defaults to `System.currentTimeMillis()`. | `java.lang.System.currentTimeMillis()` is not common Kotlin API. | Use `expect fun nowMillis(): Long`, inject a `Clock`, or require callers to pass timestamps from platform code. |
+| `kotlin/core/src/commonMain/kotlin/com/xgglass/core/Audio.kt:86-92` | `AudioChunk.timestampMs` defaults to `System.currentTimeMillis()`. | Same JVM/Android dependency as `CapturedImage`. | Same `expect fun nowMillis(): Long` or injected clock. |
+| `kotlin/core/build.gradle.kts:1-12` | Android library plugin plus `kotlinx-coroutines-android`. | A KMP common module cannot apply only `com.android.library`, and commonMain should not depend on Android dispatcher artifacts. | Convert to `kotlin("multiplatform")` with `androidTarget()` and `iosArm64`/`iosSimulatorArm64`. Put `kotlinx-coroutines-core` in `commonMain`; put `kotlinx-coroutines-android` in `androidMain` only. |
+| `gradle/libs.versions.toml:13-14` | Both `kotlinx-coroutines-core` and `kotlinx-coroutines-android` exist, but `kotlin/core/build.gradle.kts:10-11` exposes both as `api`. | Coroutines are portable, but the Android artifact is not. | Keep `kotlinx-coroutines-core` in common. Move `kotlinx-coroutines-android` to Android implementations or Android source set. |
 
 Not blockers:
 
-- `ByteArray` is portable. It appears in `AudioSource.RawBytes.data` at `core/src/main/java/com/xgglass/core/Audio.kt:40-43`, `AudioChunk.bytes` at `core/src/main/java/com/xgglass/core/Audio.kt:86-88`, and `CapturedImage.jpegBytes` at `core/src/main/java/com/xgglass/core/Models.kt:50-52`.
-- `Result<T>` is common Kotlin and is already a good cross-platform return convention in `GlassesClient` at `core/src/main/java/com/xgglass/core/GlassesClient.kt:24-57`.
-- `Flow` and `StateFlow` are available from multiplatform coroutines. `GlassesClient.state` and `GlassesClient.events` use them in `core/src/main/java/com/xgglass/core/GlassesClient.kt:18-22`.
-- `GlassesError` extends `Exception` in `core/src/main/java/com/xgglass/core/Errors.kt:3-10`; this is common Kotlin-capable, though iOS-facing Swift wrappers may prefer domain-specific error mapping.
+- `ByteArray` is portable. It appears in `AudioSource.RawBytes.data` at `kotlin/core/src/commonMain/kotlin/com/xgglass/core/Audio.kt:40-43`, `AudioChunk.bytes` at `kotlin/core/src/commonMain/kotlin/com/xgglass/core/Audio.kt:86-88`, and `CapturedImage.jpegBytes` at `kotlin/core/src/commonMain/kotlin/com/xgglass/core/Models.kt:50-52`.
+- `Result<T>` is common Kotlin and is already a good cross-platform return convention in `GlassesClient` at `kotlin/core/src/commonMain/kotlin/com/xgglass/core/GlassesClient.kt:24-57`.
+- `Flow` and `StateFlow` are available from multiplatform coroutines. `GlassesClient.state` and `GlassesClient.events` use them in `kotlin/core/src/commonMain/kotlin/com/xgglass/core/GlassesClient.kt:18-22`.
+- `GlassesError` extends `Exception` in `kotlin/core/src/commonMain/kotlin/com/xgglass/core/Errors.kt:3-10`; this is common Kotlin-capable, though iOS-facing Swift wrappers may prefer domain-specific error mapping.
 
 ### `app-contract` blockers
 
 | File | Coupling | Why it matters | Fix |
 |---|---|---|---|
-| `app-contract/build.gradle.kts:1-11` | Android library plugin. | The source is mostly common Kotlin, but the module is built only as an Android library. | Convert to KMP and depend on `:core` common metadata. |
-| `app-contract/src/main/java/com/xgglass/appcontract/UniversalAppEntry.kt:6` | `CoroutineScope` import. | This is not an Android blocker if it comes from `kotlinx-coroutines-core`; it is portable. | Keep it in commonMain after `core` moves coroutines-core to common. |
-| `app-contract/src/main/java/com/xgglass/appcontract/UniversalAppEntry.kt:139-157` | `UniversalAppContext` carries `GlassesClient`, `CoroutineScope?`, callback lambdas, and `Map<String, String>`. | These are portable. The only risk is host lifecycle semantics, not source compatibility. | Keep as common. Add platform host adapters for Android and iOS lifecycle/UI behavior. |
-| `app-contract/src/main/java/com/xgglass/appcontract/UniversalAppEntry.kt:218-237` | Command filtering policy extension point. | Portable code can keep it; current behavior is passthrough. | Keep as a shared extension point until a real cross-host default is needed. |
+| `kotlin/app-contract/build.gradle.kts:1-11` | Android library plugin. | The source is mostly common Kotlin, but the module is built only as an Android library. | Convert to KMP and depend on `:core` common metadata. |
+| `kotlin/app-contract/src/commonMain/kotlin/com/xgglass/appcontract/UniversalAppEntry.kt:6` | `CoroutineScope` import. | This is not an Android blocker if it comes from `kotlinx-coroutines-core`; it is portable. | Keep it in commonMain after `core` moves coroutines-core to common. |
+| `kotlin/app-contract/src/commonMain/kotlin/com/xgglass/appcontract/UniversalAppEntry.kt:139-157` | `UniversalAppContext` carries `GlassesClient`, `CoroutineScope?`, callback lambdas, and `Map<String, String>`. | These are portable. The only risk is host lifecycle semantics, not source compatibility. | Keep as common. Add platform host adapters for Android and iOS lifecycle/UI behavior. |
+| `kotlin/app-contract/src/commonMain/kotlin/com/xgglass/appcontract/UniversalAppEntry.kt:218-237` | Command filtering policy extension point. | Portable code can keep it; current behavior is passthrough. | Keep as a shared extension point until a real cross-host default is needed. |
 
 ### Public device constructor and implementation couplings
 
@@ -210,7 +210,7 @@ fun interface AndroidExternalActivityBridge {
 }
 ```
 
-`core-android` should remain the Android home for shared media mechanics. It currently centralizes `AudioRecord` in `core-android/src/main/java/com/xgglass/core/android/AndroidMicrophoneSession.kt:21-143`, `AudioTrack` in `core-android/src/main/java/com/xgglass/core/android/AudioTrackPlayer.kt:13-136`, and `MediaPlayer` in `core-android/src/main/java/com/xgglass/core/android/MediaPlayerPlayer.kt:14-82`. In a KMP setup, either keep it as a separate Android-only module consumed by Android device modules, or move those files into `core/androidMain` if the team wants fewer modules. Keeping it separate is lower risk because it does not pollute common API metadata.
+`core-android` should remain the Android home for shared media mechanics. It currently centralizes `AudioRecord` in `kotlin/core-android/src/main/java/com/xgglass/core/android/AndroidMicrophoneSession.kt:21-143`, `AudioTrack` in `kotlin/core-android/src/main/java/com/xgglass/core/android/AudioTrackPlayer.kt:13-136`, and `MediaPlayer` in `kotlin/core-android/src/main/java/com/xgglass/core/android/MediaPlayerPlayer.kt:14-82`. In a KMP setup, either keep it as a separate Android-only module consumed by Android device modules, or move those files into `kotlin/core/src/androidMain` if the team wants fewer modules. Keeping it separate is lower risk because it does not pollute common API metadata.
 
 ## Per-Device iOS Reachability Table
 
@@ -263,7 +263,7 @@ Actions:
 1. Mark `GlassesClient`, `Models`, `Audio`, `StateAndEvents`, and `Errors` as the KMP target surface.
 2. Keep current Android modules and aggregate behavior unchanged.
 3. Add tests or compile probes around generated Android template behavior where possible.
-4. Decide whether the recently added `GlassesModel.ANDROID_XR` in `core/src/main/java/com/xgglass/core/Models.kt:3-10` is part of the stable public enum before publishing KMP metadata.
+4. Decide whether the recently added `GlassesModel.ANDROID_XR` in `kotlin/core/src/commonMain/kotlin/com/xgglass/core/Models.kt:3-10` is part of the stable public enum before publishing KMP metadata.
 
 Risks:
 
@@ -276,12 +276,12 @@ Goal: commonMain builds with no production behavior change.
 
 Actions:
 
-1. Convert `core/build.gradle.kts:1-12` from Android-only library to KMP.
-2. Move pure types from `core/src/main/java` to `core/src/commonMain/kotlin`.
-3. Move `ExternalActivityBridge` from `core/src/main/java/com/xgglass/core/ExternalActivityBridge.kt:1-16` to `androidMain`, or replace it with common request/result types plus Android adapter.
+1. Convert `kotlin/core/build.gradle.kts:1-12` from Android-only library to KMP.
+2. Move pure types from `kotlin/core/src/main/java` to `kotlin/core/src/commonMain/kotlin`.
+3. Move `ExternalActivityBridge` from `kotlin/core/src/androidMain/kotlin/com/xgglass/core/ExternalActivityBridge.kt:1-16` to `androidMain`, or replace it with common request/result types plus Android adapter.
 4. Replace `System.currentTimeMillis()` defaults in `Models.kt:50-56` and `Audio.kt:86-92` with `expect fun nowMillis(): Long`.
-5. Keep `kotlinx-coroutines-core` in common and move `kotlinx-coroutines-android` out of common, fixing the current `core/build.gradle.kts:9-12` dependency exposure.
-6. Convert `app-contract/build.gradle.kts:1-11` to KMP and move `UniversalAppEntry.kt:1-237` to commonMain.
+5. Keep `kotlinx-coroutines-core` in common and move `kotlinx-coroutines-android` out of common, fixing the current `kotlin/core/build.gradle.kts:9-12` dependency exposure.
+6. Convert `kotlin/app-contract/build.gradle.kts:1-11` to KMP and move `UniversalAppEntry.kt:1-237` to commonMain.
 7. Keep Android aggregate modules depending on the Android target output.
 
 Exit criteria:
@@ -304,7 +304,7 @@ Actions:
 
 Exit criteria:
 
-- Android aggregate artifact still exposes the same devices through `universal/build.gradle.kts:9-36`.
+- Android aggregate artifact still exposes the same devices through `kotlin/universal/build.gradle.kts:9-36`.
 - No iOS device work is blocking Android releases.
 
 ### Phase 3: Pilot one iOS device with a vendor iOS SDK or BLE
@@ -360,7 +360,7 @@ Medium risk:
 - `ExternalActivityBridge` needs an explicit common/Android split.
 - Time defaults need `expect/actual` or clock injection.
 - `Dispatchers.Main` and Android lifecycle assumptions in device modules must not leak into common code.
-- The aggregate `:universal` module currently exports Android implementations directly in `universal/build.gradle.kts:9-36`; KMP publication likely needs a new Android aggregate and separate iOS packaging.
+- The aggregate `:universal` module currently exports Android implementations directly in `kotlin/universal/build.gradle.kts:9-36`; KMP publication likely needs a new Android aggregate and separate iOS packaging.
 
 High risk:
 

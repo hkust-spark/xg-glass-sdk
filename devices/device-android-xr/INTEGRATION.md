@@ -60,7 +60,7 @@ grant as proof that glasses camera/microphone access is granted.
 
 ## GlassesModel
 
-This scaffold adds `GlassesModel.ANDROID_XR` to `core/src/main/java/com/xgglass/core/Models.kt`.
+This scaffold adds `GlassesModel.ANDROID_XR` to `kotlin/core/src/commonMain/kotlin/com/xgglass/core/Models.kt`.
 That is an additive enum value so the scaffold can identify captured images and client model state
 without using a misleading placeholder like `SIMULATOR`.
 
