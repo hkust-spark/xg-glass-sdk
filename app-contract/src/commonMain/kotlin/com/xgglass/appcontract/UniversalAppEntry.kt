@@ -133,6 +133,9 @@ object AIApiSettings {
  *
  * - [client] is the active [GlassesClient] for the selected model.
  * - [environment] tells you whether you're running on phone or on glasses.
+ * - [scope] is a host-provided [CoroutineScope] tied to the host lifecycle, for launching
+ *   background work from commands. It is null when the host does not supply one; in that
+ *   case create and manage your own scope (and cancel it when your command finishes).
  * - [log] lets hosts surface logs (phone UI log view / glasses overlay, etc).
  * - [settings] contains user-configured values declared via [UniversalAppEntry.userSettings].
  */

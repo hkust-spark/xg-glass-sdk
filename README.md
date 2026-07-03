@@ -60,7 +60,7 @@ Choose one installation channel depending on the platform you are targeting.
 
 #### Android (Maven Central)
 
-Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.1.0`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`.
+Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.1.0`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`. Note that the Maven group is only the distribution namespace — Kotlin packages in code are `com.xgglass.*` (for example `import com.xgglass.core.GlassesClient`).
 
 New to the SDK? Follow [Your First App (Android)](./docs/getting-started-android.md).
 
