@@ -3,7 +3,12 @@ import org.gradle.api.publish.maven.MavenPublication
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.dokka)
     id("com.xgglass.maven-publish")
+}
+
+dokka {
+    moduleName.set("xgglass-core")
 }
 
 apply(plugin = "com.android.library")

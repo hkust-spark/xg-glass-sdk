@@ -1,0 +1,81 @@
+name: Docs
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Disable generated Flutter Android module
+        run: |
+          # The generated Flutter module needs local .android/local.properties and a Flutter SDK.
+          rm -rf third_party/frame/frame_module/.android
+
+      - name: Generate Dokka HTML
+        run: ./gradlew --console=plain :core:dokkaGeneratePublicationHtml :app-contract:dokkaGeneratePublicationHtml
+
+      - name: Assemble Pages site
+        run: |
+          mkdir -p build/docs-site/core build/docs-site/app-contract
+          cp -R core/build/dokka/html/. build/docs-site/core/
+          cp -R app-contract/build/dokka/html/. build/docs-site/app-contract/
+          cat > build/docs-site/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <title>xg.glass API docs</title>
+            </head>
+            <body>
+              <h1>xg.glass API docs</h1>
+              <ul>
+                <li><a href="core/">Core API</a></li>
+                <li><a href="app-contract/">App Contract API</a></li>
+              </ul>
+            </body>
+          </html>
+          HTML
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/docs-site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

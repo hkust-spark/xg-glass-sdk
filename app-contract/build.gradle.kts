@@ -6,7 +6,12 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.dokka)
     id("com.xgglass.maven-publish")
+}
+
+dokka {
+    moduleName.set("xgglass-app-contract")
 }
 
 apply(plugin = "com.android.library")

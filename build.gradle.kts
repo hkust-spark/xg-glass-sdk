@@ -8,5 +8,5 @@ plugins {
 
 allprojects {
     group = "io.github.hkust-spark"
-    version = "0.1.0"
+    version = providers.gradleProperty("version").get()
 }

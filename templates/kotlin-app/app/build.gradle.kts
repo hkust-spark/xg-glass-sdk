@@ -109,6 +109,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     // xg.glass SDK (single entry-point dependency)
+    // Resolved via the composite build (xg-glass init); xgglass-universal-full is not published to Maven Central.
     implementation("io.github.hkust-spark:xgglass-universal-full:0.1.0")
 
     // Shared developer logic module (implements UniversalAppEntry)
