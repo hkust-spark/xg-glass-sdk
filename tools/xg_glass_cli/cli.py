@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 from . import commands as _commands
-from .constants import DEFAULT_CONFIG_FILE, DEFAULT_SDK, DEFAULT_TEMPLATE, CliUsageError
+from .constants import DEFAULT_CONFIG_FILE, CliUsageError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -20,13 +20,11 @@ def main(argv: list[str] | None = None) -> int:
     p_init.add_argument("dir", help="Target directory for the new project.")
     p_init.add_argument(
         "--template",
-        default=str(DEFAULT_TEMPLATE),
-        help="Template project directory (default: ./templates/kotlin-app).",
+        help="Template project directory (default: <resolved-sdk>/templates/kotlin-app).",
     )
     p_init.add_argument(
         "--sdk",
-        default=str(DEFAULT_SDK),
-        help="Path to the SDK repo root (default: this repo).",
+        help="Path to the SDK repo root (default: this repo when invoked from a checkout).",
     )
     p_init.add_argument(
         "--entry-class",

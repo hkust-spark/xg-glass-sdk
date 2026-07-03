@@ -35,10 +35,7 @@ class CliUsageError(RuntimeError):
 
 def missing_sdk_checkout_message(subcommand: str) -> str:
     if subcommand == "init":
-        command = (
-            "xg-glass init ... --sdk /path/to/xg-glass-sdk "
-            "--template /path/to/xg-glass-sdk/templates/kotlin-app"
-        )
+        command = "xg-glass init ... --sdk /path/to/xg-glass-sdk"
     elif subcommand == "run":
         command = "xg-glass run /path/to/MyEntry.kt --sdk /path/to/xg-glass-sdk"
     else:

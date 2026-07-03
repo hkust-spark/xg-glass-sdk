@@ -26,7 +26,7 @@ Commands that create or synthesize a project need an `xg-glass-sdk` repository c
 
 ```sh
 git clone https://github.com/hkust-spark/xg-glass-sdk
-xg-glass init /path/to/myapp --sdk /path/to/xg-glass-sdk --template /path/to/xg-glass-sdk/templates/kotlin-app
+xg-glass init /path/to/myapp --sdk /path/to/xg-glass-sdk
 xg-glass run /path/to/MyEntry.kt --sdk /path/to/xg-glass-sdk
 ```
 

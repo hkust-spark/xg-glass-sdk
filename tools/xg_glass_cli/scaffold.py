@@ -7,6 +7,34 @@ from pathlib import Path
 from .config import XgConfig
 
 
+def _replace_project_placeholders(project: Path, *, rel_sdk: str, entry_class: str) -> None:
+    settings_file = project / "settings.gradle.kts"
+    if settings_file.exists():
+        s = settings_file.read_text(encoding="utf-8")
+        s = s.replace("__XG_SDK_PATH__", rel_sdk)
+        settings_file.write_text(s, encoding="utf-8")
+
+    app_gradle = project / "app" / "build.gradle.kts"
+    if app_gradle.exists():
+        g = app_gradle.read_text(encoding="utf-8")
+        g = g.replace("__XG_ENTRY_CLASS__", entry_class)
+        g = g.replace("__XG_SDK_PATH__", rel_sdk)
+        app_gradle.write_text(g, encoding="utf-8")
+
+    manifest = project / "app" / "src" / "main" / "AndroidManifest.xml"
+    if manifest.exists():
+        m = manifest.read_text(encoding="utf-8")
+        m = m.replace("__XG_ENTRY_CLASS__", entry_class)
+        manifest.write_text(m, encoding="utf-8")
+
+    cfg_file = project / "xg-glass.yaml"
+    if cfg_file.exists():
+        c = cfg_file.read_text(encoding="utf-8")
+        c = c.replace("__XG_SDK_PATH__", rel_sdk)
+        c = c.replace("__XG_ENTRY_CLASS__", entry_class)
+        cfg_file.write_text(c, encoding="utf-8")
+
+
 def _apply_simulator_build_settings(project: Path, *, enabled: bool) -> None:
     """
     Patch a generated (or existing) template-based project for simulator mode.
@@ -162,7 +190,7 @@ def _apply_cfg_to_project(project: Path, cfg: XgConfig) -> None:
             )
             # 2) composite build includeBuild(...) anchored by the comment block
             s = re.sub(
-                r'(^\\s*//\\s*Use\\s+the\\s+xg\\.glass\\s+SDK\\s+as\\s+a\\s+composite\\s+build.*\\n)\\s*includeBuild\\(".*?"\\)',
+                r'(^\s*//\s*Use\s+the\s+xg\.glass\s+SDK\s+as\s+a\s+composite\s+build.*\n)\s*includeBuild\(".*?"\)',
                 lambda m: f'{m.group(1)}includeBuild("{cfg.sdk_path}")',
                 s,
                 flags=re.MULTILINE,

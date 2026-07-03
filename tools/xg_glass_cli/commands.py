@@ -38,6 +38,7 @@ from .scaffold import (
     _copy_kt_into_project,
     _copy_tree,
     _infer_entry_class_from_kt,
+    _replace_project_placeholders,
 )
 from .video import _resolve_sim_video
 
@@ -72,20 +73,34 @@ def _resolve_quick_run_template(sdk: Path, *, sdk_from_default: bool) -> Path:
     raise CliUsageError(f"Template not found: {sdk_template}")
 
 
+def _template_under_sdk(sdk: Path) -> Path:
+    return sdk / "templates" / "kotlin-app"
+
+
+def _resolve_init_paths(raw_sdk: str | Path | None, raw_template: str | Path | None) -> tuple[Path, Path]:
+    sdk_from_default = raw_sdk is None
+    if sdk_from_default:
+        sdk = DEFAULT_SDK.expanduser().resolve()
+        if not _template_under_sdk(sdk).is_dir():
+            raise CliUsageError(missing_sdk_checkout_message("init"))
+    else:
+        sdk = _resolve_required_dir(raw_sdk, label="SDK", subcommand="init")
+
+    if raw_template is None:
+        template = _template_under_sdk(sdk)
+        if template.is_dir():
+            return sdk, template
+        if sdk_from_default:
+            raise CliUsageError(missing_sdk_checkout_message("init"))
+        raise CliUsageError(f"Template not found: {template}")
+
+    template = _resolve_required_dir(raw_template, label="Template", subcommand="init")
+    return sdk, template
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     dst = Path(args.dir).expanduser().resolve()
-    template = _resolve_required_dir(
-        args.template,
-        label="Template",
-        subcommand="init",
-        default_path=DEFAULT_TEMPLATE,
-    )
-    sdk = _resolve_required_dir(
-        args.sdk,
-        label="SDK",
-        subcommand="init",
-        default_path=DEFAULT_SDK,
-    )
+    sdk, template = _resolve_init_paths(getattr(args, "sdk", None), getattr(args, "template", None))
     entry_class = _validate_entry_class(args.entry_class, "--entry-class")
 
     if dst.exists() and any(dst.iterdir()):
@@ -113,37 +128,13 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     _ensure_executable(dst / "gradlew")
 
-    # Patch includeBuild paths in settings.gradle.kts
+    # Patch template placeholders.
     rel_sdk = Path(os.path.relpath(sdk, dst)).as_posix()
-    settings_file = dst / "settings.gradle.kts"
-    if settings_file.exists():
-        s = settings_file.read_text(encoding="utf-8")
-        # Stage2 template uses placeholders.
-        s = s.replace("__XG_SDK_PATH__", rel_sdk)
-        settings_file.write_text(s, encoding="utf-8")
-
-    # Patch xgRayneo config in app/build.gradle.kts (entry class + mercury dir)
-    app_gradle = dst / "app" / "build.gradle.kts"
-    if app_gradle.exists():
-        g = app_gradle.read_text(encoding="utf-8")
-        g = g.replace("__XG_ENTRY_CLASS__", entry_class)
-        g = g.replace("__XG_SDK_PATH__", rel_sdk)
-        app_gradle.write_text(g, encoding="utf-8")
-
-    manifest = dst / "app" / "src" / "main" / "AndroidManifest.xml"
-    if manifest.exists():
-        m = manifest.read_text(encoding="utf-8")
-        m = m.replace("__XG_ENTRY_CLASS__", entry_class)
-        manifest.write_text(m, encoding="utf-8")
+    _replace_project_placeholders(dst, rel_sdk=rel_sdk, entry_class=entry_class)
 
     # Patch xg-glass.yaml (if template provides it).
     cfg_file = dst / DEFAULT_CONFIG_FILE
-    if cfg_file.exists():
-        c = cfg_file.read_text(encoding="utf-8")
-        c = c.replace("__XG_SDK_PATH__", rel_sdk)
-        c = c.replace("__XG_ENTRY_CLASS__", entry_class)
-        cfg_file.write_text(c, encoding="utf-8")
-    else:
+    if not cfg_file.exists():
         cfg_file.write_text(
             "\n".join(
                 [
