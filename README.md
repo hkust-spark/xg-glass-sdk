@@ -143,7 +143,7 @@ targets: [
 ]
 ```
 
-Until the 0.1.0 GitHub Release hosts `XgGlassKit.xcframework.zip`, build the binary locally with `scripts/build-xcframework.sh` on macOS. See [Swift Package setup](./docs/swift-package.md) and [iOS device support](./docs/ios-device-support.md).
+The `XgGlassKit` binary is downloaded automatically from the GitHub Release for the version you depend on — no local build step is needed. See [Swift Package setup](./docs/swift-package.md) and [iOS device support](./docs/ios-device-support.md).
 
 #### CLI (PyPI)
 
