@@ -42,14 +42,16 @@ class XgGlassRayneoAppPlugin : Plugin<Project> {
             val entryClass = ext.appEntryClass.orNull?.trim().orEmpty()
             require(entryClass.isNotBlank()) { "xgRayneo.appEntryClass is required (fully-qualified UniversalAppEntry class name)." }
 
-            // Patch the generated host module files (no AGP API dependency needed).
-            patchHostFiles(hostProject.projectDir, logicProjectPath = logicPath, appEntryClass = entryClass)
-
             // Sync vendor SDK AARs into the generated host module.
             val mercuryDir = ext.mercuryAarDir.orNull
                 ?.trim()
-                .orEmpty()
-                .ifBlank { findDefaultMercuryAarDir(project).orEmpty() }
+                ?.also { configured ->
+                    require(configured.isNotBlank()) {
+                        "xgRayneo.mercuryAarDir is required to enable RayNeo UI/navigation (Mercury SDK). " +
+                            "Point it to a directory containing MercuryAndroidSDK*.aar and RayNeoIPCSDK*.aar."
+                    }
+                }
+                ?: findDefaultMercuryAarDir(project).orEmpty()
             require(mercuryDir.isNotBlank()) {
                 "xgRayneo.mercuryAarDir is required to enable RayNeo UI/navigation (Mercury SDK). " +
                     "Point it to a directory containing MercuryAndroidSDK*.aar and RayNeoIPCSDK*.aar.\n" +
@@ -57,6 +59,22 @@ class XgGlassRayneoAppPlugin : Plugin<Project> {
             }
             val mercurySrcDir = File(mercuryDir)
             require(mercurySrcDir.exists() && mercurySrcDir.isDirectory) { "xgRayneo.mercuryAarDir is not a directory: $mercuryDir" }
+
+            // Patch the generated host module files before any possible skip so the included
+            // host project can still configure without placeholder dependency paths.
+            patchHostFiles(hostProject.projectDir, logicProjectPath = logicPath, appEntryClass = entryClass)
+
+            val mercuryAars = mercurySrcDir.listFiles()
+                ?.filter { it.isFile && it.extension.equals("aar", ignoreCase = true) }
+                .orEmpty()
+            if (mercuryAars.isEmpty()) {
+                project.logger.warn(
+                    "RayNeo glasses host skipped: no vendor AARs found in ${mercurySrcDir.absolutePath}. " +
+                        "RayNeo support needs MercuryAndroidSDK*.aar + RayNeoIPCSDK*.aar -- download from https://rayneo.gitbook.io/rayneo-devdoc " +
+                        "(ARDK下载 / IPC SDK pages); see third_party/rayneo/aar/README.md. Other devices are unaffected."
+                )
+                return@afterEvaluate
+            }
 
             val variant = ext.variant.get()
             val variantCap = variant.replaceFirstChar { c -> if (c.isLowerCase()) c.titlecase() else c.toString() }
@@ -112,9 +130,7 @@ class XgGlassRayneoAppPlugin : Plugin<Project> {
             File(root, "../../xg-glass-sdk/vendor/rayneo/aar"),
         )
         return candidates
-            .firstOrNull { dir ->
-                dir.isDirectory && (dir.listFiles()?.any { it.isFile && it.extension.equals("aar", ignoreCase = true) } == true)
-            }
+            .firstOrNull { dir -> dir.isDirectory }
             ?.absolutePath
     }
 

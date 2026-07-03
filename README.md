@@ -56,8 +56,9 @@ Choose one installation channel depending on the platform you are targeting.
 Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.1.0`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`.
 
 The main Android artifact is `xgglass-universal`. It includes Rokid, RayNeo, Simulator, Omi, and the Frame bridge API. The SDK minSdk is 28; Meta support and the RayNeo glasses host require minSdk 29.
+RayNeo support additionally requires the vendor AARs downloaded from RayNeo's developer docs; see [third_party/rayneo/aar/README.md](./third_party/rayneo/aar/README.md).
 
-Besides `google()` and `mavenCentral()`, one extra repository is required: Rokid support pulls `com.rokid.cxr:client-m` from Rokid's Maven repository. Everything else resolves from Maven Central alone.
+Besides `google()` and `mavenCentral()`, one extra repository is required: Rokid support pulls `com.rokid.cxr:client-m` from Rokid's Maven repository. Published SDK artifacts other than Rokid's vendor dependency resolve from Maven Central alone.
 
 ```kotlin
 // settings.gradle.kts

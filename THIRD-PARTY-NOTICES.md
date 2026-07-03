@@ -18,6 +18,9 @@ The embedded Frame Flutter module depends on `frame_ble` and `frame_msg` by Citi
 
 The Lua scripts under `third_party/frame/frame_module/assets/lua/` are adapted from the Brilliant Labs Frame ecosystem, including `frame_msg` reference scripts. They are redistributed within this repository as part of the embedded Frame module.
 
-## RayNeo Vendor SDK Archives
+## RayNeo Mercury / ARSDK and IPC SDK
 
-Redistribution status under review -- see `third_party/rayneo/aar/README.md`.
+RayNeo Mercury / ARSDK and IPC SDK are proprietary RayNeo SDKs. They are not
+redistributed with this repository; developers download them from RayNeo's
+official developer documentation (`https://rayneo.gitbook.io/rayneo-devdoc`) and
+place them under `third_party/rayneo/aar/`.
