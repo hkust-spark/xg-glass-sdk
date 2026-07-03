@@ -1,9 +1,12 @@
 # Android XR Scaffold Integration
 
 This module is an unvalidated proof-of-concept scaffold for Google Android XR AI glasses through
-the Jetpack XR projected-context model. It is intentionally not included from `settings.gradle.kts`
-because the Android XR libraries are developer-preview APIs and their coordinates/API surface must
-be verified against the current SDK before enabling the module.
+the Jetpack XR projected-context model. It is included in the source build so the scaffold stays
+visible during development, but its developer-preview dependencies and API surface still need
+validation against the current Android XR SDK before it can be treated as functional.
+
+> **Release note:** This is a non-functional preview scaffold. It is **not** published to Maven
+> Central in 0.1.0, and applications should not depend on it.
 
 ## Dependency Pinning
 
@@ -17,7 +20,7 @@ be verified against the current SDK before enabling the module.
 - `androidx.xr.arcore:arcore:1.0.0-alpha14`
 - Optional test-only candidate: `androidx.xr.projected:projected-testing:1.0.0-alpha09`
 
-Before wiring this module into the main build, verify every coordinate against the current Android
+Before treating this module as a supported adapter, verify every coordinate against the current Android
 XR release notes and setup guide. Google's AI glasses setup guide has shown `projected` examples
 with earlier alpha versions than the latest release notes, so do not assume the scaffold versions
 are correct for a given emulator/device image.
@@ -61,16 +64,18 @@ This scaffold adds `GlassesModel.ANDROID_XR` to `core/src/main/java/com/xgglass/
 That is an additive enum value so the scaffold can identify captured images and client model state
 without using a misleading placeholder like `SIMULATOR`.
 
-## Enabling The Module
+## Source Build Only
 
-Do not enable this module until dependency coordinates and API calls are validated. When ready:
+The module is already wired into the source build for preview work. Do not publish it, depend on it
+from applications, or advertise it as supported until dependency coordinates and API calls are
+validated. The source-build wiring is:
 
 ```kotlin
 include(":device-android-xr")
 project(":device-android-xr").projectDir = file("devices/device-android-xr")
 ```
 
-Then add an application dependency:
+Only after validation should an application dependency be considered:
 
 ```kotlin
 implementation(project(":device-android-xr"))

@@ -1,5 +1,7 @@
 # XgGlass Swift Package
 
+The package supports iOS 16 and newer.
+
 The root `Package.swift` publishes two iOS products:
 
 - `XgGlass`: the Kotlin Multiplatform `XgGlassKit` XCFramework re-exported for Swift clients.
@@ -16,6 +18,8 @@ scripts/build-xcframework.sh
 ```
 
 The script runs `:app-contract:assembleXgGlassKitXCFramework` and copies the result to `artifacts/XgGlassKit.xcframework`. The `artifacts/` directory is ignored because it contains generated binary output.
+
+Until a GitHub Release hosts `XgGlassKit.xcframework.zip`, building the XCFramework locally requires macOS with a JDK and Android toolchain available; Gradle itself is provided by the repository wrapper.
 
 Add this repository as a local Swift package in Xcode, then link `XgGlass` for the core API and `XgGlassMeta` when the Meta adapter is needed.
 

@@ -42,7 +42,7 @@ Write your app logic once against these four APIs, and it runs on all supported 
 | Rokid Glasses | `GlassesModel.ROKID` | Yes | Yes | Yes | Yes (TTS + raw) |
 | Meta AI Glasses | `GlassesModel.META` | Yes | No | Yes | Yes (raw) |
 | Brilliant Labs Frame | `GlassesModel.FRAME` | Yes | Yes | Yes | No |
-| RayNeo x2 / x3 Pro | `GlassesModel.RAYNEO` | Yes | Yes | Yes | Yes (raw) |
+| RayNeo x2 validated / x3 Pro untested | `GlassesModel.RAYNEO` | Yes | Yes | Yes | Yes (raw) |
 | Omi Glass | `GlassesModel.OMI` | Yes | No | Yes | No |
 | Simulator (Emulator) | `GlassesModel.SIMULATOR` | Yes (webcam/video) | Yes | Yes | Yes (TTS + raw) |
 
@@ -94,21 +94,23 @@ An xg.glass app consists of a single Kotlin file implementing `UniversalAppEntry
 
 - JDK 17 or 21
 - Android SDK + `adb` on PATH
-- Flutter (for Frame support)
+- Flutter (only for source/CLI Frame workflows)
 - Python 3.8+ (for the CLI)
 
 ### Install the CLI
 
+See the repository [README install section](../README.md#getting-started) for the full Android, iOS, and CLI setup matrix. For the published CLI:
+
 ```bash
-git clone <xg-glass-repo>
-cd <xg-glass-repo>
-pip install -e .
+pip install xg-glass
 xg-glass --help   # verify installation
 ```
 
+The PyPI CLI can build, install, and run inside an already-generated project that contains `xg-glass.yaml`. Commands that create a project from this SDK, including `xg-glass init` and `xg-glass run <file.kt>`, need an SDK checkout supplied with `--sdk` and, where needed, `--template`.
+
 ### Meta AI Glasses setup
 
-The Meta DAT Android artifacts are hosted on GitHub Packages, so configure a token before building:
+The Meta DAT Android artifacts are hosted on GitHub Packages, so configure a token before building. See the README's Meta opt-in section for the required Gradle repository and dependency snippet.
 
 ```properties
 # ~/.gradle/gradle.properties
@@ -130,20 +132,20 @@ Notes:
 
 ```bash
 # On real glasses (auto-detects connected device)
-xg-glass run /path/to/MyEntry.kt
+xg-glass run --sdk /path/to/xg-glass-sdk /path/to/MyEntry.kt
 
 # On simulator (uses webcam as camera)
-xg-glass run --sim /path/to/MyEntry.kt
+xg-glass run --sdk /path/to/xg-glass-sdk --sim /path/to/MyEntry.kt
 
 # On simulator with a pre-recorded video
-xg-glass run --sim --local_video /path/to/video.mp4 /path/to/MyEntry.kt
-xg-glass run --sim --video_url <youtube-or-bilibili-url> /path/to/MyEntry.kt
+xg-glass run --sdk /path/to/xg-glass-sdk --sim --local_video /path/to/video.mp4 /path/to/MyEntry.kt
+xg-glass run --sdk /path/to/xg-glass-sdk --sim --video_url <youtube-or-bilibili-url> /path/to/MyEntry.kt
 ```
 
 ### Create a full project
 
 ```bash
-xg-glass init /path/to/myapp
+xg-glass init --sdk /path/to/xg-glass-sdk /path/to/myapp
 cd /path/to/myapp
 xg-glass build
 xg-glass install
@@ -571,7 +573,7 @@ In your command's `run()`, the most commonly used fields are:
 
 ### 6.5 File Structure for Single-File Run
 
-When using `xg-glass run MyEntry.kt`, your file must:
+When using `xg-glass run --sdk /path/to/xg-glass-sdk MyEntry.kt`, your file must:
 
 1. Have a `package` declaration (e.g. `package com.example.myapp.logic`)
 2. Contain a top-level `class` or `object` implementing `UniversalAppEntrySimple`
@@ -714,10 +716,10 @@ Each sample is a single `.kt` file that you can run directly:
 
 ```bash
 cd xg-glass-sample/photo_translator
-xg-glass run TranslationEntry.kt
+xg-glass run --sdk /path/to/xg-glass-sdk TranslationEntry.kt
 
 # or with simulator:
-xg-glass run --sim TranslationEntry.kt
+xg-glass run --sdk /path/to/xg-glass-sdk --sim TranslationEntry.kt
 ```
 
 ---
@@ -905,13 +907,13 @@ class APPNAMEEntry : UniversalAppEntrySimple {
 
 ```bash
 # Run single file (fastest iteration)
-xg-glass run MyEntry.kt                              # on real glasses
-xg-glass run --sim MyEntry.kt                        # on simulator
-xg-glass run --sim --local_video vid.mp4 MyEntry.kt  # simulator + video
-xg-glass run --sim --video_url <url> MyEntry.kt      # simulator + YouTube/Bilibili
+xg-glass run --sdk /path/to/xg-glass-sdk MyEntry.kt                              # on real glasses
+xg-glass run --sdk /path/to/xg-glass-sdk --sim MyEntry.kt                        # on simulator
+xg-glass run --sdk /path/to/xg-glass-sdk --sim --local_video vid.mp4 MyEntry.kt  # simulator + video
+xg-glass run --sdk /path/to/xg-glass-sdk --sim --video_url <url> MyEntry.kt      # simulator + YouTube/Bilibili
 
 # Full project workflow
-xg-glass init myapp        # create project
+xg-glass init --sdk /path/to/xg-glass-sdk myapp  # create project
 xg-glass build             # build APK
 xg-glass install           # install on device
 xg-glass run               # launch app
