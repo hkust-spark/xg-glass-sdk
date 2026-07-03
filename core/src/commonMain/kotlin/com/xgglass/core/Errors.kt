@@ -5,6 +5,6 @@ sealed class GlassesError(message: String, cause: Throwable? = null) : Exception
     data object PermissionDenied : GlassesError("Required permissions not granted")
     data object Busy : GlassesError("Device is busy")
     data class Timeout(val operation: String) : GlassesError("Timeout: $operation")
-    data class Transport(val detail: String, val raw: Throwable? = null) : GlassesError(detail, raw)
+    class Transport(val detail: String, cause: Throwable? = null) : GlassesError(detail, cause)
     data class Unsupported(val detail: String) : GlassesError("Unsupported: $detail")
 }

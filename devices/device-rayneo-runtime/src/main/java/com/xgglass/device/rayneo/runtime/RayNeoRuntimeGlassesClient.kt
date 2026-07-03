@@ -411,7 +411,7 @@ fun interface RayNeoDisplaySink {
     suspend fun display(context: Context, text: String, options: DisplayOptions)
 }
 
-class ToastDisplaySink : RayNeoDisplaySink {
+internal class ToastDisplaySink : RayNeoDisplaySink {
     override suspend fun display(context: Context, text: String, options: DisplayOptions) {
         withContext(Dispatchers.Main) {
             Toast.makeText(context, text, Toast.LENGTH_LONG).show()
