@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -48,7 +49,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resumeWithException
 
@@ -97,6 +97,7 @@ class OmiGlassesClient(
     private var photoBuffer = mutableListOf<Byte>()
     private var lastPhotoChunkId = -1
     private var photoContinuation: kotlinx.coroutines.CancellableContinuation<Result<CapturedImage>>? = null
+    private var photoDescriptorContinuation: kotlinx.coroutines.CancellableContinuation<Boolean>? = null
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -169,6 +170,13 @@ class OmiGlassesClient(
         val gatt = bluetoothGatt ?: return Result.failure(GlassesError.NotConnected)
 
         return kotlinx.coroutines.withTimeoutOrNull(options.timeoutMs) {
+            val notificationsEnabled = enablePhotoDataNotifications(gatt, dataChar)
+            if (!notificationsEnabled) {
+                return@withTimeoutOrNull Result.failure(
+                    GlassesError.Transport("Photo notification descriptor write failed")
+                )
+            }
+
             kotlinx.coroutines.suspendCancellableCoroutine { cont ->
                 synchronized(photoLock) {
                     photoContinuation = cont
@@ -176,25 +184,29 @@ class OmiGlassesClient(
                     lastPhotoChunkId = -1
                 }
 
-                // Enable notifications for photo data
-                gatt.setCharacteristicNotification(dataChar, true)
-                dataChar.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))?.let { desc ->
-                    desc.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-                    gatt.writeDescriptor(desc)
-                }
-
-                scope.launch {
-                    // Small delay to ensure descriptor write is processed if needed, 
-                    // though in production we should wait for onDescriptorWrite.
-                    kotlinx.coroutines.delay(200) 
-                    
+                // Write 0x05 to trigger single photo (like React Native SDK) only after CCCD is enabled.
+                val commandSent = writeCharacteristicCompat(
+                    gatt = gatt,
+                    characteristic = ctrlChar,
+                    value = byteArrayOf(0x05.toByte()),
+                )
+                if (commandSent) {
+                    emitLog("Omi: capture photo command sent [0x05]")
+                } else {
                     synchronized(photoLock) {
+                        if (photoContinuation === cont) {
+                            photoContinuation = null
+                        }
+                        photoBuffer.clear()
                         lastPhotoChunkId = -1
                     }
-                    // Write 0x05 to trigger single photo (like React Native SDK)
-                    ctrlChar.value = byteArrayOf(0x05.toByte())
-                    gatt.writeCharacteristic(ctrlChar)
-                    emitLog("Omi: capture photo command sent [0x05]")
+                    cont.resumeWith(
+                        Result.success(
+                            Result.failure(
+                                GlassesError.Transport("Photo capture command write failed")
+                            )
+                        )
+                    )
                 }
 
                 cont.invokeOnCancellation {
@@ -396,6 +408,19 @@ class OmiGlassesClient(
                         }
                     }
                 }
+
+                override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+                    if (descriptor.uuid == CLIENT_CHARACTERISTIC_CONFIG_UUID &&
+                        descriptor.characteristic?.uuid == PHOTO_DATA_UUID
+                    ) {
+                        val pending = synchronized(photoLock) {
+                            val cont = photoDescriptorContinuation
+                            photoDescriptorContinuation = null
+                            cont
+                        }
+                        pending?.resumeWith(Result.success(status == BluetoothGatt.GATT_SUCCESS))
+                    }
+                }
             })
 
             cont.invokeOnCancellation {
@@ -411,8 +436,78 @@ class OmiGlassesClient(
         updateCapabilities { it.copy(canCapturePhoto = canCapturePhoto) }
     }
 
+    private suspend fun enablePhotoDataNotifications(
+        gatt: BluetoothGatt,
+        dataChar: BluetoothGattCharacteristic,
+    ): Boolean {
+        if (!gatt.setCharacteristicNotification(dataChar, true)) {
+            return false
+        }
+        val descriptor = dataChar.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID) ?: return false
+
+        return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+            synchronized(photoLock) {
+                photoDescriptorContinuation = cont
+            }
+            val started = writeDescriptorCompat(
+                gatt = gatt,
+                descriptor = descriptor,
+                value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE,
+            )
+            if (!started) {
+                synchronized(photoLock) {
+                    if (photoDescriptorContinuation === cont) {
+                        photoDescriptorContinuation = null
+                    }
+                }
+                cont.resumeWith(Result.success(false))
+            }
+            cont.invokeOnCancellation {
+                synchronized(photoLock) {
+                    if (photoDescriptorContinuation === cont) {
+                        photoDescriptorContinuation = null
+                    }
+                }
+            }
+        }
+    }
+
+    private fun writeDescriptorCompat(
+        gatt: BluetoothGatt,
+        descriptor: BluetoothGattDescriptor,
+        value: ByteArray,
+    ): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gatt.writeDescriptor(descriptor, value) == BluetoothStatusCodes.SUCCESS
+        } else {
+            descriptor.setValue(value)
+            gatt.writeDescriptor(descriptor)
+        }
+    }
+
+    private fun writeCharacteristicCompat(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        value: ByteArray,
+        writeType: Int = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+    ): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gatt.writeCharacteristic(characteristic, value, writeType) == BluetoothStatusCodes.SUCCESS
+        } else {
+            characteristic.writeType = writeType
+            characteristic.value = value
+            gatt.writeCharacteristic(characteristic)
+        }
+    }
+
     private fun closeGatt() {
         updatePhotoCapability(false)
+        synchronized(photoLock) {
+            photoDescriptorContinuation = null
+            photoContinuation = null
+            photoBuffer.clear()
+            lastPhotoChunkId = -1
+        }
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
@@ -556,29 +651,32 @@ class OmiGlassesClient(
 
     companion object {
         // BLE UUIDs from the Omi report; kept for future BLE GATT implementation.
-        val AUDIO_SERVICE_UUID: UUID =
+        internal val AUDIO_SERVICE_UUID: UUID =
             UUID.fromString("19B10000-E8F2-537E-4F6C-D104768A1214")
-        val AUDIO_DATA_UUID: UUID =
+        internal val AUDIO_DATA_UUID: UUID =
             UUID.fromString("19B10001-E8F2-537E-4F6C-D104768A1214")
-        val AUDIO_CODEC_UUID: UUID =
+        internal val AUDIO_CODEC_UUID: UUID =
             UUID.fromString("19B10002-E8F2-537E-4F6C-D104768A1214")
 
-        val BATTERY_SERVICE_UUID: UUID =
+        internal val BATTERY_SERVICE_UUID: UUID =
             UUID.fromString("0000180F-0000-1000-8000-00805F9B34FB")
-        val BATTERY_LEVEL_UUID: UUID =
+        internal val BATTERY_LEVEL_UUID: UUID =
             UUID.fromString("00002A19-0000-1000-8000-00805F9B34FB")
 
-        val DEVICE_INFO_SERVICE_UUID: UUID =
+        internal val DEVICE_INFO_SERVICE_UUID: UUID =
             UUID.fromString("0000180A-0000-1000-8000-00805F9B34FB")
 
-        val PHOTO_CONTROL_UUID: UUID =
+        internal val PHOTO_CONTROL_UUID: UUID =
             UUID.fromString("19B10006-E8F2-537E-4F6C-D104768A1214")
-        val PHOTO_DATA_UUID: UUID =
+        internal val PHOTO_DATA_UUID: UUID =
             UUID.fromString("19B10005-E8F2-537E-4F6C-D104768A1214")
 
-        val TIME_SYNC_SERVICE_UUID: UUID =
+        internal val TIME_SYNC_SERVICE_UUID: UUID =
             UUID.fromString("19B10030-E8F2-537E-4F6C-D104768A1214")
-        val TIME_SYNC_WRITE_UUID: UUID =
+        internal val TIME_SYNC_WRITE_UUID: UUID =
             UUID.fromString("19B10031-E8F2-537E-4F6C-D104768A1214")
+
+        private val CLIENT_CHARACTERISTIC_CONFIG_UUID: UUID =
+            UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
 }

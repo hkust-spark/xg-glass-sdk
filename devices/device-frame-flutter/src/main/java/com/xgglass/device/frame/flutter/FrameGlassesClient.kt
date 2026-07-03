@@ -13,6 +13,7 @@ import com.xgglass.core.MicrophoneOptions
 import com.xgglass.core.MicrophoneSession
 import com.xgglass.core.PlayAudioOptions
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
@@ -68,6 +69,12 @@ class FrameGlassesClient(
     override suspend fun connect(): Result<Unit> = bridge.connect()
 
     override suspend fun disconnect() {
+        try {
+            activeMic?.stop()
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+        }
         bridge.disconnect()
         activeMic = null
         _state.value = ConnectionState.Disconnected
