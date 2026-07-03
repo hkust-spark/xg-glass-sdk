@@ -64,14 +64,14 @@ Local verification:
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
-  templates/kotlin-app/gradlew -p /Users/spark/jiayang/xg-glass-sdk publishToMavenLocal
+  templates/kotlin-app/gradlew -p /path/to/xg-glass-sdk publishToMavenLocal
 ```
 
 Release upload, after credentials, signing, and license metadata are finalized:
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
-  templates/kotlin-app/gradlew -p /Users/spark/jiayang/xg-glass-sdk publishAndReleaseToMavenCentral
+  templates/kotlin-app/gradlew -p /path/to/xg-glass-sdk publishAndReleaseToMavenCentral
 ```
 
 If using the lower-level Vanniktech task names directly, publish to the Central

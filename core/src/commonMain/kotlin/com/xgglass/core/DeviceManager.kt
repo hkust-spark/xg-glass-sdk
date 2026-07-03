@@ -21,9 +21,17 @@ interface DeviceManager {
     suspend fun close()
 }
 
+/** Installation lifecycle state for a [DeviceManager]. */
 sealed class DeviceManagerState {
+    /** No install or settings push is currently running. */
     data object Idle : DeviceManagerState()
+
+    /** The manager is installing or updating the on-glasses app. */
     data object Installing : DeviceManagerState()
+
+    /** The on-glasses app is installed and ready for settings or launch. */
     data object Installed : DeviceManagerState()
+
+    /** The last manager operation failed with [error]. */
     data class Error(val error: GlassesError) : DeviceManagerState()
 }

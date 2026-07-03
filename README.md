@@ -212,3 +212,4 @@ pip install -e tools/
 ## License
 
 xg.glass is licensed under the [Apache License 2.0](./LICENSE).
+Third-party dependency and redistributed asset notices are listed in [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).

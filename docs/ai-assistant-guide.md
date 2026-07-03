@@ -95,7 +95,7 @@ An xg.glass app consists of a single Kotlin file implementing `UniversalAppEntry
 - JDK 17 or 21
 - Android SDK + `adb` on PATH
 - Flutter (only for source/CLI Frame workflows)
-- Python 3.8+ (for the CLI)
+- Python 3.9+ (for the CLI)
 
 ### Install the CLI
 
@@ -232,7 +232,7 @@ data class CaptureOptions(
 ```kotlin
 data class CapturedImage(
     val jpegBytes: ByteArray,
-    val timestampMs: Long = System.currentTimeMillis(),
+    val timestampMs: Long,             // SDK-provided epoch millis
     val width: Int? = null,
     val height: Int? = null,
     val rotationDegrees: Int? = null,
@@ -327,7 +327,7 @@ data class AudioChunk(
     val bytes: ByteArray,              // Raw audio data for this chunk
     val format: AudioFormat,           // Format of this chunk
     val sequence: Long,                // Monotonically increasing sequence number
-    val timestampMs: Long = System.currentTimeMillis(),
+    val timestampMs: Long,             // SDK-provided epoch millis
     val endOfStream: Boolean = false,  // True when capture has ended (bytes may be empty)
 )
 ```
@@ -793,10 +793,12 @@ sealed class GlassesError(message: String, cause: Throwable? = null) : Exception
     data object PermissionDenied : GlassesError("Required permissions not granted")
     data object Busy : GlassesError("Device is busy")
     data class Timeout(val operation: String) : GlassesError("Timeout: $operation")
-    data class Transport(val detail: String, val raw: Throwable? = null) : GlassesError(detail, raw)
+    class Transport(val detail: String, cause: Throwable? = null) : GlassesError(detail, cause)
     data class Unsupported(val detail: String) : GlassesError("Unsupported: $detail")
 }
 ```
+
+`Transport` exposes the underlying throwable through the standard `Throwable.cause`.
 
 **Recommended patterns:**
 

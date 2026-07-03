@@ -34,7 +34,7 @@ class XgGlassMavenPublishPlugin : Plugin<Project> {
                     publishing.pom(object : Action<MavenPom> {
                         override fun execute(pom: MavenPom) {
                             pom.name.set("XG Glass SDK ${project.name}")
-                            pom.description.set("XG Glass SDK module ${project.name}.")
+                            pom.description.set(project.mavenPomDescription())
                             pom.inceptionYear.set("2024")
                             pom.url.set("https://github.com/hkust-spark/xg-glass-sdk")
                             pom.licenses(object : Action<MavenPomLicenseSpec> {
@@ -101,5 +101,20 @@ class XgGlassMavenPublishPlugin : Plugin<Project> {
         }
         return providers.gradleProperty("signingInMemoryKey").isPresent ||
             providers.gradleProperty("signing.secretKeyRingFile").isPresent
+    }
+
+    private fun Project.mavenPomDescription(): String = when (name) {
+        "core" -> "Unified smart-glasses client API: camera capture, microphone, display, and audio playback (Kotlin Multiplatform)."
+        "core-android" -> "Shared Android audio, microphone, and secure-storage helpers for xg.glass device adapters."
+        "app-contract" -> "Host-app contract for xg.glass apps: UniversalAppEntry, commands, and app context (Kotlin Multiplatform)."
+        "universal" -> "One-dependency aggregate of the xg.glass API and the openly distributable device adapters (Rokid, RayNeo, Omi, Simulator, Frame bridge)."
+        "device-rokid" -> "Rokid Glasses adapter for xg.glass."
+        "device-rayneo-installer" -> "RayNeo phone-side installer and manager for the xg.glass glasses host."
+        "device-rayneo-runtime" -> "RayNeo on-glasses runtime adapter for xg.glass."
+        "device-simulator" -> "Simulator adapter: develop xg.glass apps with the phone camera, no glasses hardware."
+        "device-omi" -> "Omi Glass BLE adapter (audio capture and photo) for xg.glass."
+        "device-meta" -> "Meta wearables (Ray-Ban Meta) adapter for xg.glass via the Meta DAT SDK; requires Meta's GitHub Packages repository."
+        "device-frame-flutter" -> "Brilliant Labs Frame bridge API and contract for xg.glass (Flutter runtime supplied by the host app)."
+        else -> "XG Glass SDK module $name."
     }
 }
