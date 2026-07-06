@@ -22,7 +22,7 @@ dependencies {
 
     api("androidx.appcompat:appcompat:1.7.0")
     api("androidx.core:core-ktx:1.19.0")
-    implementation("androidx.exifinterface:exifinterface:1.3.7")
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
 
     androidTestImplementation(libs.mwdat.mockdevice)
     androidTestImplementation("junit:junit:4.13.2")
