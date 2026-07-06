@@ -11,6 +11,14 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # Gradle 9.6+ removed internal APIs that AGP 8.x depends on; majors are
+      # blocked on the coordinated toolchain upgrade (AGP 9 + Kotlin 2.2), #36.
+      - dependency-name: "gradle-wrapper"
+        update-types: ["version-update:semver-major"]
+      # 0.31+ releases progressively require newer Kotlin (0.37 needs >= 2.2.0);
+      # repo is on Kotlin 2.1. Re-enable when #36 lands.
+      - dependency-name: "com.vanniktech.maven.publish"
 
   - package-ecosystem: "pip"
     directory: "/tools"
