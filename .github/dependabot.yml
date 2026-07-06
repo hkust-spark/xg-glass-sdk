@@ -16,6 +16,9 @@ updates:
       # blocked on the coordinated toolchain upgrade (AGP 9 + Kotlin 2.2), #36.
       - dependency-name: "gradle-wrapper"
         update-types: ["version-update:semver-major"]
+      # AGP 9 is the other half of the same coordinated upgrade (#36).
+      - dependency-name: "com.android.tools.build:gradle"
+        update-types: ["version-update:semver-major"]
       # 0.31+ releases progressively require newer Kotlin (0.37 needs >= 2.2.0);
       # repo is on Kotlin 2.1. Re-enable when #36 lands.
       - dependency-name: "com.vanniktech.maven.publish"
