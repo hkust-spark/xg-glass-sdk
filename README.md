@@ -172,6 +172,8 @@ xg-glass install
 xg-glass run
 ```
 
+For simulator generated projects, `xg-glass run --sim` uses the same one-shot path as quick mode: apply simulator settings, build, boot an Android Emulator if the selected serial is not online, install, and launch. Add `--local_video /path/to/video.mp4` or `--video_url <url>` to feed simulator `capturePhoto()` from video.
+
 Generated apps default to the all-device `xgglass-universal-full` path for demos. Production apps can opt into only the adapters they ship with `xg-glass init --devices`, for example:
 
 ```bash

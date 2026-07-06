@@ -77,7 +77,10 @@ def _adb_has_device(serial: str | None = None) -> bool:
     try:
         out = subprocess.check_output([adb, "devices"], text=True, stderr=subprocess.DEVNULL)
         for line in out.strip().splitlines()[1:]:
-            if _adb_line_is_ready_device(line):
+            if not _adb_line_is_ready_device(line):
+                continue
+            connected_serial = line.strip().split()[0]
+            if serial is None or connected_serial == serial:
                 return True
     except FileNotFoundError as exc:
         raise _adb_not_found_error() from exc

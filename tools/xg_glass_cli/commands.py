@@ -4,6 +4,7 @@ import argparse
 import os
 import platform
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -241,6 +242,8 @@ def cmd_install(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    sim_enabled = bool(getattr(args, "sim", False))
+
     # Stage 3: quick mode - run a single .kt file by generating a project.
     if getattr(args, "kt_file", None) and str(args.kt_file).lower().endswith(".kt"):
         kt = Path(args.kt_file).expanduser().resolve()
@@ -278,61 +281,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         _init_project(dst=project_dir, template=template, sdk=sdk, entry_class=entry_class)
         _copy_kt_into_project(project_dir, kt)
 
-        if bool(getattr(args, "sim", False)):
-            _apply_simulator_build_settings(project_dir, enabled=True)
-
-        # Resolve video source for sim mode (--local_video or --video_url).
-        sim_video: Path | None = None
-        if bool(getattr(args, "sim", False)):
-            sim_video = _resolve_sim_video(args)
-            if sim_video is not None:
-                _apply_sim_video_build_setting(project_dir, _DEVICE_VIDEO_PATH)
-
-        # One-shot: build + install + run.
-        cmd_build(
-            argparse.Namespace(
-                project=str(project_dir),
-                variant=args.variant,
-                module=args.module,
-                config=DEFAULT_CONFIG_FILE,
-                entry_class=None,
-                sdk=None,
-                rayneo_aar_dir=None,
-            )
-        )
-        # When --sim, ensure an Android Emulator is running before installing.
-        if bool(getattr(args, "sim", False)):
-            _ensure_emulator_running(serial=args.serial)
-
-        # Push video to device before installing the app (so the app can find it on launch).
-        if sim_video is not None:
-            _push_video_to_device(sim_video, serial=args.serial)
-
-        cmd_install(
-            argparse.Namespace(
-                project=str(project_dir),
-                variant=args.variant,
-                module=args.module,
-                config=DEFAULT_CONFIG_FILE,
-                serial=args.serial,
-                apk=None,
-            )
-        )
-        _run_project(
-            argparse.Namespace(
-                project=str(project_dir),
-                variant=args.variant,
-                module=args.module,
-                config=DEFAULT_CONFIG_FILE,
-                serial=args.serial,
-                package=args.package,
-                kt_file=None,
-                save=None,
-                keep_tmp=False,
-                entry_class=None,
-                sdk=None,
-            )
-        )
+        sim_video = _prepare_simulator_run_project(project_dir, args) if sim_enabled else None
+        _build_install_run_project(project_dir, args, ensure_simulator=sim_enabled, sim_video=sim_video)
 
         if not keep:
             shutil.rmtree(project_dir, ignore_errors=True)
@@ -340,7 +290,81 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"Quick project kept at: {project_dir}")
         return 0
 
+    if sim_enabled:
+        project_dir = Path(args.project).expanduser().resolve()
+        sim_video = _prepare_simulator_run_project(project_dir, args)
+        return _build_install_run_project(project_dir, args, ensure_simulator=True, sim_video=sim_video)
+
     return _run_project(args)
+
+
+def _prepare_simulator_run_project(project_dir: Path, args: argparse.Namespace) -> Path | None:
+    _apply_simulator_build_settings(project_dir, enabled=True)
+    sim_video = _resolve_sim_video(args)
+    if sim_video is not None:
+        _apply_sim_video_build_setting(project_dir, _DEVICE_VIDEO_PATH)
+    else:
+        _apply_sim_video_build_setting(project_dir, "")
+    return sim_video
+
+
+def _build_install_run_project(
+    project_dir: Path,
+    args: argparse.Namespace,
+    *,
+    ensure_simulator: bool,
+    sim_video: Path | None,
+) -> int:
+    variant = getattr(args, "variant", "debug")
+    module = getattr(args, "module", "app")
+    config = getattr(args, "config", DEFAULT_CONFIG_FILE)
+    serial = getattr(args, "serial", None)
+    package = getattr(args, "package", None)
+
+    cmd_build(
+        argparse.Namespace(
+            project=str(project_dir),
+            variant=variant,
+            module=module,
+            config=config,
+            entry_class=None,
+            sdk=None,
+            rayneo_aar_dir=None,
+        )
+    )
+
+    if ensure_simulator:
+        _ensure_emulator_running(serial=serial)
+
+    if sim_video is not None:
+        _push_video_to_device(sim_video, serial=serial)
+
+    cmd_install(
+        argparse.Namespace(
+            project=str(project_dir),
+            variant=variant,
+            module=module,
+            config=config,
+            serial=serial,
+            apk=None,
+        )
+    )
+
+    return _run_project(
+        argparse.Namespace(
+            project=str(project_dir),
+            variant=variant,
+            module=module,
+            config=config,
+            serial=serial,
+            package=package,
+            kt_file=None,
+            save=None,
+            keep_tmp=False,
+            entry_class=None,
+            sdk=None,
+        )
+    )
 
 
 def _run_project(args: argparse.Namespace) -> int:
@@ -353,11 +377,40 @@ def _run_project(args: argparse.Namespace) -> int:
     cmd = [_find_adb_cmd()]
     if getattr(args, "serial", None):
         cmd += ["-s", args.serial]
-    # Use monkey to avoid hardcoding activity component.
-    cmd += ["shell", "monkey", "-p", package_name, "-c", "android.intent.category.LAUNCHER", "1"]
-    _run(cmd, cwd=project)
+    template_cmd = cmd + ["shell", "am", "start", "-n", f"{package_name}/.MainActivity"]
+    try:
+        _run_am_start(template_cmd, cwd=project)
+    except subprocess.CalledProcessError:
+        # Fall back for hand-edited apps that kept the CLI config but renamed the activity.
+        cmd += ["shell", "monkey", "-p", package_name, "-c", "android.intent.category.LAUNCHER", "1"]
+        _run(cmd, cwd=project)
     print(f"Launched: {package_name}")
     return 0
+
+
+def _run_am_start(cmd: list[str], cwd: Path) -> None:
+    print("+", " ".join(cmd))
+    completed = subprocess.run(
+        cmd,
+        cwd=str(cwd),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    output = completed.stdout or ""
+    if output:
+        print(output, end="" if output.endswith("\n") else "\n")
+    if completed.returncode != 0 or _am_start_output_failed(output):
+        raise subprocess.CalledProcessError(completed.returncode or 1, cmd, output=output)
+
+
+def _am_start_output_failed(output: str) -> bool:
+    for line in output.splitlines():
+        lowered = line.lower()
+        if "error" in lowered or "does not exist" in lowered:
+            return True
+    return False
 
 
 def _init_project(*, dst: Path, template: Path, sdk: Path, entry_class: str) -> None:

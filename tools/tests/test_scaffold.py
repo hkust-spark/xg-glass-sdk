@@ -104,6 +104,7 @@ def test_apply_simulator_build_settings_adds_x86_64_and_flag(tmp_path) -> None:
             }
             splits {
                 abi {
+                    // If you need to run on the Android emulator, add "x86_64" here.
                     include("arm64-v8a", "armeabi-v7a")
                 }
             }

@@ -81,7 +81,7 @@ def _apply_simulator_build_settings(project: Path, *, enabled: bool) -> None:
     s = app_gradle.read_text(encoding="utf-8")
 
     # 1) Ensure x86_64 ABI is included for emulator installs.
-    if enabled and "\"x86_64\"" not in s:
+    if enabled:
         # Prefer the exact template pattern first.
         s2 = s.replace(
             'include("arm64-v8a", "armeabi-v7a")',

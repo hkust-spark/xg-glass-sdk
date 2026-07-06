@@ -22,6 +22,8 @@ xg-glass install
 xg-glass run
 ```
 
+For generated simulator projects, `xg-glass run --sim` now performs the simulator one-shot flow: it applies simulator build settings, builds, starts an Android Emulator when the selected serial is not already online, installs the APK, and launches it. `--local_video /path/to/video.mp4` and `--video_url <url>` use the same simulator video path as quick mode.
+
 Commands that create or synthesize a project (`xg-glass init` and `xg-glass run <file.kt>`) download the matching `xg-glass-sdk` release on first use and cache it under `~/.xg-glass/sdk/`:
 
 ```sh
@@ -81,6 +83,7 @@ Optional:
 - `--save ./myapp`: persist the temporary project as a real project (so you can continue development)
 - `--keep-tmp`: keep the temporary directory for debugging
 - `--sim`: build a simulator-compatible APK (x86_64) and enable simulator backend
+- `--local_video <mp4>` / `--video_url <url>`: in `--sim` mode, feed simulator `capturePhoto()` from a local/downloaded video
 
 ### Options
 

@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
+import android.util.Log
 import android.view.KeyEvent
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -80,6 +81,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvLog: TextView
     private lateinit var spDevice: Spinner
     private lateinit var btnConnect: Button
+    private lateinit var btnDisconnect: Button
     private lateinit var ivPreview: ImageView
     private lateinit var tvDisplay: TextView
     private lateinit var tvDisplayTitle: TextView
@@ -173,6 +175,7 @@ class MainActivity : AppCompatActivity() {
         tvLog = findViewById(R.id.tvLog)
         spDevice = findViewById(R.id.spDevice)
         btnConnect = findViewById(R.id.btnConnect)
+        btnDisconnect = findViewById(R.id.btnDisconnect)
         ivPreview = findViewById(R.id.ivPreview)
         tvDisplay = findViewById(R.id.tvDisplay)
         tvDisplayTitle = findViewById(R.id.tvDisplayTitle)
@@ -267,6 +270,7 @@ class MainActivity : AppCompatActivity() {
             }
             ensurePermissionsThenConnect(model)
         }
+        btnDisconnect.setOnClickListener { disconnectCurrentClient() }
 
         renderSettings()
 
@@ -390,6 +394,8 @@ class MainActivity : AppCompatActivity() {
                     newClient.state.collectLatest { st ->
                         tvStatus.text = "Status: $st"
                         val connected = st is ConnectionState.Connected
+                        btnDisconnect.visibility =
+                            if (connected) android.view.View.VISIBLE else android.view.View.GONE
                         renderCommandsForCurrentSelection(connected = connected)
                     }
                 }
@@ -412,9 +418,37 @@ class MainActivity : AppCompatActivity() {
                 client = null
                 appendLog("connect(${model.name}) crashed: ${e.message ?: e.javaClass.simpleName}")
                 tvStatus.text = "Status: connect failed"
+                btnDisconnect.visibility = android.view.View.GONE
                 renderCommandsForCurrentSelection(connected = false)
             } finally {
                 btnConnect.isEnabled = true
+            }
+        }
+    }
+
+    private fun disconnectCurrentClient() {
+        connectJob?.cancel()
+        connectJob = scope.launch {
+            btnDisconnect.isEnabled = false
+            try {
+                stateJob?.cancel()
+                eventsJob?.cancel()
+                val oldClient = client
+                val oldManager = deviceManager
+                client = null
+                deviceManager = null
+                oldClient?.disconnect()
+                oldManager?.close()
+                tvStatus.text = "Status: Disconnected"
+                appendLog("disconnect() => true")
+                renderCommandsForCurrentSelection(connected = false)
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                appendLog("disconnect() failed: ${e.message ?: e.javaClass.simpleName}")
+            } finally {
+                btnDisconnect.isEnabled = true
+                btnDisconnect.visibility = android.view.View.GONE
             }
         }
     }
@@ -677,6 +711,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun appendLog(msg: String) {
+        Log.i(LOG_TAG, msg)
         tvLog.text = tvLog.text.toString() + "\n" + msg
     }
 
@@ -962,6 +997,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
+        const val LOG_TAG = "XgGlassApp"
         /** Internal storage file name for the persisted Rokid SN license bytes. */
         const val ROKID_LC_FILENAME = "rokid_sn_license.lc"
         const val SECURE_SETTINGS_STORE = "xgglass_user_settings_secure"
