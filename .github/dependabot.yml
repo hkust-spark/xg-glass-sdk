@@ -17,8 +17,15 @@ updates:
       - dependency-name: "gradle-wrapper"
         update-types: ["version-update:semver-major"]
       # AGP 9 is the other half of the same coordinated upgrade (#36).
-      - dependency-name: "com.android.tools.build:gradle"
+      # Wildcard covers the artifact and the com.android.library/application
+      # plugin ids that the version catalog's "agp" key resolves to.
+      - dependency-name: "com.android.*"
         update-types: ["version-update:semver-major"]
+      # Kotlin 2.2+ (currently 2.4) is the third leg of #36; the catalog's
+      # "kotlin" key resolves to org.jetbrains.kotlin.* plugin ids. Patches
+      # within 2.1.x stay allowed.
+      - dependency-name: "org.jetbrains.kotlin.*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
       # 0.31+ releases progressively require newer Kotlin (0.37 needs >= 2.2.0);
       # repo is on Kotlin 2.1. Re-enable when #36 lands.
       - dependency-name: "com.vanniktech.maven.publish"
