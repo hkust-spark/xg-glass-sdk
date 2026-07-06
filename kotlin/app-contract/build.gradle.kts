@@ -55,7 +55,7 @@ kotlin {
 
 extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
     namespace = "com.xgglass.appcontract"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         minSdk = 28
     }

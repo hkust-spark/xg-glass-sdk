@@ -39,7 +39,7 @@ kotlin {
 
 extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
     namespace = "com.xgglass.core"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         minSdk = 28
     }

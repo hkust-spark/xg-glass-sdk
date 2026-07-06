@@ -7,7 +7,7 @@ internal data class TemplateFile(
 
 internal object RayneoHostTemplate {
     // Bump this if you change any template content so the generator knows when to refresh.
-    const val TEMPLATE_VERSION = 25
+    const val TEMPLATE_VERSION = 26
 
     fun files(): List<TemplateFile> = listOf(
         TemplateFile(
@@ -20,7 +20,7 @@ internal object RayneoHostTemplate {
 
             android {
                 namespace = "com.xgglass.rayneo.host"
-                compileSdk = 35
+                compileSdk = 36
 
                 defaultConfig {
                     applicationId = "com.xgglass.rayneo.host"
@@ -59,7 +59,7 @@ internal object RayneoHostTemplate {
 
                 implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
                 implementation("androidx.appcompat:appcompat:1.7.0")
-                implementation("androidx.core:core-ktx:1.13.1")
+                implementation("androidx.core:core-ktx:1.17.0")
                 implementation("com.google.android.material:material:1.12.0")
 
                 // RayNeo glasses-side runtime client (Camera2 capture + display sink)
