@@ -10,7 +10,7 @@ dependencies {
     api(project(":core"))
     implementation(project(":core-android"))
 
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     api("androidx.core:core-ktx:1.13.1")
 
     // Android XR support is a preview scaffold: AndroidXrGlassesClient does not call the Jetpack XR
