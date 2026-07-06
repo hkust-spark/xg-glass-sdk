@@ -14,8 +14,10 @@ from .downloads import _download_file, _download_json, _extract_archive, _verify
 from .gradle import _run
 from .paths import _ensure_executable
 
+_PINNED_FLUTTER_VERSION = "3.44.4"
 
-def _ensure_flutter_module_ready(project: Path, cfg: XgConfig) -> None:
+
+def _ensure_flutter_module_ready(project: Path, cfg: XgConfig, *, needs_frame: bool | None = None) -> None:
     """
     Ensure the embedded Flutter module has a valid `.dart_tool/package_config.json`.
 
@@ -40,6 +42,7 @@ def _ensure_flutter_module_ready(project: Path, cfg: XgConfig) -> None:
         return
 
     pkg_config = fm / ".dart_tool" / "package_config.json"
+    build_frame_aar = _config_needs_frame(cfg) if needs_frame is None else needs_frame
 
     # If an old cache references a previous directory layout, wipe it.
     if pkg_config.exists():
@@ -51,33 +54,86 @@ def _ensure_flutter_module_ready(project: Path, cfg: XgConfig) -> None:
             # If unreadable, just proceed.
             pass
 
-    if pkg_config.exists():
-        return
-
-    # Missing package_config: run flutter pub get.
-    flutter = _find_flutter_cmd()
-    if not flutter:
-        if os.environ.get("XG_NO_FLUTTER_DOWNLOAD", "").strip() not in ("", "0"):
-            raise RuntimeError(
-                "Flutter module is present but not initialized (missing .dart_tool/package_config.json), "
-                "and `flutter` was not found on PATH.\n"
-                f"Please install Flutter or run `flutter pub get` manually in: {fm}"
-            )
-        flutter = _auto_download_flutter()
-
-    _run([flutter, "pub", "get"], cwd=fm)
-
-    # flutter pub get downloads engine artifacts (impellerc, gen_snapshot, …)
-    # into bin/cache/artifacts/.  On macOS these new files inherit the
-    # com.apple.quarantine xattr and must be cleaned before Gradle can invoke them.
-    if platform.system() != "Windows" and str(flutter).startswith(str(_MANAGED_FLUTTER_DIR)):
-        _ensure_flutter_executables()
+    flutter: str | None = None
 
     if not pkg_config.exists():
+        # Missing package_config: run flutter pub get.
+        flutter = _ensure_flutter_cmd(fm)
+        _run([flutter, "pub", "get"], cwd=fm)
+
+        # flutter pub get downloads engine artifacts (impellerc, gen_snapshot, ...)
+        # into bin/cache/artifacts/. On macOS these new files inherit the
+        # com.apple.quarantine xattr and must be cleaned before Gradle can invoke them.
+        if platform.system() != "Windows" and str(flutter).startswith(str(_MANAGED_FLUTTER_DIR)):
+            _ensure_flutter_executables()
+
+        if not pkg_config.exists():
+            raise RuntimeError(
+                "flutter pub get did not produce .dart_tool/package_config.json.\n"
+                f"Please run `flutter pub get` manually in: {fm}"
+            )
+
+    if build_frame_aar:
+        flutter = flutter or _ensure_flutter_cmd(fm)
+        _ensure_frame_flutter_aar(fm, flutter)
+
+
+def _ensure_flutter_cmd(fm: Path) -> str:
+    flutter = _find_flutter_cmd()
+    if flutter:
+        return flutter
+    if os.environ.get("XG_NO_FLUTTER_DOWNLOAD", "").strip() not in ("", "0"):
         raise RuntimeError(
-            "flutter pub get did not produce .dart_tool/package_config.json.\n"
-            f"Please run `flutter pub get` manually in: {fm}"
+            "Flutter module is present but not initialized, and `flutter` was not found on PATH.\n"
+            f"Please install Flutter or run Flutter manually in: {fm}"
         )
+    return _auto_download_flutter()
+
+
+def _config_needs_frame(cfg: XgConfig) -> bool:
+    raw = cfg.devices
+    if raw is None:
+        # Generated default projects keep the all-devices path, which includes Frame.
+        return True
+    text = raw.strip().strip("[]")
+    if not text:
+        return True
+    devices = {part.strip().lower() for part in text.split(",") if part.strip()}
+    return "all" in devices or "frame" in devices
+
+
+def _ensure_frame_flutter_aar(fm: Path, flutter: str) -> None:
+    aars = [
+        fm
+        / "build"
+        / "host"
+        / "outputs"
+        / "repo"
+        / "com"
+        / "example"
+        / "frame_module"
+        / artifact
+        / "1.0"
+        / f"{artifact}-1.0.aar"
+        for artifact in ("flutter_debug", "flutter_profile", "flutter_release")
+    ]
+    if all(aar.exists() for aar in aars):
+        _remove_flutter_android_wrapper(fm)
+        return
+
+    _run([flutter, "build", "aar"], cwd=fm)
+    missing = [str(aar) for aar in aars if not aar.exists()]
+    if missing:
+        raise RuntimeError("Flutter AAR build did not produce expected artifacts: " + ", ".join(missing))
+    _remove_flutter_android_wrapper(fm)
+
+
+def _remove_flutter_android_wrapper(fm: Path) -> None:
+    # Flutter's generated .android wrapper currently carries AGP escape hatches.
+    # The SDK consumes the built AAR repo instead, so the wrapper is just a cache.
+    wrapper = fm / ".android"
+    if wrapper.exists():
+        shutil.rmtree(wrapper, ignore_errors=True)
 
 
 def _wipe_flutter_caches(fm: Path) -> None:
@@ -168,7 +224,7 @@ def _ensure_flutter_executables() -> None:
 
 def _auto_download_flutter() -> str:
     """
-    Download the latest stable Flutter SDK into ``~/.xg-glass/flutter/``
+    Download the pinned Flutter SDK into ``~/.xg-glass/flutter/``
     and return the path to the ``flutter`` binary.
     """
     system = platform.system().lower()
@@ -177,7 +233,7 @@ def _auto_download_flutter() -> str:
     os_name = {"darwin": "macos", "windows": "windows"}.get(system, "linux")
     arch = "arm64" if machine in ("arm64", "aarch64") else "x64"
 
-    print("Flutter SDK not found. Downloading latest stable Flutter SDK...")
+    print(f"Flutter SDK not found. Downloading Flutter SDK {_PINNED_FLUTTER_VERSION}...")
     print(f"  Install location: {_MANAGED_FLUTTER_DIR}")
 
     # Fetch the release manifest for this platform.
@@ -193,11 +249,10 @@ def _auto_download_flutter() -> str:
             "Please install Flutter manually: https://docs.flutter.dev/get-started/install"
         ) from exc
 
-    stable_hash = data["current_release"]["stable"]
     base_url = data["base_url"]
 
-    # Pick the release that matches hash + arch.
-    candidates = [r for r in data["releases"] if r["hash"] == stable_hash]
+    # Pick the pinned release that matches version + arch.
+    candidates = [r for r in data["releases"] if r.get("version") == _PINNED_FLUTTER_VERSION]
     release = None
     for c in candidates:
         if c.get("dart_sdk_arch", "x64") == arch:
@@ -207,7 +262,7 @@ def _auto_download_flutter() -> str:
         release = candidates[0]
     if release is None:
         raise RuntimeError(
-            "Could not find a stable Flutter release for your platform.\n"
+            f"Could not find Flutter {_PINNED_FLUTTER_VERSION} for your platform.\n"
             "Please install Flutter manually: https://docs.flutter.dev/get-started/install"
         )
 

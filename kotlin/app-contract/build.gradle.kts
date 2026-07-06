@@ -2,10 +2,12 @@ import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.maven.tasks.PublishToMavenLocal
 import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.dokka)
     id("com.xgglass.maven-publish")
 }
@@ -14,12 +16,14 @@ dokka {
     moduleName.set("xgglass-app-contract")
 }
 
-apply(plugin = "com.android.library")
-
 kotlin {
-    androidTarget {
+    androidLibrary {
+        namespace = "com.xgglass.appcontract"
+        compileSdk = 36
+        minSdk = 28
+        withHostTestBuilder {}.configure {}
         compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+            jvmTarget.set(JvmTarget.JVM_1_8)
         }
     }
 
@@ -53,22 +57,10 @@ kotlin {
     }
 }
 
-extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
-    namespace = "com.xgglass.appcontract"
-    compileSdk = 36
-    defaultConfig {
-        minSdk = 28
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-}
-
 afterEvaluate {
     extensions.configure<PublishingExtension>("publishing") {
         publications.withType(MavenPublication::class.java).configureEach {
-            if (name == "androidRelease") {
+            if (name == "android") {
                 artifactId = "app-contract"
             }
         }
@@ -76,9 +68,9 @@ afterEvaluate {
 }
 
 tasks.withType(PublishToMavenLocal::class.java).configureEach {
-    onlyIf { publication.name == "androidRelease" }
+    onlyIf { publication.name == "android" }
 }
 
 tasks.withType(PublishToMavenRepository::class.java).configureEach {
-    onlyIf { publication.name == "androidRelease" }
+    onlyIf { publication.name == "android" }
 }

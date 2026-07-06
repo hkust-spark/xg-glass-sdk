@@ -51,7 +51,7 @@ Build Android artifacts:
 Run Android/shared JVM unit tests:
 
 ```bash
-./gradlew :app-contract:testDebugUnitTest :core-android:testDebugUnitTest
+./gradlew :app-contract:testAndroidHostTest :core-android:testDebugUnitTest
 ```
 
 Build the iOS XCFramework on macOS:

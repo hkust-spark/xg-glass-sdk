@@ -21,6 +21,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        val frameFlutterAarRepo = file("third_party/frame/frame_module/build/host/outputs/repo")
+        if (frameFlutterAarRepo.exists()) {
+            maven { url = uri(frameFlutterAarRepo) }
+        }
         // Flutter engine artifacts
         maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
         // Rokid repo should be scoped to Rokid groups only to avoid hijacking AndroidX resolution.
@@ -97,15 +101,10 @@ project(":device-omi-ios").projectDir = file("devices/device-omi-ios")
 project(":device-even").projectDir = file("devices/device-even")
 project(":device-android-xr").projectDir = file("devices/device-android-xr")
 
-// Embed the generated Flutter module as an internal dependency when available.
-// This avoids requiring app developers to manually include the Flutter module.
-val flutterInclude = file("third_party/frame/frame_module/.android/include_flutter.groovy")
-if (flutterInclude.exists()) {
-    // Flutter's Gradle plugin expects a host app project (default name ":app").
-    // We provide a minimal stub here so the embedded Flutter module can be wired at build time.
-    include(":app")
-    project(":app").projectDir = file("kotlin/app")
-    apply(from = flutterInclude)
+// Embed the generated Flutter module AAR as an internal dependency when available.
+// This avoids applying Flutter's Gradle plugin inside the AGP 9 root build.
+val frameFlutterAarRepo = file("third_party/frame/frame_module/build/host/outputs/repo")
+if (frameFlutterAarRepo.exists()) {
     include(":device-frame-embedded")
     project(":device-frame-embedded").projectDir = file("devices/device-frame-embedded")
 }

@@ -7,7 +7,7 @@ internal data class TemplateFile(
 
 internal object RayneoHostTemplate {
     // Bump this if you change any template content so the generator knows when to refresh.
-    const val TEMPLATE_VERSION = 26
+    const val TEMPLATE_VERSION = 27
 
     fun files(): List<TemplateFile> = listOf(
         TemplateFile(
@@ -15,7 +15,6 @@ internal object RayneoHostTemplate {
             """
             plugins {
                 id("com.android.application")
-                id("org.jetbrains.kotlin.android")
             }
 
             android {
@@ -44,12 +43,6 @@ internal object RayneoHostTemplate {
                 compileOptions {
                     sourceCompatibility = JavaVersion.VERSION_1_8
                     targetCompatibility = JavaVersion.VERSION_1_8
-                }
-            }
-
-            kotlin {
-                compilerOptions {
-                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
                 }
             }
 

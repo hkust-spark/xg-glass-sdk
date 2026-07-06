@@ -1,8 +1,10 @@
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.dokka)
     id("com.xgglass.maven-publish")
 }
@@ -11,12 +13,14 @@ dokka {
     moduleName.set("xgglass-core")
 }
 
-apply(plugin = "com.android.library")
-
 kotlin {
-    androidTarget {
+    androidLibrary {
+        namespace = "com.xgglass.core"
+        compileSdk = 36
+        minSdk = 28
+        withHostTestBuilder {}.configure {}
         compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+            jvmTarget.set(JvmTarget.JVM_1_8)
         }
     }
 
@@ -37,22 +41,10 @@ kotlin {
     }
 }
 
-extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
-    namespace = "com.xgglass.core"
-    compileSdk = 36
-    defaultConfig {
-        minSdk = 28
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-}
-
 afterEvaluate {
     extensions.configure<PublishingExtension>("publishing") {
         publications.withType(MavenPublication::class.java).configureEach {
-            if (name == "androidRelease") {
+            if (name == "android") {
                 artifactId = "core-kmp-android"
             }
         }

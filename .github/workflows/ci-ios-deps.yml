@@ -1,6 +1,6 @@
 # Guard: the main CI's iOS job is skipped on pull requests (macOS-runner cost),
 # which leaves Kotlin/Native klib compatibility untested on dependency PRs --
-# exactly how the coroutines 1.11 bump (Kotlin 2.2-built klibs) landed green
+# exactly how the coroutines 1.11 bump once landed green on Android-only CI
 # and then broke main. This workflow runs the same Kotlin/Native tasks, but
 # only for PRs that touch dependency versions or the Gradle wrapper.
 name: iOS deps guard

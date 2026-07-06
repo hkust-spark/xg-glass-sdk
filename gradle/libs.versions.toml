@@ -1,17 +1,17 @@
 [versions]
-agp = "8.13.2"
+agp = "9.1.1"
 kotlin = "2.4.0"
 coroutines = "1.11.0"
 androidxCamera = "1.6.1"
 androidxCore = "1.17.0"
 mwdat = "0.8.0"
-mavenPublish = "0.30.0"
+mavenPublish = "0.37.0"
 dokka = "2.2.0"
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "agp" }
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
