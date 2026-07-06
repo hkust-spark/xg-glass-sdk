@@ -60,6 +60,37 @@ jobs:
             :core-android:testDebugUnitTest \
             :core:testDebugUnitTest
 
+  generated-app:
+    name: Generated app
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Disable generated Flutter Android module
+        run: |
+          # third_party/frame/frame_module/.android is generated and not tracked.
+          # If it appears in a runner checkout, remove it so Gradle configures the non-embedded module set.
+          rm -rf third_party/frame/frame_module/.android
+
+      - name: Build generated simulator app
+        run: |
+          ./xg-glass init --sim /tmp/generated-check --no-shell-setup
+          cd /tmp/generated-check && ./gradlew --console=plain :app:assembleDebug
+
   cli:
     name: CLI / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest

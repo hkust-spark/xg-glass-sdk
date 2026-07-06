@@ -21,7 +21,7 @@ dependencies {
     api(libs.mwdat.display)
 
     api("androidx.appcompat:appcompat:1.7.1")
-    api("androidx.core:core-ktx:1.19.0")
+    api(libs.androidx.core.ktx)
     implementation("androidx.exifinterface:exifinterface:1.4.2")
 
     androidTestImplementation(libs.mwdat.mockdevice)

@@ -35,6 +35,14 @@ updates:
       # 2026-07-06). Stay on 1.10.x until #36 lands.
       - dependency-name: "org.jetbrains.kotlinx:kotlinx-coroutines*"
         versions: [">= 1.11.0"]
+      # CameraX 1.5+ needs compileSdk 36+; keep generated apps on the
+      # compileSdk 35-compatible line until the coordinated #36 upgrade lands.
+      - dependency-name: "androidx.camera:*"
+        versions: [">= 1.5.0"]
+      # AndroidX Core 1.17+ needs compileSdk 36+, and 1.19 also needs AGP 9.1;
+      # both are blocked on the coordinated #36 toolchain upgrade.
+      - dependency-name: "androidx.core:*"
+        versions: [">= 1.17.0"]
       # 0.31+ releases progressively require newer Kotlin (0.37 needs >= 2.2.0);
       # repo is on Kotlin 2.1. Re-enable when #36 lands. Both the plugin id
       # and the build-logic artifact form.

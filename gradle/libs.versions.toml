@@ -2,6 +2,8 @@
 agp = "8.13.2"
 kotlin = "2.1.21"
 coroutines = "1.10.2"
+androidxCamera = "1.4.2"
+androidxCore = "1.16.0"
 mwdat = "0.8.0"
 mavenPublish = "0.30.0"
 dokka = "2.2.0"
@@ -18,6 +20,10 @@ dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "androidxCamera" }
+androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "androidxCamera" }
+androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "androidxCamera" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
 mwdat-core = { module = "com.meta.wearable:mwdat-core", version.ref = "mwdat" }
 mwdat-camera = { module = "com.meta.wearable:mwdat-camera", version.ref = "mwdat" }
 mwdat-display = { module = "com.meta.wearable:mwdat-display", version.ref = "mwdat" }

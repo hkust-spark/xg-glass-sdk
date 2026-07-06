@@ -9,6 +9,6 @@ android {
 
 dependencies {
     api(project(":core"))
-    implementation("androidx.core:core-ktx:1.19.0")
+    implementation(libs.androidx.core.ktx)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 }
