@@ -1,0 +1,47 @@
+# Guard: the main CI's iOS job is skipped on pull requests (macOS-runner cost),
+# which leaves Kotlin/Native klib compatibility untested on dependency PRs --
+# exactly how the coroutines 1.11 bump (Kotlin 2.2-built klibs) landed green
+# and then broke main. This workflow runs the same Kotlin/Native tasks, but
+# only for PRs that touch dependency versions or the Gradle wrapper.
+name: iOS deps guard
+
+on:
+  pull_request:
+    paths:
+      - "gradle/libs.versions.toml"
+      - "gradle/wrapper/**"
+      - "settings.gradle.kts"
+
+jobs:
+  ios-deps:
+    name: iOS Kotlin (deps guard)
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Disable generated Flutter Android module
+        run: |
+          # The generated Flutter module needs local .android/local.properties and a Flutter SDK.
+          # It is not tracked, so fresh CI checkouts should not include it; this keeps the job deterministic.
+          rm -rf third_party/frame/frame_module/.android
+
+      - name: Run Kotlin/Native tests and assemble XCFramework
+        run: |
+          ./gradlew --console=plain \
+            :core:iosSimulatorArm64Test \
+            :device-omi-ios:iosSimulatorArm64Test \
+            :app-contract:assembleXgGlassKitXCFramework
