@@ -12,6 +12,7 @@
 		111111111111111111111126 /* StubSwiftGlassesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111127 /* StubSwiftGlassesClient.swift */; };
 		1524E2B63C78CE2FBD7A8AA7 /* libPods-XgGlassSampleTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 25A77010EE81497B86B84F74 /* libPods-XgGlassSampleTests.a */; };
 		222222222222222222222201 /* MetaMockRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222222222222222222222202 /* MetaMockRuntimeTests.swift */; };
+		222222222222222222222220 /* MetaMicrophonePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222222222222222222222221 /* MetaMicrophonePolicyTests.swift */; };
 		333333333333333333333301 /* FrameFlutterRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333302 /* FrameFlutterRuntime.swift */; };
 		333333333333333333333303 /* FrameGlassesClientRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333304 /* FrameGlassesClientRuntimeTests.swift */; };
 		333333333333333333333305 /* FrameGlassesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333333333333333333333306 /* FrameGlassesClient.swift */; };
@@ -38,6 +39,7 @@
 		11111111111111111111112F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		222222222222222222222202 /* MetaMockRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaMockRuntimeTests.swift; sourceTree = "<group>"; };
 		222222222222222222222204 /* XgGlassSampleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = XgGlassSampleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		222222222222222222222221 /* MetaMicrophonePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaMicrophonePolicyTests.swift; sourceTree = "<group>"; };
 		25A77010EE81497B86B84F74 /* libPods-XgGlassSampleTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-XgGlassSampleTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		333333333333333333333302 /* FrameFlutterRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameFlutterRuntime.swift; sourceTree = "<group>"; };
 		333333333333333333333304 /* FrameGlassesClientRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameGlassesClientRuntimeTests.swift; sourceTree = "<group>"; };
@@ -108,6 +110,7 @@
 			isa = PBXGroup;
 			children = (
 				222222222222222222222202 /* MetaMockRuntimeTests.swift */,
+				222222222222222222222221 /* MetaMicrophonePolicyTests.swift */,
 				333333333333333333333304 /* FrameGlassesClientRuntimeTests.swift */,
 			);
 			path = XgGlassSampleTests;
@@ -325,6 +328,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				222222222222222222222201 /* MetaMockRuntimeTests.swift in Sources */,
+				222222222222222222222220 /* MetaMicrophonePolicyTests.swift in Sources */,
 				333333333333333333333303 /* FrameGlassesClientRuntimeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
