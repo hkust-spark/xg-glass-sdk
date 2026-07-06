@@ -19,5 +19,5 @@ dependencies {
     api("androidx.camera:camera-lifecycle:1.3.4")
 
     api("androidx.appcompat:appcompat:1.7.0")
-    api("androidx.core:core-ktx:1.13.1")
+    api("androidx.core:core-ktx:1.19.0")
 }
