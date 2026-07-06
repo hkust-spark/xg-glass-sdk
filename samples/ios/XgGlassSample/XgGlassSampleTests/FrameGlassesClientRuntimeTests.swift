@@ -2,6 +2,66 @@ import XCTest
 import XgGlassMetaTesting
 @testable import XgGlassSample
 
+final class FrameGlassesClientTransitionTests: XCTestCase {
+    func testConnectedWhileDisconnectedBecomesConnected() {
+        let next = FrameGlassesClient.resolveRuntimeStateTransition(
+            current: ConnectionState.Disconnected.shared,
+            runtime: .connected
+        )
+
+        XCTAssertTrue(next is ConnectionState.Connected, "Expected Connected, got \(String(describing: next))")
+    }
+
+    func testConnectedWhileErrorBecomesConnected() {
+        let current = ConnectionState.Error(error: GlassesError.Transport(detail: "previous failure", cause: nil))
+        let next = FrameGlassesClient.resolveRuntimeStateTransition(
+            current: current,
+            runtime: .connected
+        )
+
+        XCTAssertTrue(next is ConnectionState.Connected, "Expected Connected, got \(String(describing: next))")
+    }
+
+    func testConnectedWhileConnectingIsIgnored() {
+        let next = FrameGlassesClient.resolveRuntimeStateTransition(
+            current: ConnectionState.Connecting.shared,
+            runtime: .connected
+        )
+
+        XCTAssertNil(next)
+    }
+
+    func testDisconnectedWhileErrorIsIgnored() {
+        let current = ConnectionState.Error(error: GlassesError.Transport(detail: "connect failed", cause: nil))
+        let next = FrameGlassesClient.resolveRuntimeStateTransition(
+            current: current,
+            runtime: .disconnected
+        )
+
+        XCTAssertNil(next)
+    }
+
+    func testDisconnectedWhileConnectedBecomesDisconnected() {
+        let next = FrameGlassesClient.resolveRuntimeStateTransition(
+            current: ConnectionState.Connected.shared,
+            runtime: .disconnected
+        )
+
+        XCTAssertTrue(next is ConnectionState.Disconnected, "Expected Disconnected, got \(String(describing: next))")
+    }
+
+    func testErrorBecomesConnectionStateError() {
+        let next = FrameGlassesClient.resolveRuntimeStateTransition(
+            current: ConnectionState.Connected.shared,
+            runtime: .error("runtime failed")
+        )
+
+        let errorState = next as? ConnectionState.Error
+        XCTAssertNotNil(errorState)
+        XCTAssertTrue(errorState?.error is GlassesError.Transport)
+    }
+}
+
 @MainActor
 final class FrameGlassesClientRuntimeTests: XCTestCase {
     private var client: FrameGlassesClient?

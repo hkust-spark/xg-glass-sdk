@@ -217,23 +217,41 @@ final class FrameGlassesClient: BaseGlassesClient {
     }
 
     private func handleRuntimeState(_ state: FrameFlutterState) {
-        switch state {
-        case .connecting, .connected:
-            // The base owns Connecting/Connected during connect(). Spontaneous auto-reconnect
-            // from the Flutter/BLE side is not reflected yet.
-            // TODO(frame-ios-reconnect): map a spontaneous .connected -> ConnectionState.Connected.
-            break
-        case .disconnected:
-            // Don't let a post-failure "disconnected" event clobber a just-set Error state
-            // (the base sets Error from a failed doConnect; the Dart side may then emit disconnected).
-            if !(_state.value is ConnectionState.Error) {
-                _state.setValue(ConnectionState.Disconnected.shared)
+        if let transition = Self.resolveRuntimeStateTransition(
+            current: _state.value as? ConnectionState,
+            runtime: state
+        ) {
+            _state.setValue(transition)
+        }
+    }
+
+    static func resolveRuntimeStateTransition(
+        current: ConnectionState?,
+        runtime: FrameFlutterState
+    ) -> ConnectionState? {
+        switch runtime {
+        case .connecting:
+            // The base owns Connecting during connect().
+            return nil
+        case .connected:
+            // A connected event during connect() races the connect reply, so ignore it.
+            // A connected event from Disconnected/Error means Dart/BLE recovered on its own.
+            if current is ConnectionState.Disconnected || current is ConnectionState.Error {
+                return ConnectionState.Connected.shared
             }
+            return nil
+        case .disconnected:
+            // Do not let a post-failure disconnected event clobber Error, and do not let the
+            // observer own the in-flight Connecting state.
+            if current is ConnectionState.Error || current is ConnectionState.Connecting {
+                return nil
+            }
+            return ConnectionState.Disconnected.shared
         case .error(let message):
-            _state.setValue(ConnectionState.Error(error: GlassesError.Transport(
+            return ConnectionState.Error(error: GlassesError.Transport(
                 detail: "Frame error: \(message)",
                 cause: nil
-            )))
+            ))
         }
     }
 
