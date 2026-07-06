@@ -11,7 +11,7 @@ dependencies {
     api(project(":core"))
     implementation(project(":core-android"))
 
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     // Camera (on Android Emulator, backed by host webcam passthrough)
     api("androidx.camera:camera-core:1.3.4")
