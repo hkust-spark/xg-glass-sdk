@@ -40,13 +40,13 @@ jobs:
       - name: Compile and test Android modules
         run: |
           ./gradlew --console=plain \
-            :core:compileDebugKotlinAndroid \
+            :core:assembleAndroidMain \
             :core-android:compileDebugKotlin \
-            :app-contract:compileDebugKotlinAndroid \
+            :app-contract:assembleAndroidMain \
             :universal:compileDebugKotlin \
             :universal-full:compileDebugKotlin \
             :device-rokid:compileDebugKotlin \
-            :device-even:compileDebugKotlinAndroid \
+            :device-even:assembleAndroidMain \
             :device-omi:compileDebugKotlin \
             :device-simulator:compileDebugKotlin \
             :device-rayneo-installer:compileDebugKotlin \
@@ -55,10 +55,10 @@ jobs:
             :device-android-xr:compileDebugKotlin \
             :device-frame-flutter:compileDebugKotlin \
             :device-inmo-runtime:testDebugUnitTest \
-            :device-even:testDebugUnitTest \
-            :app-contract:testDebugUnitTest \
+            :device-even:testAndroidHostTest \
+            :app-contract:testAndroidHostTest \
             :core-android:testDebugUnitTest \
-            :core:testDebugUnitTest
+            :core:testAndroidHostTest
 
   generated-app:
     name: Generated app

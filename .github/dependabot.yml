@@ -12,8 +12,8 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     ignore:
-      # Gradle 9.6+ removed internal APIs that AGP 8.x depends on; majors stay
-      # blocked until the coordinated AGP 9 leg of #36 lands.
+      # Gradle majors stay deliberate under #36; keep Gradle aligned with the
+      # Android Gradle Plugin compatibility window instead of auto-jumping.
       - dependency-name: "gradle-wrapper"
         update-types: ["version-update:semver-major"]
       # AGP 9 is the other half of the same coordinated upgrade (#36).

@@ -1,7 +1,6 @@
 package com.xgglass.buildlogic.publish
 
 import com.vanniktech.maven.publish.MavenPublishBaseExtension
-import com.vanniktech.maven.publish.SonatypeHost
 import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -22,7 +21,7 @@ class XgGlassMavenPublishPlugin : Plugin<Project> {
             MavenPublishBaseExtension::class.java,
             object : Action<MavenPublishBaseExtension> {
                 override fun execute(publishing: MavenPublishBaseExtension) {
-                    publishing.publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+                    publishing.publishToMavenCentral()
                     if (project.shouldSignPublications()) {
                         publishing.signAllPublications()
                     }

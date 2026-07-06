@@ -231,9 +231,9 @@ Sealed hierarchies such as `ConnectionState` and `GlassesEvent` may gain new sub
 Supported toolchains:
 
 - Android minSdk 28; minSdk 29 for Meta and the RayNeo glasses host.
-- Android compileSdk 35.
+- Android compileSdk 36.
 - JDK 17+.
-- Building from source needs Kotlin 2.4+ and Android Gradle Plugin 8.x.
+- Building from source needs Kotlin 2.4+ and Android Gradle Plugin 9.x.
 - iOS 16+ with Xcode 15.4+.
 - CLI Python 3.9+ on macOS/Linux.
 

@@ -30,6 +30,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        val frameFlutterAarRepo = file("__XG_SDK_PATH__/third_party/frame/frame_module/build/host/outputs/repo")
+        if (frameFlutterAarRepo.exists()) {
+            maven { url = uri(frameFlutterAarRepo) }
+        }
         maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
         // Keep Rokid repo scoped; it does not necessarily proxy all AndroidX artifacts.
         exclusiveContent {

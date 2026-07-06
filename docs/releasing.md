@@ -91,8 +91,8 @@ Run the Android/Kotlin compile and unit-test matrix:
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew --console=plain \
     :app:compileDebugKotlin \
-    :core:compileDebugKotlinAndroid \
-    :app-contract:compileDebugKotlinAndroid \
+    :core:assembleAndroidMain \
+    :app-contract:assembleAndroidMain \
     :core-android:compileDebugKotlin \
     :universal:compileDebugKotlin \
     :universal-full:compileDebugKotlin \
@@ -104,8 +104,8 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     :device-rayneo-runtime:compileDebugKotlin \
     :device-rokid:compileDebugKotlin \
     :device-simulator:compileDebugKotlin \
-    :app-contract:testDebugUnitTest \
-    :core:testDebugUnitTest \
+    :app-contract:testAndroidHostTest \
+    :core:testAndroidHostTest \
     :core-android:testDebugUnitTest
 ```
 

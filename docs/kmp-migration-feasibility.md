@@ -50,9 +50,8 @@ The SDK is organized around a common client interface:
 
 The build is Android-first:
 
-- `kotlin/core/build.gradle.kts:1-12` applies `com.xgglass.android.library`.
-- `kotlin/app-contract/build.gradle.kts:1-11` also applies `com.xgglass.android.library`.
-- `build-logic/src/main/kotlin/com/xgglass/buildlogic/android/XgGlassAndroidLibraryPlugin.kt:8-20` applies `com.android.library` and `org.jetbrains.kotlin.android`.
+- `kotlin/core/build.gradle.kts:1-30` and `kotlin/app-contract/build.gradle.kts:1-40` apply Kotlin Multiplatform plus the AGP Android-KMP library plugin.
+- `build-logic/src/main/kotlin/com/xgglass/buildlogic/android/XgGlassAndroidLibraryPlugin.kt:8-18` applies `com.android.library`; Kotlin compilation is handled by AGP built-in Kotlin.
 - `build-logic/src/main/kotlin/com/xgglass/buildlogic/android/AndroidConventions.kt:6-18` sets Android compile/min SDK and Java compatibility.
 - `settings.gradle.kts:57-69` includes one aggregate module, core modules, and Android device modules.
 

@@ -2,7 +2,7 @@
 
 This quickstart builds a minimal Android app against the published Maven artifacts for xg.glass `0.1.0`. It uses the Android simulator client first, so you can test without physical glasses.
 
-Use Android Gradle Plugin `8.13.1`, Kotlin `2.4.0`, `compileSdk = 36`, and `minSdk = 28`.
+Use Android Gradle Plugin `9.1.1`, Kotlin `2.4.0`, `compileSdk = 36`, and `minSdk = 28`.
 
 `settings.gradle.kts`:
 
@@ -46,8 +46,7 @@ Top-level `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("com.android.application") version "8.13.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.4.0" apply false
+    id("com.android.application") version "9.1.1" apply false
 }
 ```
 
@@ -56,7 +55,6 @@ App module `build.gradle.kts`:
 ```kotlin
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 android {

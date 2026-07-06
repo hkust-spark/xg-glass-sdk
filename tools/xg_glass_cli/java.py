@@ -284,7 +284,7 @@ def _default_managed_jdk_major() -> int:
                 return mr
     except Exception:
         pass
-    return 21  # safe default: JDK 21 (LTS, well-supported by AGP 8.x)
+    return 21  # safe default: JDK 21 (LTS, well-supported by AGP 9.1.1)
 
 
 def _auto_download_jdk(major: int) -> str:

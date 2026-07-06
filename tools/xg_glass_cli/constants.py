@@ -14,8 +14,8 @@ _MANAGED_JDK_DIR = _XG_GLASS_HOME / "jdk"
 _MANAGED_ANDROID_SDK_DIR = _XG_GLASS_HOME / "android-sdk"
 
 # Highest JDK major version known to work with the project's AGP / Gradle toolchain.
-# JDK 25 (LTS, Sep 2025) is too new for AGP 8.13.1 / Gradle 8.13 and causes a bare
-# "25.0.2" build error.  Bump this constant when upgrading AGP to a version that supports it.
+# Keep this conservative for the CLI's managed-JDK path; the repo verifies JDK 21
+# with AGP 9.1.1 / Gradle 9.3.1.
 _MAX_AGP_JDK_MAJOR = 21
 
 # Default Android SDK packages required for building.

@@ -147,7 +147,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     _write_local_properties(dst, android_sdk)
     # Ensure Flutter (downloads managed Flutter + runs pub get if needed).
     cfg = _load_config(dst, DEFAULT_CONFIG_FILE)
-    _ensure_flutter_module_ready(dst, cfg)
+    _ensure_flutter_module_ready(dst, cfg, needs_frame=(selection.is_all or "frame" in selection.devices))
     # Persist for future shells
     flutter = _find_flutter_cmd()
     if bool(getattr(args, "no_shell_setup", False)):

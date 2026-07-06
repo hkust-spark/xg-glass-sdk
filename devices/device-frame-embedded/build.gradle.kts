@@ -10,8 +10,7 @@ dependencies {
     api(project(":core"))
     implementation(project(":device-frame-flutter"))
 
-    // When the Flutter module is present (third_party/frame/frame_module),
-    // settings.gradle.kts applies include_flutter.groovy,
-    // which adds the :flutter project that provides Flutter runtime + GeneratedPluginRegistrant.
-    implementation(project(":flutter"))
+    // Built by `flutter build aar` from third_party/frame/frame_module.
+    debugImplementation("com.example.frame_module:flutter_debug:1.0")
+    releaseImplementation("com.example.frame_module:flutter_release:1.0")
 }

@@ -11,5 +11,6 @@ dependencies {
     api(project(":core"))
     implementation(project(":core-android"))
 
-    testImplementation(kotlin("test"))
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit")
+    testImplementation("junit:junit:4.13.2")
 }

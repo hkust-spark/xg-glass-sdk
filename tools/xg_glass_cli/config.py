@@ -22,6 +22,7 @@ class XgConfig:
     sdk_path: str | None = None
     entry_class: str | None = None
     rayneo_mercury_aar_dir: str | None = None
+    devices: str | None = None
     variant: str = "debug"
     module: str = "app"
     application_id: str | None = None
@@ -39,6 +40,7 @@ def _load_config(project: Path, config_arg: str) -> XgConfig:
         sdk_path=data.get("sdkPath"),
         entry_class=entry_class,
         rayneo_mercury_aar_dir=data.get("rayneoMercuryAarDir"),
+        devices=data.get("devices"),
         variant=(data.get("variant") or "debug"),
         module=(data.get("module") or "app"),
         application_id=data.get("applicationId"),
@@ -66,6 +68,7 @@ def _apply_overrides(
         sdk_path=(sdk or cfg.sdk_path),
         entry_class=merged_entry_class,
         rayneo_mercury_aar_dir=(rayneo_aar_dir or cfg.rayneo_mercury_aar_dir),
+        devices=cfg.devices,
         variant=v,
         module=m,
         application_id=cfg.application_id,
