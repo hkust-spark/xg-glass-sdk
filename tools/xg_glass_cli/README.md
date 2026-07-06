@@ -31,6 +31,16 @@ xg-glass run /path/to/MyEntry.kt
 
 Pass `--sdk /path/to/xg-glass-sdk` to use an existing checkout instead of the cached download. If the first-run download fails because you are offline or the matching tag is unavailable, retry when online or pass `--sdk` explicitly.
 
+`xg-glass init` defaults to all supported Android devices for demos and zero-config exploration. For production-sized generated apps, pass `--devices` with a comma-separated list:
+
+```sh
+xg-glass init /path/to/myapp --devices even,simulator
+xg-glass init /path/to/myapp --devices rokid,rayneo
+xg-glass init /path/to/myapp --devices frame,simulator
+```
+
+Valid values are `rokid`, `rayneo`, `meta`, `frame`, `omi`, `even`, `inmo`, `simulator`, and `all`. Device names are case-insensitive. `--sim` still enables emulator build settings and also adds `simulator` to any concrete `--devices` selection.
+
 ## From a repository checkout (contributors)
 
 From the repository root (where `xg-glass` lives):
@@ -51,6 +61,7 @@ From the repository root (where `xg-glass` lives):
 - `variant`
 - `module`
 - `applicationId`
+- `devices` (written when `--devices` is provided, for example `[even, simulator]`)
 
 ## Bare-file quick mode (Quick mode)
 

@@ -35,15 +35,29 @@ import com.xgglass.core.GlassesEvent
 import com.xgglass.core.GlassesClient
 import com.xgglass.core.GlassesModel
 import com.xgglass.core.android.SecureStore
+// xg:device:even:begin
 import com.xgglass.device.even.EvenGlassesClient
+// xg:device:even:end
+// xg:device:frame:begin
 import com.xgglass.device.frame.embedded.EmbeddedFrameGlassesClient
+// xg:device:frame:end
+// xg:device:inmo:begin
 import com.xgglass.device.inmo.runtime.InmoRuntimeGlassesClient
+// xg:device:inmo:end
+// xg:device:rayneo:begin
 import com.xgglass.device.rayneo.installer.RayNeoApkSource
 import com.xgglass.device.rayneo.installer.RayNeoDeviceManager
 import com.xgglass.device.rayneo.installer.RayNeoInstallerConfig
+// xg:device:rayneo:end
+// xg:device:rokid:begin
 import com.xgglass.device.rokid.RokidGlassesClient
+// xg:device:rokid:end
+// xg:device:omi:begin
 import com.xgglass.device.omi.OmiGlassesClient
+// xg:device:omi:end
+// xg:device:simulator:begin
 import com.xgglass.device.sim.SimulatorGlassesClient
+// xg:device:simulator:end
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -184,7 +198,37 @@ class MainActivity : AppCompatActivity() {
         val deviceItems = if (BuildConfig.XG_SIMULATOR) {
             listOf("SIMULATOR")
         } else {
+            // xg:device:all:begin
             listOf("ROKID", "META", "FRAME", "RAYNEO", "INMO", "OMI", "EVEN", "SIMULATOR")
+            // xg:device:all:end
+            // xg:device:partial:begin
+            listOf(
+                // xg:device:rokid:begin
+                "ROKID",
+                // xg:device:rokid:end
+                // xg:device:meta:begin
+                "META",
+                // xg:device:meta:end
+                // xg:device:frame:begin
+                "FRAME",
+                // xg:device:frame:end
+                // xg:device:rayneo:begin
+                "RAYNEO",
+                // xg:device:rayneo:end
+                // xg:device:inmo:begin
+                "INMO",
+                // xg:device:inmo:end
+                // xg:device:omi:begin
+                "OMI",
+                // xg:device:omi:end
+                // xg:device:even:begin
+                "EVEN",
+                // xg:device:even:end
+                // xg:device:simulator:begin
+                "SIMULATOR",
+                // xg:device:simulator:end
+            )
+            // xg:device:partial:end
         }
         spDevice.adapter = ArrayAdapter(
             this,
@@ -248,17 +292,21 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    // xg:device:inmo:begin
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         val inmoClient = client as? InmoRuntimeGlassesClient
         if (inmoClient?.onHostKeyEvent(keyCode) == true) return true
         return super.onKeyDown(keyCode, event)
     }
+    // xg:device:inmo:end
 
     private fun connect(model: GlassesModel) {
+        // xg:device:rayneo:begin
         if (model == GlassesModel.RAYNEO) {
             installRayNeo()
             return
         }
+        // xg:device:rayneo:end
 
         connectJob?.cancel()
         connectJob = scope.launch {
@@ -278,26 +326,49 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val newClient = when (model) {
+                    // xg:device:simulator:begin
                     GlassesModel.SIMULATOR -> SimulatorGlassesClient(
                         activity = this@MainActivity,
                         displaySink = { text -> tvDisplay.text = text },
                         videoPath = BuildConfig.XG_SIM_VIDEO_PATH.takeIf { it.isNotEmpty() },
                     )
+                    // xg:device:simulator:end
+                    // xg:device:rokid:begin
                     GlassesModel.ROKID -> createRokidClient()
+                    // xg:device:rokid:end
+                    // xg:device:meta:begin
                     GlassesModel.META -> createMetaClient()
+                    // xg:device:meta:end
+                    // xg:device:frame:begin
                     GlassesModel.FRAME -> {
                         // SDK-owned Flutter engine + bridge
                         EmbeddedFrameGlassesClient(this@MainActivity)
                     }
+                    // xg:device:frame:end
+                    // xg:device:rayneo:begin
                     GlassesModel.RAYNEO -> error("RayNeo is handled via DeviceManager")
+                    // xg:device:rayneo:end
+                    // xg:device:inmo:begin
                     GlassesModel.INMO -> InmoRuntimeGlassesClient(this@MainActivity)
+                    // xg:device:inmo:end
+                    // xg:device:omi:begin
                     GlassesModel.OMI -> OmiGlassesClient(this@MainActivity)
+                    // xg:device:omi:end
+                    // xg:device:even:begin
                     GlassesModel.EVEN -> EvenGlassesClient(this@MainActivity)
+                    // xg:device:even:end
                     GlassesModel.ANDROID_XR -> {
                         appendLog("Android XR: preview scaffold is not enabled in this app.")
                         tvStatus.text = "Status: Android XR preview scaffold not enabled"
                         return@launch
                     }
+                    // xg:device:partial:begin
+                    else -> {
+                        appendLog("${model.name}: not included in this generated app.")
+                        tvStatus.text = "Status: ${model.name} not included"
+                        return@launch
+                    }
+                    // xg:device:partial:end
                 }
 
                 client = newClient
@@ -348,6 +419,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // xg:device:rayneo:begin
     private fun installRayNeo() {
         connectJob?.cancel()
         connectJob = scope.launch {
@@ -441,7 +513,9 @@ class MainActivity : AppCompatActivity() {
             ),
         )
     }
+    // xg:device:rayneo:end
 
+    // xg:device:rokid:begin
     private fun createRokidClient(): RokidGlassesClient {
         // 1. Try runtime credentials (user-provided via in-app UI).
         val auth = loadRokidAuthFromRuntime()
@@ -463,7 +537,9 @@ class MainActivity : AppCompatActivity() {
             RokidGlassesClient.RokidOptions(authorization = auth),
         )
     }
+    // xg:device:rokid:end
 
+    // xg:device:meta:begin
     private fun createMetaClient(): GlassesClient {
         return try {
             val clazz = Class.forName("com.xgglass.device.meta.MetaWearablesGlassesClient")
@@ -480,7 +556,9 @@ class MainActivity : AppCompatActivity() {
             throw IllegalStateException("Failed to create MetaWearablesGlassesClient: ${e.message}", e)
         }
     }
+    // xg:device:meta:end
 
+    // xg:device:meta:begin
     private suspend fun launchExternalActivity(intent: Intent): ExternalActivityResult {
         return externalActivityMutex.withLock {
             suspendCancellableCoroutine { continuation ->
@@ -494,7 +572,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+    // xg:device:meta:end
 
+    // xg:device:rokid:begin
     /**
      * Load Rokid authorization from runtime user input (internal storage + SecureStore).
      */
@@ -512,7 +592,9 @@ class MainActivity : AppCompatActivity() {
             clientSecret = secret,
         )
     }
+    // xg:device:rokid:end
 
+    // xg:device:rokid:begin
     /**
      * Load Rokid authorization from build-time config (BuildConfig fields + res/raw resource).
      * This is the legacy path: developer sets rokid.clientSecret / rokid.snRawName in
@@ -538,6 +620,7 @@ class MainActivity : AppCompatActivity() {
             clientSecret = secret,
         )
     }
+    // xg:device:rokid:end
 
     private fun ensurePermissionsThenConnect(model: GlassesModel) {
         val required = requiredPermissionsFor(model)
@@ -771,11 +854,14 @@ class MainActivity : AppCompatActivity() {
         appliedSettings = buildSettingsMap(fields)
         appendLog("Settings applied.")
 
+        // xg:device:rayneo:begin
         // For RayNeo: also push the settings file to the glasses via ADB so the
         // on-glasses host can read them.
         pushSettingsToRayNeoIfNeeded()
+        // xg:device:rayneo:end
     }
 
+    // xg:device:rayneo:begin
     /**
      * If the current (or last-configured) glasses model is RAYNEO and we have an IP,
      * push the settings JSON to the glasses via ADB.
@@ -806,6 +892,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+    // xg:device:rayneo:end
 
     /** Build a key→value map from current SecureStore values (or defaults). */
     private fun buildSettingsMap(fields: List<UserSettingField>): Map<String, String> {

@@ -136,3 +136,9 @@ Revisit this decision if one of these triggers happens:
 - The generated app moves to minification/resource shrinking by default and new measurements show materially different adapter deltas.
 - RayNeo vendor AARs become part of the default generated host asset and need separate measurement.
 - Android and iOS packaging goals diverge enough that the current SwiftPM-style artifact split no longer maps to consumer expectations.
+
+## CLI Follow-Up
+
+The CLI now supports `xg-glass init --devices <list>` for generated Android apps. The absent flag keeps the zero-config all-device demo path on `xgglass-universal-full`; explicit selections emit core/app-contract plus only the requested device artifacts and record the selection in `xg-glass.yaml`.
+
+The size guidance above is still the practical rule: include Frame/Flutter only when the app needs Frame support because it adds about 14.6 MiB to the arm64 APK, and include Meta only when the app needs Meta DAT support because it adds about 15.9 MiB relative to the lean floor.

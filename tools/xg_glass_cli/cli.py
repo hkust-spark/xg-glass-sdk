@@ -37,6 +37,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Initialize the project in simulator mode (enables x86_64 + simulator backend).",
     )
     p_init.add_argument(
+        "--devices",
+        help=(
+            "Comma-separated devices to include: rokid, rayneo, meta, frame, omi, even, "
+            "inmo, simulator, or all (default). --sim adds simulator."
+        ),
+    )
+    p_init.add_argument(
         "--no-shell-setup",
         action="store_true",
         help="Do not update shell startup files; print export lines to add manually instead.",

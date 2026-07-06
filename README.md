@@ -172,6 +172,16 @@ xg-glass install
 xg-glass run
 ```
 
+Generated apps default to the all-device `xgglass-universal-full` path for demos. Production apps can opt into only the adapters they ship with `xg-glass init --devices`, for example:
+
+```bash
+xg-glass init ./myapp --devices even,simulator
+xg-glass init ./myapp --devices rokid,rayneo
+xg-glass init ./myapp --devices frame,simulator
+```
+
+Valid values are `rokid`, `rayneo`, `meta`, `frame`, `omi`, `even`, `inmo`, `simulator`, and `all`; `--sim` adds `simulator` to concrete selections. Explicit selections are recorded in `xg-glass.yaml` as `devices: [even, simulator]`. Based on the app-size spike, Frame/Flutter adds about 14.6 MiB to the arm64 APK and Meta adds about 15.9 MiB relative to the lean floor, so opt into them deliberately for production builds.
+
 #### Device matrix by channel
 
 | Channel | Works from the channel | Notes |

@@ -5,6 +5,22 @@ import shutil
 from pathlib import Path
 
 from .config import XgConfig
+from .devices import DeviceSelection, filter_template_for_devices
+
+
+_DEVICE_FILTER_SUFFIXES = frozenset(
+    {
+        ".kt",
+        ".kts",
+        ".xml",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".md",
+        ".properties",
+        ".txt",
+    }
+)
 
 
 def _replace_project_placeholders(project: Path, *, rel_sdk: str, entry_class: str) -> None:
@@ -33,6 +49,21 @@ def _replace_project_placeholders(project: Path, *, rel_sdk: str, entry_class: s
         c = c.replace("__XG_SDK_PATH__", rel_sdk)
         c = c.replace("__XG_ENTRY_CLASS__", entry_class)
         cfg_file.write_text(c, encoding="utf-8")
+
+
+def _filter_project_devices(project: Path, selection: DeviceSelection) -> None:
+    for path in project.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in _DEVICE_FILTER_SUFFIXES:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "xg:device:" not in text:
+            continue
+        filtered = filter_template_for_devices(text, selection)
+        if filtered != text:
+            path.write_text(filtered, encoding="utf-8")
 
 
 def _apply_simulator_build_settings(project: Path, *, enabled: bool) -> None:

@@ -14,6 +14,7 @@ from .constants import (
     CliUsageError,
     _DEVICE_VIDEO_PATH,
 )
+from .devices import DeviceSelection, format_devices_yaml_value, parse_device_selection
 from .emulator import _ensure_emulator_running
 from .gradle import _cap, _gradlew_path, _run
 from .paths import _ensure_executable
@@ -34,6 +35,7 @@ from .scaffold import (
     _apply_simulator_build_settings,
     _copy_kt_into_project,
     _copy_tree,
+    _filter_project_devices,
     _infer_entry_class_from_kt,
     _replace_project_placeholders,
 )
@@ -77,6 +79,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     dst = Path(args.dir).expanduser().resolve()
     sdk, template = _resolve_init_paths(getattr(args, "sdk", None), getattr(args, "template", None))
     entry_class = _validate_entry_class(args.entry_class, "--entry-class")
+    selection = parse_device_selection(getattr(args, "devices", None), sim=bool(getattr(args, "sim", False)))
 
     if dst.exists() and any(dst.iterdir()):
         raise RuntimeError(f"Target dir must be empty: {dst}")
@@ -103,6 +106,9 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     _ensure_executable(dst / "gradlew")
 
+    # Filter device-specific template sections before normal placeholder replacement.
+    _filter_project_devices(dst, selection)
+
     # Patch template placeholders.
     rel_sdk = Path(os.path.relpath(sdk, dst)).as_posix()
     _replace_project_placeholders(dst, rel_sdk=rel_sdk, entry_class=entry_class)
@@ -125,6 +131,8 @@ def cmd_init(args: argparse.Namespace) -> int:
             ),
             encoding="utf-8",
         )
+    elif selection.explicit:
+        _record_device_selection(cfg_file, selection)
 
     # One-click bootstrap: ensure Java/Android SDK/Flutter are usable on a fresh machine,
     # then persist env vars for future shells (macOS: ~/.zshrc).
@@ -364,3 +372,25 @@ def _init_project(*, dst: Path, template: Path, sdk: Path, entry_class: str) -> 
             entry_class=str(entry_class),
         )
     )
+
+
+def _record_device_selection(cfg_file: Path, selection: DeviceSelection) -> None:
+    devices_line = f"devices: {format_devices_yaml_value(selection)}"
+    text = cfg_file.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    for idx, line in enumerate(lines):
+        if line.strip().startswith("devices:"):
+            # This updater intentionally supports only the generated single-line
+            # form: devices: [even, simulator]. Multi-line YAML would need a real
+            # YAML parser so do not rewrite it as if it were one line.
+            if line.split(":", 1)[1].strip() == "":
+                raise CliUsageError(
+                    "Cannot update multi-line devices entry in xg-glass.yaml; use a single-line "
+                    "form such as devices: [even, simulator]."
+                )
+            lines[idx] = devices_line
+            cfg_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return
+
+    suffix = "" if text.endswith("\n") else "\n"
+    cfg_file.write_text(text + suffix + devices_line + "\n", encoding="utf-8")
