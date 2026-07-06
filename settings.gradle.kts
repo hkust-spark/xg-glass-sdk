@@ -70,6 +70,7 @@ include(":device-simulator")
 include(":device-simulator-ios")
 include(":device-omi")
 include(":device-omi-ios")
+include(":device-even")
 include(":device-android-xr")
 
 // Keep Gradle module names stable, but place shared implementations under a dedicated folder.
@@ -91,6 +92,7 @@ project(":device-simulator").projectDir = file("devices/device-simulator")
 project(":device-simulator-ios").projectDir = file("devices/device-simulator-ios")
 project(":device-omi").projectDir = file("devices/device-omi")
 project(":device-omi-ios").projectDir = file("devices/device-omi-ios")
+project(":device-even").projectDir = file("devices/device-even")
 project(":device-android-xr").projectDir = file("devices/device-android-xr")
 
 // Embed the generated Flutter module as an internal dependency when available.

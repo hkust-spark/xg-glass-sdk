@@ -46,12 +46,14 @@ jobs:
             :universal:compileDebugKotlin \
             :universal-full:compileDebugKotlin \
             :device-rokid:compileDebugKotlin \
+            :device-even:compileDebugKotlinAndroid \
             :device-omi:compileDebugKotlin \
             :device-simulator:compileDebugKotlin \
             :device-rayneo-installer:compileDebugKotlin \
             :device-rayneo-runtime:compileDebugKotlin \
             :device-android-xr:compileDebugKotlin \
             :device-frame-flutter:compileDebugKotlin \
+            :device-even:testDebugUnitTest \
             :app-contract:testDebugUnitTest \
             :core-android:testDebugUnitTest \
             :core:testDebugUnitTest

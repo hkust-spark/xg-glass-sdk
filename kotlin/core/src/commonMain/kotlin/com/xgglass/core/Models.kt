@@ -22,6 +22,9 @@ enum class GlassesModel {
 
     /** Omi Glass BLE device. */
     OMI,
+
+    /** Even Realities G1 dual-BLE glasses. */
+    EVEN,
 }
 
 data class DeviceCapabilities(

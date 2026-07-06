@@ -18,6 +18,8 @@ enum class AudioEncoding {
     PCM_S8,
     /** Opus frames (container-less). */
     OPUS,
+    /** LC3 frames as streamed by the device; host-side decoding is the app's responsibility. */
+    LC3,
 }
 
 /**

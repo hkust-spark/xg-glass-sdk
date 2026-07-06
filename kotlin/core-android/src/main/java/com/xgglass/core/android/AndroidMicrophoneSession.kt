@@ -38,6 +38,7 @@ fun openAndroidMicrophone(
         AudioEncoding.PCM_S16_LE -> AudioEncoding.PCM_S16_LE
         AudioEncoding.PCM_S8 -> AudioEncoding.PCM_S8
         AudioEncoding.OPUS -> return Result.failure(GlassesError.Unsupported(unsupportedOpusMessage))
+        AudioEncoding.LC3 -> return Result.failure(GlassesError.Unsupported("Android microphone: LC3 not supported"))
     }
     val channelConfig = when (channelCount) {
         1 -> android.media.AudioFormat.CHANNEL_IN_MONO
@@ -48,6 +49,7 @@ fun openAndroidMicrophone(
         AudioEncoding.PCM_S16_LE -> android.media.AudioFormat.ENCODING_PCM_16BIT
         AudioEncoding.PCM_S8 -> android.media.AudioFormat.ENCODING_PCM_8BIT
         AudioEncoding.OPUS -> android.media.AudioFormat.ENCODING_PCM_16BIT
+        AudioEncoding.LC3 -> android.media.AudioFormat.ENCODING_PCM_16BIT
     }
 
     return try {

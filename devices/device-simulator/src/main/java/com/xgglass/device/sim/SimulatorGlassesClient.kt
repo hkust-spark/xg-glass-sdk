@@ -360,6 +360,9 @@ class SimulatorGlassesClient(
             AudioEncoding.OPUS -> return Result.failure(
                 GlassesError.Unsupported("Simulator microphone: OPUS not supported (use PCM + app-side encoder)")
             )
+            AudioEncoding.LC3 -> return Result.failure(
+                GlassesError.Unsupported("Simulator microphone: LC3 not supported (use PCM + app-side encoder)")
+            )
         }
 
         val sampleRate = options.preferredSampleRateHz ?: 16_000

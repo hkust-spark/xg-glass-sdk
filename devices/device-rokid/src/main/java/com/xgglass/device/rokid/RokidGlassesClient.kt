@@ -230,8 +230,8 @@ class RokidGlassesClient(
             ?: return Result.failure(GlassesError.Unsupported(
                 "Rokid playAudio(RawBytes) requires explicit PcmFormat (container auto-detect not supported)"
             ))
-        if (pcm.encoding == AudioEncoding.OPUS) {
-            return Result.failure(GlassesError.Unsupported("Rokid playAudio: OPUS not supported"))
+        if (pcm.encoding == AudioEncoding.OPUS || pcm.encoding == AudioEncoding.LC3) {
+            return Result.failure(GlassesError.Unsupported("Rokid playAudio: ${pcm.encoding} not supported"))
         }
 
         return try {
@@ -264,10 +264,12 @@ class RokidGlassesClient(
         // Rokid supports PCM or OPUS streams. Sample rate/bit depth are not exposed here.
         val encoding = when (options.preferredEncoding) {
             AudioEncoding.OPUS -> AudioEncoding.OPUS
+            AudioEncoding.LC3 -> return Result.failure(GlassesError.Unsupported("Rokid microphone: LC3 not supported"))
             AudioEncoding.PCM_S8, AudioEncoding.PCM_S16_LE -> AudioEncoding.PCM_S16_LE
         }
         val codecType = when (encoding) {
             AudioEncoding.OPUS -> 2
+            AudioEncoding.LC3 -> 2
             else -> 1 // pcm
         }
 

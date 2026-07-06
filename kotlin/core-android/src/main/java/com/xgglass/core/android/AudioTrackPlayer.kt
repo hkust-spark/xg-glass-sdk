@@ -34,6 +34,7 @@ suspend fun playPcmViaAudioTrack(
         AudioEncoding.PCM_S16_LE -> android.media.AudioFormat.ENCODING_PCM_16BIT
         AudioEncoding.PCM_S8 -> android.media.AudioFormat.ENCODING_PCM_8BIT
         AudioEncoding.OPUS -> return Result.failure(GlassesError.Unsupported(unsupportedOpusMessage))
+        AudioEncoding.LC3 -> return Result.failure(GlassesError.Unsupported("playAudio: LC3 not supported"))
     }
 
     @Suppress("UNUSED_VARIABLE")

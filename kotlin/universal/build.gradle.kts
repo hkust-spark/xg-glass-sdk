@@ -28,6 +28,9 @@ dependencies {
     // Omi implementation (audio-focused BLE glasses)
     api(project(":device-omi"))
 
+    // Even Realities G1 implementation (dual-BLE display, microphone, touch)
+    api(project(":device-even"))
+
     // Frame bridge API. The embedded Flutter host wrapper remains app-local and is not published.
     api(project(":device-frame-flutter"))
 }

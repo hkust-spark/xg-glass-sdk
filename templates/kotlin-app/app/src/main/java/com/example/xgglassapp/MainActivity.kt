@@ -34,6 +34,7 @@ import com.xgglass.core.GlassesEvent
 import com.xgglass.core.GlassesClient
 import com.xgglass.core.GlassesModel
 import com.xgglass.core.android.SecureStore
+import com.xgglass.device.even.EvenGlassesClient
 import com.xgglass.device.frame.embedded.EmbeddedFrameGlassesClient
 import com.xgglass.device.rayneo.installer.RayNeoApkSource
 import com.xgglass.device.rayneo.installer.RayNeoDeviceManager
@@ -181,7 +182,7 @@ class MainActivity : AppCompatActivity() {
         val deviceItems = if (BuildConfig.XG_SIMULATOR) {
             listOf("SIMULATOR")
         } else {
-            listOf("ROKID", "META", "FRAME", "RAYNEO", "OMI", "SIMULATOR")
+            listOf("ROKID", "META", "FRAME", "RAYNEO", "OMI", "EVEN", "SIMULATOR")
         }
         spDevice.adapter = ArrayAdapter(
             this,
@@ -210,6 +211,7 @@ class MainActivity : AppCompatActivity() {
                 "FRAME" -> GlassesModel.FRAME
                 "RAYNEO" -> GlassesModel.RAYNEO
                 "OMI" -> GlassesModel.OMI
+                "EVEN" -> GlassesModel.EVEN
                 else -> GlassesModel.ROKID
             }
             // Save Rokid credentials entered in the UI before connecting.
@@ -280,6 +282,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     GlassesModel.RAYNEO -> error("RayNeo is handled via DeviceManager")
                     GlassesModel.OMI -> OmiGlassesClient(this@MainActivity)
+                    GlassesModel.EVEN -> EvenGlassesClient(this@MainActivity)
                     GlassesModel.ANDROID_XR -> {
                         appendLog("Android XR: preview scaffold is not enabled in this app.")
                         tvStatus.text = "Status: Android XR preview scaffold not enabled"
@@ -555,8 +558,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // BLE permissions (Frame + Rokid + OMI)
-        if (model == GlassesModel.ROKID || model == GlassesModel.FRAME || model == GlassesModel.OMI) {
+        // BLE permissions (Frame + Rokid + OMI + Even)
+        if (
+            model == GlassesModel.ROKID ||
+            model == GlassesModel.FRAME ||
+            model == GlassesModel.OMI ||
+            model == GlassesModel.EVEN
+        ) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                 perms += Manifest.permission.BLUETOOTH_SCAN
                 perms += Manifest.permission.BLUETOOTH_CONNECT
@@ -616,6 +624,7 @@ class MainActivity : AppCompatActivity() {
             "FRAME" -> GlassesModel.FRAME
             "RAYNEO" -> GlassesModel.RAYNEO
             "OMI" -> GlassesModel.OMI
+            "EVEN" -> GlassesModel.EVEN
             else -> GlassesModel.ROKID
         }
 

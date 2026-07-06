@@ -113,6 +113,7 @@ class XgGlassMavenPublishPlugin : Plugin<Project> {
         "device-rayneo-runtime" -> "RayNeo on-glasses runtime adapter for xg.glass."
         "device-simulator" -> "Simulator adapter: develop xg.glass apps with the phone camera, no glasses hardware."
         "device-omi" -> "Omi Glass BLE adapter (audio capture and photo) for xg.glass."
+        "device-even" -> "Even Realities G1 dual-BLE adapter (display, microphone, touch) for xg.glass."
         "device-meta" -> "Meta wearables (Ray-Ban Meta) adapter for xg.glass via the Meta DAT SDK; requires Meta's GitHub Packages repository."
         "device-frame-flutter" -> "Brilliant Labs Frame bridge API and contract for xg.glass (Flutter runtime supplied by the host app)."
         else -> "XG Glass SDK module $name."

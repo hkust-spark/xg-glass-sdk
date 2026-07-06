@@ -16,6 +16,7 @@ This repository publishes the Android/Kotlin SDK artifacts under:
 - `io.github.hkust-spark:xgglass-device-rayneo-runtime:0.1.0`
 - `io.github.hkust-spark:xgglass-device-simulator:0.1.0`
 - `io.github.hkust-spark:xgglass-device-omi:0.1.0`
+- `io.github.hkust-spark:xgglass-device-even:0.1.0`
 - `io.github.hkust-spark:xgglass-device-meta:0.1.0`
 - `io.github.hkust-spark:xgglass-device-frame-flutter:0.1.0`
 
