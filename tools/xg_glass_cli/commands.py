@@ -11,11 +11,8 @@ from .adb import _find_adb_cmd, _pick_apk, _push_video_to_device, _read_applicat
 from .config import _apply_overrides, _load_config, _validate_entry_class
 from .constants import (
     DEFAULT_CONFIG_FILE,
-    DEFAULT_SDK,
-    DEFAULT_TEMPLATE,
     CliUsageError,
     _DEVICE_VIDEO_PATH,
-    missing_sdk_checkout_message,
 )
 from .emulator import _ensure_emulator_running
 from .gradle import _cap, _gradlew_path, _run
@@ -40,11 +37,8 @@ from .scaffold import (
     _infer_entry_class_from_kt,
     _replace_project_placeholders,
 )
+from .sdk_fetch import _template_under_sdk, resolve_sdk
 from .video import _resolve_sim_video
-
-
-def _arg_uses_default(value: str | None, default: Path) -> bool:
-    return value is None or str(value) == str(default)
 
 
 def _resolve_required_dir(
@@ -52,46 +46,27 @@ def _resolve_required_dir(
     *,
     label: str,
     subcommand: str,
-    default_path: Path | None = None,
 ) -> Path:
     path = Path(raw_path).expanduser().resolve()
     if path.is_dir():
         return path
-    if default_path is not None and _arg_uses_default(str(raw_path), default_path):
-        raise CliUsageError(missing_sdk_checkout_message(subcommand))
     raise CliUsageError(f"{label} not found: {path}")
 
 
-def _resolve_quick_run_template(sdk: Path, *, sdk_from_default: bool) -> Path:
-    if DEFAULT_TEMPLATE.is_dir():
-        return DEFAULT_TEMPLATE
-    sdk_template = sdk / "templates" / "kotlin-app"
+def _resolve_quick_run_template(sdk: Path) -> Path:
+    sdk_template = _template_under_sdk(sdk)
     if sdk_template.is_dir():
         return sdk_template
-    if sdk_from_default:
-        raise CliUsageError(missing_sdk_checkout_message("run"))
     raise CliUsageError(f"Template not found: {sdk_template}")
 
 
-def _template_under_sdk(sdk: Path) -> Path:
-    return sdk / "templates" / "kotlin-app"
-
-
 def _resolve_init_paths(raw_sdk: str | Path | None, raw_template: str | Path | None) -> tuple[Path, Path]:
-    sdk_from_default = raw_sdk is None
-    if sdk_from_default:
-        sdk = DEFAULT_SDK.expanduser().resolve()
-        if not _template_under_sdk(sdk).is_dir():
-            raise CliUsageError(missing_sdk_checkout_message("init"))
-    else:
-        sdk = _resolve_required_dir(raw_sdk, label="SDK", subcommand="init")
+    sdk = resolve_sdk(raw_sdk, subcommand="init")
 
     if raw_template is None:
         template = _template_under_sdk(sdk)
         if template.is_dir():
             return sdk, template
-        if sdk_from_default:
-            raise CliUsageError(missing_sdk_checkout_message("init"))
         raise CliUsageError(f"Template not found: {template}")
 
     template = _resolve_required_dir(raw_template, label="Template", subcommand="init")
@@ -264,17 +239,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         if not kt.exists():
             raise FileNotFoundError(f"Kotlin file not found: {kt}")
 
-        sdk_from_default = not getattr(args, "sdk", None)
-        if not sdk_from_default:
-            sdk = _resolve_required_dir(args.sdk, label="SDK", subcommand="run")
-        else:
-            sdk = _resolve_required_dir(
-                DEFAULT_SDK,
-                label="SDK",
-                subcommand="run",
-                default_path=DEFAULT_SDK,
-            )
-        template = _resolve_quick_run_template(sdk, sdk_from_default=sdk_from_default)
+        sdk = resolve_sdk(getattr(args, "sdk", None), subcommand="run")
+        template = _resolve_quick_run_template(sdk)
 
         raw_entry_class = getattr(args, "entry_class", None)
         entry_class = raw_entry_class or _infer_entry_class_from_kt(kt)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from xg_glass_cli import commands
+from xg_glass_cli import sdk_fetch
 from xg_glass_cli.constants import CliUsageError
 
 
@@ -10,6 +11,7 @@ def _make_sdk(root):
     sdk = root / "sdk"
     template = sdk / "templates" / "kotlin-app"
     template.mkdir(parents=True)
+    (sdk / "settings.gradle.kts").write_text("pluginManagement {}\n", encoding="utf-8")
     return sdk, template
 
 
@@ -24,7 +26,7 @@ def test_init_template_defaults_from_explicit_sdk(tmp_path) -> None:
 
 def test_init_template_defaults_from_default_sdk(monkeypatch, tmp_path) -> None:
     sdk, template = _make_sdk(tmp_path)
-    monkeypatch.setattr(commands, "DEFAULT_SDK", sdk)
+    monkeypatch.setattr(sdk_fetch, "DEFAULT_SDK", sdk)
 
     resolved_sdk, resolved_template = commands._resolve_init_paths(None, None)
 
@@ -33,7 +35,13 @@ def test_init_template_defaults_from_default_sdk(monkeypatch, tmp_path) -> None:
 
 
 def test_init_default_missing_checkout_uses_friendly_error(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(commands, "DEFAULT_SDK", tmp_path / "site-packages")
+    monkeypatch.setattr(sdk_fetch, "DEFAULT_SDK", tmp_path / "site-packages")
+    monkeypatch.setattr(sdk_fetch, "_installed_sdk_version", lambda: "9.9.9")
+
+    def fail_download(_version):
+        raise RuntimeError("offline")
+
+    monkeypatch.setattr(sdk_fetch, "_download_and_cache_sdk", fail_download)
 
     with pytest.raises(CliUsageError) as exc:
         commands._resolve_init_paths(None, None)
@@ -41,6 +49,8 @@ def test_init_default_missing_checkout_uses_friendly_error(monkeypatch, tmp_path
     message = str(exc.value)
     assert "xg-glass was installed without an SDK checkout" in message
     assert "xg-glass init ... --sdk /path/to/xg-glass-sdk" in message
+    assert "auto-download xg-glass-sdk 9.9.9" in message
+    assert "offline" in message
     assert "--template" not in message
 
 
@@ -68,6 +78,5 @@ def test_init_missing_template_under_explicit_sdk_is_path_error(tmp_path) -> Non
 
 def test_quick_run_template_can_fall_back_to_sdk_template(monkeypatch, tmp_path) -> None:
     sdk, template = _make_sdk(tmp_path)
-    monkeypatch.setattr(commands, "DEFAULT_TEMPLATE", tmp_path / "missing-template")
 
-    assert commands._resolve_quick_run_template(sdk, sdk_from_default=False) == template
+    assert commands._resolve_quick_run_template(sdk) == template

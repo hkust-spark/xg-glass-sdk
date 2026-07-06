@@ -22,13 +22,14 @@ xg-glass install
 xg-glass run
 ```
 
-Commands that create or synthesize a project need an `xg-glass-sdk` repository checkout because the template and SDK sources are not bundled in the wheel:
+Commands that create or synthesize a project (`xg-glass init` and `xg-glass run <file.kt>`) download the matching `xg-glass-sdk` release on first use and cache it under `~/.xg-glass/sdk/`:
 
 ```sh
-git clone https://github.com/hkust-spark/xg-glass-sdk
-xg-glass init /path/to/myapp --sdk /path/to/xg-glass-sdk
-xg-glass run /path/to/MyEntry.kt --sdk /path/to/xg-glass-sdk
+xg-glass init /path/to/myapp
+xg-glass run /path/to/MyEntry.kt
 ```
+
+Pass `--sdk /path/to/xg-glass-sdk` to use an existing checkout instead of the cached download. If the first-run download fails because you are offline or the matching tag is unavailable, retry when online or pass `--sdk` explicitly.
 
 ## From a repository checkout (contributors)
 
