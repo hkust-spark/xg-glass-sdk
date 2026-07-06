@@ -14,6 +14,9 @@ enum class GlassesModel {
     /** RayNeo glasses running the xg.glass on-glasses host. */
     RAYNEO,
 
+    /** INMO Air3 glasses running the xg.glass on-glasses runtime adapter. */
+    INMO,
+
     /** Preview scaffold for Google Android XR devices. */
     ANDROID_XR,
 

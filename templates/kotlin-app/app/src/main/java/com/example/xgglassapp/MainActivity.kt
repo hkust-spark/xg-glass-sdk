@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
+import android.view.KeyEvent
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -36,6 +37,7 @@ import com.xgglass.core.GlassesModel
 import com.xgglass.core.android.SecureStore
 import com.xgglass.device.even.EvenGlassesClient
 import com.xgglass.device.frame.embedded.EmbeddedFrameGlassesClient
+import com.xgglass.device.inmo.runtime.InmoRuntimeGlassesClient
 import com.xgglass.device.rayneo.installer.RayNeoApkSource
 import com.xgglass.device.rayneo.installer.RayNeoDeviceManager
 import com.xgglass.device.rayneo.installer.RayNeoInstallerConfig
@@ -182,7 +184,7 @@ class MainActivity : AppCompatActivity() {
         val deviceItems = if (BuildConfig.XG_SIMULATOR) {
             listOf("SIMULATOR")
         } else {
-            listOf("ROKID", "META", "FRAME", "RAYNEO", "OMI", "EVEN", "SIMULATOR")
+            listOf("ROKID", "META", "FRAME", "RAYNEO", "INMO", "OMI", "EVEN", "SIMULATOR")
         }
         spDevice.adapter = ArrayAdapter(
             this,
@@ -210,6 +212,7 @@ class MainActivity : AppCompatActivity() {
                 "META" -> GlassesModel.META
                 "FRAME" -> GlassesModel.FRAME
                 "RAYNEO" -> GlassesModel.RAYNEO
+                "INMO" -> GlassesModel.INMO
                 "OMI" -> GlassesModel.OMI
                 "EVEN" -> GlassesModel.EVEN
                 else -> GlassesModel.ROKID
@@ -243,6 +246,12 @@ class MainActivity : AppCompatActivity() {
         // Cancel SDK collectors/jobs so this Activity is not retained after destroy.
         scope.cancel()
         super.onDestroy()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        val inmoClient = client as? InmoRuntimeGlassesClient
+        if (inmoClient?.onHostKeyEvent(keyCode) == true) return true
+        return super.onKeyDown(keyCode, event)
     }
 
     private fun connect(model: GlassesModel) {
@@ -281,6 +290,7 @@ class MainActivity : AppCompatActivity() {
                         EmbeddedFrameGlassesClient(this@MainActivity)
                     }
                     GlassesModel.RAYNEO -> error("RayNeo is handled via DeviceManager")
+                    GlassesModel.INMO -> InmoRuntimeGlassesClient(this@MainActivity)
                     GlassesModel.OMI -> OmiGlassesClient(this@MainActivity)
                     GlassesModel.EVEN -> EvenGlassesClient(this@MainActivity)
                     GlassesModel.ANDROID_XR -> {
@@ -546,7 +556,7 @@ class MainActivity : AppCompatActivity() {
     private fun requiredPermissionsFor(model: GlassesModel): List<String> {
         val perms = mutableListOf<String>()
 
-        if (model == GlassesModel.SIMULATOR) {
+        if (model == GlassesModel.SIMULATOR || model == GlassesModel.INMO) {
             perms += Manifest.permission.CAMERA
             perms += Manifest.permission.RECORD_AUDIO
         }
@@ -623,6 +633,7 @@ class MainActivity : AppCompatActivity() {
             "META" -> GlassesModel.META
             "FRAME" -> GlassesModel.FRAME
             "RAYNEO" -> GlassesModel.RAYNEO
+            "INMO" -> GlassesModel.INMO
             "OMI" -> GlassesModel.OMI
             "EVEN" -> GlassesModel.EVEN
             else -> GlassesModel.ROKID

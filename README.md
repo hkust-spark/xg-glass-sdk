@@ -43,13 +43,12 @@ Currently we support:
 | Meta | Meta Wearables |
 | Brilliant Labs | Frame |
 | RayNeo | x2 Glasses (validated), x3 Pro Glasses (untested) |
+| INMO | Air3 (adapter shipped, hardware validation pending) |
 | Omi | Omi Glass |
 | Even Realities | G1 (adapter shipped, hardware validation pending) |
 | *Simulation* | — |
 
-We're working on and will support soon:
-
-- **INMO**
+We're working on and will support more glasses soon.
 
 Welcome the contributions from the community on more glasses!
 
@@ -65,7 +64,7 @@ Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hk
 
 New to the SDK? Follow [Your First App (Android)](./docs/getting-started-android.md).
 
-The main Android artifact is `xgglass-universal`. It includes Rokid, RayNeo, Simulator, Omi, and the Frame bridge API. The SDK minSdk is 28; Meta support and the RayNeo glasses host require minSdk 29.
+The main Android artifact is `xgglass-universal`. It includes Rokid, RayNeo, INMO Air3, Simulator, Omi, and the Frame bridge API. The SDK minSdk is 28; Meta support and the RayNeo glasses host require minSdk 29.
 RayNeo support additionally requires the vendor AARs downloaded from RayNeo's developer docs; see [third_party/rayneo/aar/README.md](./third_party/rayneo/aar/README.md).
 
 Besides `google()` and `mavenCentral()`, one extra repository is required: Rokid support pulls `com.rokid.cxr:client-m` from Rokid's Maven repository. Published SDK artifacts other than Rokid's vendor dependency resolve from Maven Central alone.
@@ -177,9 +176,9 @@ xg-glass run
 
 | Channel | Works from the channel | Notes |
 | --- | --- | --- |
-| Android Maven `xgglass-universal` | Rokid, RayNeo, Simulator, Omi, Even Realities G1, Frame bridge API | Frame is only the bridge API from Maven; a working Frame integration needs the source/CLI flow because the embedded Flutter module is not published. Even G1 hardware validation is pending; other hardware validation varies by device. |
+| Android Maven `xgglass-universal` | Rokid, RayNeo, INMO Air3, Simulator, Omi, Even Realities G1, Frame bridge API | Frame is only the bridge API from Maven; a working Frame integration needs the source/CLI flow because the embedded Flutter module is not published. INMO Air3 and Even G1 hardware validation are pending; other hardware validation varies by device. |
 | Android Maven `xgglass-device-meta` | Meta | Opt-in artifact. Requires Meta's GitHub Packages repository and a GitHub token with `read:packages`. |
-| iOS Swift Package | Simulator, Omi, Even Realities G1, Meta | Frame is sample-only through Flutter add-to-app. Even G1 iOS hardware validation is pending. Rokid and RayNeo are not available on iOS today; see [iOS device support](./docs/ios-device-support.md). |
+| iOS Swift Package | Simulator, Omi, Even Realities G1, Meta | Frame is sample-only through Flutter add-to-app. Even G1 and Meta HFP microphone hardware validation are pending. Rokid and RayNeo are not available on iOS today; see [iOS device support](./docs/ios-device-support.md). |
 | CLI/source flow | Android generated projects, Simulator, and current Frame integration | Use this path for Frame today. The template wires `device-frame-embedded` and the Flutter module from the SDK checkout. |
 
 #### Simulator

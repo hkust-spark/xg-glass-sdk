@@ -22,6 +22,9 @@ dependencies {
     api(project(":device-rayneo-installer"))
     api(project(":device-rayneo-runtime"))
 
+    // INMO Air3 on-glasses runtime adapter
+    api(project(":device-inmo-runtime"))
+
     // Simulator implementation (virtual glasses for development/testing)
     api(project(":device-simulator"))
 

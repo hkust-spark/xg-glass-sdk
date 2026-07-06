@@ -111,6 +111,7 @@ class XgGlassMavenPublishPlugin : Plugin<Project> {
         "device-rokid" -> "Rokid Glasses adapter for xg.glass."
         "device-rayneo-installer" -> "RayNeo phone-side installer and manager for the xg.glass glasses host."
         "device-rayneo-runtime" -> "RayNeo on-glasses runtime adapter for xg.glass."
+        "device-inmo-runtime" -> "INMO Air3 on-glasses runtime adapter (display, camera, microphone, audio, touch) for xg.glass."
         "device-simulator" -> "Simulator adapter: develop xg.glass apps with the phone camera, no glasses hardware."
         "device-omi" -> "Omi Glass BLE adapter (audio capture and photo) for xg.glass."
         "device-even" -> "Even Realities G1 dual-BLE adapter (display, microphone, touch) for xg.glass."

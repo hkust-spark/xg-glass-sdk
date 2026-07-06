@@ -51,8 +51,10 @@ jobs:
             :device-simulator:compileDebugKotlin \
             :device-rayneo-installer:compileDebugKotlin \
             :device-rayneo-runtime:compileDebugKotlin \
+            :device-inmo-runtime:compileDebugKotlin \
             :device-android-xr:compileDebugKotlin \
             :device-frame-flutter:compileDebugKotlin \
+            :device-inmo-runtime:testDebugUnitTest \
             :device-even:testDebugUnitTest \
             :app-contract:testDebugUnitTest \
             :core-android:testDebugUnitTest \
