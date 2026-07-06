@@ -12,15 +12,17 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     ignore:
-      # Gradle majors stay deliberate under #36; keep Gradle aligned with the
-      # Android Gradle Plugin compatibility window instead of auto-jumping.
+      # Gradle 9.3.1 is the exact intersection of AGP 9.1's minimum and
+      # Flutter 3.44's supported maximum -- 9.4+ minors are blocked until
+      # Flutter/KGP raise their ceilings (next #36 round). Patches allowed.
       - dependency-name: "gradle-wrapper"
-        update-types: ["version-update:semver-major"]
-      # AGP 9 is the other half of the same coordinated upgrade (#36).
-      # Wildcard covers the artifact and the com.android.library/application
-      # plugin ids that the version catalog's "agp" key resolves to.
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # AGP 9.1.1 pairs with Gradle 9.3.1 and Flutter 3.44; 9.2+ requires
+      # Gradle 9.4.1+ (outside the Flutter envelope). Wildcard covers the
+      # artifact and the com.android.library/application plugin ids that the
+      # version catalog's "agp" key resolves to. Patches allowed.
       - dependency-name: "com.android.*"
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
       # Kotlin toolchain bumps stay deliberate under #36; the catalog's
       # "kotlin" key resolves to org.jetbrains.kotlin.* plugin ids, and
       # build-logic depends on org.jetbrains.kotlin:* artifacts. Patches
