@@ -81,6 +81,8 @@ scripts/bump-version.sh <version>
 
 Then add the manual CHANGELOG entry for the release.
 
+- Update `docs/ai-assistant-guide.md` and `CHANGELOG.md` for any new devices or APIs in the release.
+
 ## 2. Full Verification
 
 Run the Android/Kotlin compile and unit-test matrix:

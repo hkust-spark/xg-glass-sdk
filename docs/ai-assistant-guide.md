@@ -24,7 +24,7 @@ Despite the name, this is the full API reference for human developers too.
 
 ## 1. What is xg.glass
 
-xg.glass is a unified Kotlin SDK for building AI-powered smart glasses applications. It abstracts away vendor-specific SDKs (Rokid, Brilliant Labs Frame, RayNeo, etc.) behind four simple primitives:
+xg.glass is a unified Kotlin SDK for building AI-powered smart glasses applications. It abstracts away vendor-specific SDKs and transports (Rokid, Brilliant Labs Frame, RayNeo, Even Realities, INMO, Meta, etc.) behind four simple primitives:
 
 | Primitive | Method | Description |
 |-----------|--------|-------------|
@@ -39,14 +39,16 @@ Write your app logic once against these four APIs, and it runs on all supported 
 
 ## 2. Supported Devices
 
-| Device | Model Enum | Camera | Display | Mic | Speaker |
-|--------|-----------|--------|---------|-----|---------|
-| Rokid Glasses | `GlassesModel.ROKID` | Yes | Yes | Yes | Yes (TTS + raw) |
-| Meta AI Glasses | `GlassesModel.META` | Yes | No | Yes | Yes (raw) |
-| Brilliant Labs Frame | `GlassesModel.FRAME` | Yes | Yes | Yes | No |
-| RayNeo x2 validated / x3 Pro untested | `GlassesModel.RAYNEO` | Yes | Yes | Yes | Yes (raw) |
-| Omi Glass | `GlassesModel.OMI` | Yes | No | Yes | No |
-| Simulator (Emulator) | `GlassesModel.SIMULATOR` | Yes (webcam/video) | Yes | Yes | Yes (TTS + raw) |
+| Device | Model Enum | Camera | Display | Mic | Speaker | Tap Events | Notes |
+|--------|-----------|--------|---------|-----|---------|------------|-------|
+| Rokid Glasses | `GlassesModel.ROKID` | Yes | Yes | Yes | Yes (TTS + raw) | No | Android phone-side adapter |
+| Meta AI Glasses | `GlassesModel.META` | Yes | No on iOS; Android display-capable models may enable it after connect | Yes (Android and iOS Bluetooth HFP) | Android raw; iOS no | No | iOS mic requires the glasses to be the active HFP input; hardware validation pending for iOS mic |
+| Brilliant Labs Frame | `GlassesModel.FRAME` | Yes | Yes | Yes | No | Yes | Working integration uses the source/CLI flow with the embedded Flutter module |
+| RayNeo x2 validated / x3 Pro untested | `GlassesModel.RAYNEO` | Yes | Yes | Yes | Yes (raw) | No | On-glasses Android runtime |
+| INMO Air3 | `GlassesModel.INMO` | Yes | Yes | Yes | Yes (raw/encoded bytes) | Yes, when the host Activity forwards key events | On-glasses Android runtime; hardware validation pending |
+| Omi Glass | `GlassesModel.OMI` | No | No | Yes | No | No | Audio-focused BLE adapter |
+| Even Realities G1 | `GlassesModel.EVEN` | No | Yes | Yes (LC3 passthrough) | No | Yes | Dual-BLE Android + iOS adapter; hardware validation pending |
+| Simulator (Emulator) | `GlassesModel.SIMULATOR` | Yes (webcam/video) | Yes | Yes on Android simulator | Yes (TTS + raw) | No | Local development without glasses hardware |
 
 Check capabilities at runtime via `ctx.client.capabilities`:
 
@@ -54,6 +56,7 @@ Check capabilities at runtime via `ctx.client.capabilities`:
 val caps = ctx.client.capabilities
 if (caps.canRecordAudio) { /* safe to use startMicrophone() */ }
 if (caps.canPlayTts) { /* safe to use playAudio(AudioSource.Tts(...)) */ }
+if (caps.supportsTapEvents) { /* safe to expect GlassesEvent.Tap */ }
 ```
 
 ---
@@ -84,7 +87,8 @@ An xg.glass app consists of a single Kotlin file implementing `UniversalAppEntry
 └──────────────────────────────────────────┘
           ↕
 ┌──────────────────────────────────────────┐
-│  Rokid / Meta / Frame / RayNeo / Omi / Sim │
+│  Rokid / Meta / Frame / RayNeo / INMO   │
+│  Even / Omi / Sim                       │
 └──────────────────────────────────────────┘
 ```
 
@@ -108,7 +112,7 @@ pip install xg-glass
 xg-glass --help   # verify installation
 ```
 
-The PyPI CLI can build, install, and run inside an already-generated project that contains `xg-glass.yaml`. Commands that create a project from this SDK, including `xg-glass init` and `xg-glass run <file.kt>`, need an SDK checkout supplied with `--sdk` and, where needed, `--template`.
+The PyPI CLI can build, install, and run inside an already-generated project that contains `xg-glass.yaml`. Commands that create a project from this SDK, including `xg-glass init` and `xg-glass run <file.kt>`, download the matching `xg-glass-sdk` release on first use and cache it under `~/.xg-glass/sdk/`. Pass `--sdk /path/to/xg-glass-sdk` to use a local checkout instead.
 
 ### Meta AI Glasses setup
 
@@ -134,25 +138,80 @@ Notes:
 
 ```bash
 # On real glasses (auto-detects connected device)
-xg-glass run --sdk /path/to/xg-glass-sdk /path/to/MyEntry.kt
+xg-glass run /path/to/MyEntry.kt
 
 # On simulator (uses webcam as camera)
-xg-glass run --sdk /path/to/xg-glass-sdk --sim /path/to/MyEntry.kt
+xg-glass run --sim /path/to/MyEntry.kt
 
 # On simulator with a pre-recorded video
-xg-glass run --sdk /path/to/xg-glass-sdk --sim --local_video /path/to/video.mp4 /path/to/MyEntry.kt
-xg-glass run --sdk /path/to/xg-glass-sdk --sim --video_url <youtube-or-bilibili-url> /path/to/MyEntry.kt
+xg-glass run --sim --local_video /path/to/video.mp4 /path/to/MyEntry.kt
+xg-glass run --sim --video_url <youtube-or-bilibili-url> /path/to/MyEntry.kt
+
+# Use a local SDK checkout instead of the cached release
+xg-glass run --sdk /path/to/xg-glass-sdk /path/to/MyEntry.kt
 ```
 
 ### Create a full project
 
 ```bash
-xg-glass init --sdk /path/to/xg-glass-sdk /path/to/myapp
+xg-glass init /path/to/myapp
 cd /path/to/myapp
 xg-glass build
 xg-glass install
 xg-glass run
 ```
+
+### Even Realities G1 Android setup
+
+Use `EvenGlassesClient` for the Android dual-BLE adapter:
+
+```kotlin
+import com.xgglass.device.even.EvenGlassesClient
+
+val client = EvenGlassesClient(context)
+```
+
+The generated Android host requests BLE permissions for Even: `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT` on Android 12+, or `ACCESS_FINE_LOCATION`, `BLUETOOTH`, and `BLUETOOTH_ADMIN` on older Android versions. G1 exposes two BLE peripherals, one left arm and one right arm; the adapter scans until it finds a matching pair, connects both arms, and sends microphone-enable commands to the right arm.
+
+Display output is paged through the G1 text paging frame. Microphone chunks are raw LC3 frames with `format.encoding = AudioEncoding.LC3`, `sampleRateHz = 16000`, and one channel; xg.glass does not decode them, so your app or ASR layer must decode LC3 on the host. Simple TouchBar packets are emitted as `GlassesEvent.Tap`. The adapter is shipped but still needs real G1 hardware validation.
+
+### Even Realities G1 iOS setup
+
+The iOS adapter is exposed through `XgGlassKit` and the `EvenIosGlassesClient` Kotlin/Native class. The sample app wires it like this:
+
+```swift
+let client = EvenIosGlassesClient(options: EvenIosOptions(connectTimeoutMs: 30_000))
+```
+
+It uses CoreBluetooth to scan for the paired left/right arms and has the same no-camera, paged-display, LC3 microphone, and tap-event behavior as the Android adapter. Hardware validation is still pending.
+
+### INMO Air3 on-glasses runtime setup
+
+INMO Air3 uses an on-glasses Android runtime model: your app runs directly on the glasses in a foreground Activity, and `InmoRuntimeGlassesClient` talks to Camera2, `AudioRecord`, Android playback APIs, Toast display, and host key events. It does not require an INMO vendor SDK.
+
+```kotlin
+import com.xgglass.device.inmo.runtime.InmoRuntimeGlassesClient
+
+val client = InmoRuntimeGlassesClient(this)
+```
+
+Forward Activity key-down events to surface tap events:
+
+```kotlin
+override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+    val inmoClient = client as? InmoRuntimeGlassesClient
+    if (inmoClient?.onHostKeyEvent(keyCode) == true) return true
+    return super.onKeyDown(keyCode, event)
+}
+```
+
+The current SDK maps `KEYCODE_ENTER` to `GlassesEvent.Tap(1)`. Camera captures include `CapturedImage.rotationDegrees` when Android reports `CameraCharacteristics.SENSOR_ORIENTATION`. Microphone capture is PCM through the shared Android microphone helper; `AudioEncoding.LC3` and `AudioEncoding.OPUS` are rejected for INMO microphone capture. Hardware validation is pending.
+
+### Meta iOS microphone setup
+
+`MetaGlassesClient` on iOS exposes `startMicrophone()` over Bluetooth HFP. The glasses must already be connected and must be the active Bluetooth HFP input; otherwise the call fails instead of silently recording the phone microphone. Only `AudioEncoding.PCM_S16_LE` is accepted. The returned `MicrophoneSession.format.sampleRateHz` reports the actual `AVAudioEngine` input sample rate rounded to an integer, not a fixed constant.
+
+Expected failure modes include missing microphone permission, a busy existing microphone session, an unsupported requested encoding, unavailable input format, no active Bluetooth HFP input, a route change to a different HFP device, audio interruption, or PCM conversion/engine recovery failure. These failures are surfaced through `GlassesError` and warning events where available.
 
 ---
 
@@ -193,6 +252,14 @@ interface GlassesClient {
 ```
 
 > **Note**: `connect()` and `disconnect()` are managed by the host. Your command code only needs to call `capturePhoto`, `display`, `playAudio`, and `startMicrophone`.
+
+**GlassesModel:**
+
+```kotlin
+enum class GlassesModel {
+    FRAME, META, ROKID, RAYNEO, INMO, ANDROID_XR, SIMULATOR, OMI, EVEN
+}
+```
 
 ### 5.2 capturePhoto
 
@@ -338,7 +405,7 @@ data class AudioChunk(
 
 ```kotlin
 data class AudioFormat(
-    val encoding: AudioEncoding,  // PCM_S16_LE, PCM_S8, or OPUS
+    val encoding: AudioEncoding,  // PCM_S16_LE, PCM_S8, OPUS, or LC3
     val sampleRateHz: Int?,       // e.g. 16000, 44100 (nullable: some vendors don't expose it)
     val channelCount: Int?,       // e.g. 1 (mono), 2 (stereo) (nullable)
 )
@@ -351,8 +418,11 @@ enum class AudioEncoding {
     PCM_S16_LE,  // Signed 16-bit little-endian PCM (most common)
     PCM_S8,      // Signed 8-bit PCM
     OPUS,        // Opus frames (container-less)
+    LC3,         // LC3 frames; host-side decoding is the app's responsibility
 }
 ```
+
+`AudioEncoding.LC3` is not PCM. Even G1 microphone sessions expose device-streamed LC3 frames; decode them before passing audio to APIs that expect PCM bytes.
 
 ### 5.5 playAudio
 
@@ -438,7 +508,14 @@ val caps = ctx.client.capabilities
 if (caps.canRecordAudio) { /* safe to call startMicrophone() */ }
 if (caps.canPlayTts)     { /* safe to call playAudio(AudioSource.Tts(...)) */ }
 if (caps.canPlayAudioBytes) { /* safe to call playAudio(AudioSource.RawBytes(...)) */ }
+if (caps.supportsTapEvents) { /* safe to expect GlassesEvent.Tap from events */ }
 ```
+
+Relevant new-device capability profiles:
+
+- Even G1: display, LC3 microphone, tap events, streaming display updates; no camera or speaker.
+- INMO Air3: camera, display, PCM microphone, raw/encoded audio playback, tap events through host key forwarding.
+- Meta iOS: camera and Bluetooth HFP microphone; no display, speaker, or tap events.
 
 ### 5.7 Events
 
@@ -451,6 +528,8 @@ sealed class GlassesEvent {
     data class Tap(val count: Int) : GlassesEvent()  // e.g. single tap, double tap
 }
 ```
+
+`GlassesEvent.Tap` is currently emitted by Frame, Even G1, and INMO Air3. INMO only emits it when the host Activity forwards key events to `InmoRuntimeGlassesClient.onHostKeyEvent(keyCode)`.
 
 ```kotlin
 ctx.client.events.collect { event ->
@@ -535,7 +614,7 @@ enum class HostKind {
 ```kotlin
 data class HostEnvironment(
     val hostKind: HostKind,   // PHONE or GLASSES
-    val model: GlassesModel,  // ROKID, META, FRAME, RAYNEO, OMI, SIMULATOR
+    val model: GlassesModel,  // ROKID, META, FRAME, RAYNEO, INMO, OMI, EVEN, SIMULATOR
 )
 ```
 
@@ -575,7 +654,7 @@ In your command's `run()`, the most commonly used fields are:
 
 ### 6.5 File Structure for Single-File Run
 
-When using `xg-glass run --sdk /path/to/xg-glass-sdk MyEntry.kt`, your file must:
+When using `xg-glass run MyEntry.kt` (with the cached SDK or with `--sdk /path/to/xg-glass-sdk`), your file must:
 
 1. Have a `package` declaration (e.g. `package com.example.myapp.logic`)
 2. Contain a top-level `class` or `object` implementing `UniversalAppEntrySimple`
@@ -718,10 +797,10 @@ Each sample is a single `.kt` file that you can run directly:
 
 ```bash
 cd xg-glass-sample/photo_translator
-xg-glass run --sdk /path/to/xg-glass-sdk TranslationEntry.kt
+xg-glass run TranslationEntry.kt
 
 # or with simulator:
-xg-glass run --sdk /path/to/xg-glass-sdk --sim TranslationEntry.kt
+xg-glass run --sim TranslationEntry.kt
 ```
 
 ---
@@ -862,6 +941,8 @@ if (!ctx.client.capabilities.canRecordAudio) {
 
 10. **Check capabilities** before using mic or speaker features — not all glasses support them.
 
+11. **Do not treat `AudioEncoding.LC3` as PCM** — Even G1 streams LC3 frames. Decode LC3 before feeding bytes to an `AudioTrack`, WAV writer, or PCM-only ASR API.
+
 ### Skeleton template for AI to start from
 
 ```kotlin
@@ -911,13 +992,14 @@ class APPNAMEEntry : UniversalAppEntrySimple {
 
 ```bash
 # Run single file (fastest iteration)
-xg-glass run --sdk /path/to/xg-glass-sdk MyEntry.kt                              # on real glasses
-xg-glass run --sdk /path/to/xg-glass-sdk --sim MyEntry.kt                        # on simulator
-xg-glass run --sdk /path/to/xg-glass-sdk --sim --local_video vid.mp4 MyEntry.kt  # simulator + video
-xg-glass run --sdk /path/to/xg-glass-sdk --sim --video_url <url> MyEntry.kt      # simulator + YouTube/Bilibili
+xg-glass run MyEntry.kt                              # on real glasses, auto-downloads cached SDK if needed
+xg-glass run --sim MyEntry.kt                        # on simulator
+xg-glass run --sim --local_video vid.mp4 MyEntry.kt  # simulator + video
+xg-glass run --sim --video_url <url> MyEntry.kt      # simulator + YouTube/Bilibili
+xg-glass run --sdk /path/to/xg-glass-sdk MyEntry.kt  # force a local SDK checkout
 
 # Full project workflow
-xg-glass init --sdk /path/to/xg-glass-sdk myapp  # create project
+xg-glass init myapp       # create project, auto-downloads cached SDK if needed
 xg-glass build             # build APK
 xg-glass install           # install on device
 xg-glass run               # launch app

@@ -1,0 +1,11 @@
+# xg.glass
+
+xg.glass is a Kotlin Multiplatform SDK and CLI for building smart-glasses apps against one unified `GlassesClient` API across supported Android, iOS, on-glasses runtime, BLE, and simulator adapters.
+
+## Docs
+
+- [AI Assistant Guide](docs/ai-assistant-guide.md) - primary full API reference for AI assistants.
+- [README](README.md) - installation channels, device matrix, and repository overview.
+- [Your First App for Android](docs/getting-started-android.md) - Maven-based Android quickstart.
+- [iOS Device Support](docs/ios-device-support.md) - iOS feasibility and supported adapter notes.
+- [Swift Package Setup](docs/swift-package.md) - SwiftPM products and iOS quick start.
