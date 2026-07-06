@@ -10,9 +10,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    # Temporarily raised from 5 so the backlog surfaces in one wave instead of
-    # backfilling one PR per merge; drop back to 5 once the queue is drained.
-    open-pull-requests-limit: 15
+    open-pull-requests-limit: 5
     ignore:
       # Gradle 9.6+ removed internal APIs that AGP 8.x depends on; majors are
       # blocked on the coordinated toolchain upgrade (AGP 9 + Kotlin 2.2), #36.
@@ -42,6 +40,10 @@ updates:
       # and the build-logic artifact form.
       - dependency-name: "com.vanniktech.maven.publish"
       - dependency-name: "com.vanniktech:gradle-maven-publish-plugin"
+      # CXR-M 1.2.2 breaks the device-rokid compile and buys nothing we need
+      # (see issue #9's SDK survey). The 1.0.4 adapter is hardware-validated;
+      # migrate deliberately alongside a Rokid hardware session (#29).
+      - dependency-name: "com.rokid.cxr:client-m"
 
   - package-ecosystem: "pip"
     directory: "/tools"
