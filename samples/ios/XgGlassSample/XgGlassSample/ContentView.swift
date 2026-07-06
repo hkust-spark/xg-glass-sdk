@@ -5,6 +5,7 @@ import XgGlassMetaTesting
 enum ActiveClientKind: String, CaseIterable, Identifiable {
     case kotlinSimulator
     case swiftStub
+    case even
     case frame
     case meta
 
@@ -16,6 +17,8 @@ enum ActiveClientKind: String, CaseIterable, Identifiable {
             return "Kotlin Sim"
         case .swiftStub:
             return "Swift Stub"
+        case .even:
+            return "Even G1"
         case .frame:
             return "Frame (Flutter)"
         case .meta:
@@ -108,6 +111,7 @@ final class SampleModel: ObservableObject {
 
     private let kotlinClient: GlassesClient
     private let swiftStubClient: GlassesClient
+    private let evenClient: GlassesClient
     private let frameClient: FrameGlassesClient
     private let metaClient: MetaGlassesClient
 
@@ -119,6 +123,7 @@ final class SampleModel: ObservableObject {
         self.swiftStubClient = StubSwiftGlassesClient(displaySink: { text in
             displayUpdate?(.swiftStub, text)
         })
+        self.evenClient = EvenIosGlassesClient(options: EvenIosOptions(connectTimeoutMs: 30_000))
         self.frameClient = FrameGlassesClient()
         self.metaClient = MetaGlassesClient()
         displayUpdate = { [weak self] source, text in
@@ -134,6 +139,8 @@ final class SampleModel: ObservableObject {
             return kotlinClient
         case .swiftStub:
             return swiftStubClient
+        case .even:
+            return evenClient
         case .frame:
             return frameClient
         case .meta:

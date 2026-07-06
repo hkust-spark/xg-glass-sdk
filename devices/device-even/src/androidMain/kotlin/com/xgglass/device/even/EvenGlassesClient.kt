@@ -97,6 +97,12 @@ class EvenGlassesClient(
     private val commandMutex = Mutex()
     private val malformedMicDrops = AtomicInteger(0)
     private val unhandledNotifications = AtomicInteger(0)
+    private val droppedMicFrames = AtomicInteger(0)
+    private val activeConnectionLock = Any()
+    private val activeConnections = linkedSetOf<ArmConnection>()
+
+    @Volatile
+    private var activeScan: ActiveScan? = null
 
     @Volatile
     private var leftArm: ArmConnection? = null
@@ -158,9 +164,11 @@ class EvenGlassesClient(
 
                             val failure = leftResult.exceptionOrNull() ?: rightResult.exceptionOrNull()
                             if (failure != null) {
-                                connectedLeft?.close()
-                                connectedRight?.close()
                                 if (failure is CancellationException) throw failure
+                                val error = (failure as? GlassesError)
+                                    ?: GlassesError.Transport("Even G1 connect failed: ${failure.message}", failure)
+                                connectedLeft?.close(error)
+                                connectedRight?.close(error)
                                 throw failure
                             }
                         }
@@ -171,22 +179,24 @@ class EvenGlassesClient(
                         startHeartbeat()
                         emitLog("Even G1: connected channel ${pair.channel}")
                     } catch (ce: CancellationException) {
-                        connectedLeft?.close()
-                        connectedRight?.close()
-                        closeConnections()
+                        connectedLeft?.close(ce)
+                        connectedRight?.close(ce)
+                        closeConnections(ce)
                         throw ce
                     } catch (e: Exception) {
-                        connectedLeft?.close()
-                        connectedRight?.close()
-                        closeConnections()
+                        val error = (e as? GlassesError)
+                            ?: GlassesError.Transport("Even G1 connect failed: ${e.message}", e)
+                        connectedLeft?.close(error)
+                        connectedRight?.close(error)
+                        closeConnections(error)
                         throw e
                     }
                 }
             } catch (_: TimeoutCancellationException) {
-                closeConnections()
+                closeConnections(GlassesError.Timeout("Even G1 connect"))
                 throw GlassesError.Timeout("Even G1 connect")
             } catch (ce: CancellationException) {
-                closeConnections()
+                closeConnections(ce)
                 throw ce
             }
         }
@@ -196,14 +206,17 @@ class EvenGlassesClient(
         (error as? GlassesError) ?: GlassesError.Transport("Even G1 connect failed: ${error.message}", error)
 
     override suspend fun disconnect() {
+        val disconnectCancellation = CancellationException("Even G1 connect cancelled by disconnect")
         try {
             microphoneSession?.stop()
+            stopMicrophoneOnRight()
         } catch (ce: CancellationException) {
             throw ce
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            emitLog("Even G1: microphone stop during disconnect failed: ${e.message}")
         }
         microphoneSession = null
-        closeConnections()
+        closeConnections(disconnectCancellation)
         resetCapabilities()
         _state.value = ConnectionState.Disconnected
     }
@@ -408,7 +421,8 @@ class EvenGlassesClient(
             sendCommandBoth(EvenClearScreenProtocol.frame(), ::isGenericAck)
         } catch (ce: CancellationException) {
             throw ce
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            emitLog("Even G1: best-effort clear screen failed: ${e.message}")
         }
     }
 
@@ -426,6 +440,23 @@ class EvenGlassesClient(
         }
     }
 
+    private fun registerConnection(connection: ArmConnection) {
+        synchronized(activeConnectionLock) {
+            activeConnections.add(connection)
+        }
+    }
+
+    private fun unregisterConnection(connection: ArmConnection) {
+        synchronized(activeConnectionLock) {
+            activeConnections.remove(connection)
+        }
+    }
+
+    private fun snapshotConnections(): List<ArmConnection> {
+        val tracked = synchronized(activeConnectionLock) { activeConnections.toList() }
+        return (tracked + listOfNotNull(leftArm, rightArm)).distinct()
+    }
+
     private suspend fun scanForPair(adapter: BluetoothAdapter): EvenScanPair {
         val scanner = adapter.bluetoothLeScanner
             ?: throw GlassesError.Transport("Bluetooth LE scanner not available")
@@ -438,6 +469,13 @@ class EvenGlassesClient(
                 .build()
 
             var scanCallback: ScanCallback? = null
+            lateinit var scanRegistration: ActiveScan
+
+            fun clearActiveScan() {
+                if (activeScan === scanRegistration) {
+                    activeScan = null
+                }
+            }
 
             fun stop() {
                 try {
@@ -448,6 +486,7 @@ class EvenGlassesClient(
 
             fun finish(pair: EvenScanPair) {
                 if (completed.compareAndSet(false, true)) {
+                    clearActiveScan()
                     stop()
                     cont.resume(pair, onCancellation = null)
                 }
@@ -455,6 +494,7 @@ class EvenGlassesClient(
 
             fun fail(error: Exception) {
                 if (completed.compareAndSet(false, true)) {
+                    clearActiveScan()
                     stop()
                     cont.resumeWithException(error)
                 }
@@ -481,8 +521,14 @@ class EvenGlassesClient(
                 }
             }
 
+            scanRegistration = ActiveScan { error ->
+                fail(error)
+            }
+            activeScan = scanRegistration
+
             cont.invokeOnCancellation {
                 if (completed.compareAndSet(false, true)) {
+                    clearActiveScan()
                     stop()
                 }
             }
@@ -499,6 +545,7 @@ class EvenGlassesClient(
         suspendCancellableCoroutine { cont ->
             val completed = AtomicBoolean(false)
             val connection = ArmConnection(arm = arm, device = device)
+            registerConnection(connection)
 
             fun succeed() {
                 if (completed.compareAndSet(false, true)) {
@@ -508,7 +555,7 @@ class EvenGlassesClient(
 
             fun fail(error: Exception) {
                 if (completed.compareAndSet(false, true)) {
-                    connection.close()
+                    connection.close(error)
                     cont.resumeWithException(error)
                 }
             }
@@ -523,7 +570,7 @@ class EvenGlassesClient(
                         }
                         connection.failPending(error)
                         if (completed.compareAndSet(false, true)) {
-                            connection.close()
+                            connection.close(error)
                             cont.resumeWithException(error)
                         } else {
                             handleUnexpectedDisconnect(connection, error)
@@ -628,7 +675,7 @@ class EvenGlassesClient(
 
             cont.invokeOnCancellation {
                 if (completed.compareAndSet(false, true)) {
-                    connection.close()
+                    connection.close(CancellationException("Even G1 $arm connect cancelled"))
                 }
             }
         }
@@ -639,7 +686,13 @@ class EvenGlassesClient(
                 val sequence = synchronized(micSequenceLock) {
                     micSequenceTracker.next(mic.frame.sequence)
                 } ?: return
-                microphoneSession?.emit(mic.frame.lc3Bytes, sequence)
+                val session = microphoneSession ?: return
+                if (!session.emit(mic.frame.lc3Bytes, sequence)) {
+                    val count = droppedMicFrames.incrementAndGet()
+                    if (shouldRateLimitLog(count)) {
+                        emitWarn("Even G1: dropped mic frame due to audio backpressure; count=$count")
+                    }
+                }
                 return
             }
             is EvenMicNotificationResult.Malformed -> {
@@ -680,7 +733,7 @@ class EvenGlassesClient(
             micSequenceTracker.nextEndOfStreamSequence()
         }
         session?.emitEndOfStream(eosSequence)
-        closeConnections()
+        closeConnections(error)
         resetCapabilities()
         emitLog("Even G1: disconnected after $reason: ${error.message}")
         _state.value = ConnectionState.Disconnected
@@ -694,12 +747,13 @@ class EvenGlassesClient(
         heartbeatJob = null
     }
 
-    private fun closeConnections() {
+    private fun closeConnections(error: Exception = GlassesError.Transport("Even G1 connection closed")) {
         stopHeartbeat()
-        leftArm?.close()
-        rightArm?.close()
+        activeScan?.fail(error)
+        val connections = snapshotConnections()
         leftArm = null
         rightArm = null
+        connections.forEach { it.close(error) }
     }
 
     private fun writeDescriptorCompat(
@@ -930,8 +984,8 @@ class EvenGlassesClient(
             pending.mtu?.resumeWithException(error)
         }
 
-        fun close() {
-            failPending(GlassesError.Transport("Even G1 $arm connection closed"))
+        fun close(error: Exception = GlassesError.Transport("Even G1 $arm connection closed")) {
+            failPending(error)
             try {
                 gatt?.disconnect()
             } catch (_: Exception) {
@@ -943,6 +997,7 @@ class EvenGlassesClient(
             gatt = null
             txCharacteristic = null
             rxCharacteristic = null
+            unregisterConnection(this)
         }
     }
 
@@ -960,6 +1015,14 @@ class EvenGlassesClient(
         val left: EvenScannedArm,
         val right: EvenScannedArm,
     )
+
+    private class ActiveScan(
+        private val failBlock: (Exception) -> Unit,
+    ) {
+        fun fail(error: Exception) {
+            failBlock(error)
+        }
+    }
 
     private data class PendingContinuations(
         val responses: List<CancellableContinuation<ByteArray>>,

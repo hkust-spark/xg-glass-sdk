@@ -179,7 +179,7 @@ xg-glass run
 | --- | --- | --- |
 | Android Maven `xgglass-universal` | Rokid, RayNeo, Simulator, Omi, Even Realities G1, Frame bridge API | Frame is only the bridge API from Maven; a working Frame integration needs the source/CLI flow because the embedded Flutter module is not published. Even G1 hardware validation is pending; other hardware validation varies by device. |
 | Android Maven `xgglass-device-meta` | Meta | Opt-in artifact. Requires Meta's GitHub Packages repository and a GitHub token with `read:packages`. |
-| iOS Swift Package | Simulator, Omi, Meta | Frame is sample-only through Flutter add-to-app. Rokid and RayNeo are not available on iOS today; see [iOS device support](./docs/ios-device-support.md). |
+| iOS Swift Package | Simulator, Omi, Even Realities G1, Meta | Frame is sample-only through Flutter add-to-app. Even G1 iOS hardware validation is pending. Rokid and RayNeo are not available on iOS today; see [iOS device support](./docs/ios-device-support.md). |
 | CLI/source flow | Android generated projects, Simulator, and current Frame integration | Use this path for Frame today. The template wires `device-frame-embedded` and the Flutter module from the SDK checkout. |
 
 #### Simulator

@@ -39,6 +39,11 @@ as `core-kmp-android`, `core-iosarm64`, and `core-iossimulatorarm64` as Gradle
 metadata targets. Android consumers should depend on the public coordinates
 above instead of adding those auxiliary artifacts directly. The iOS device
 adapters continue to ship through the Swift package, not Maven Central.
+The Even G1 adapter is also a Kotlin Multiplatform publication; publishing it
+emits auxiliary Gradle metadata variants such as `xgglass-device-even-android`,
+`xgglass-device-even-iosarm64`, and `xgglass-device-even-iossimulatorarm64`.
+Consumers should still use `xgglass-device-even` on Android and the Swift
+package/XgGlassKit umbrella on iOS.
 
 The Swift package dependency form is:
 

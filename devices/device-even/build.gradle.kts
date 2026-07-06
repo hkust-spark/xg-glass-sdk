@@ -15,6 +15,8 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_1_8)
         }
     }
+    iosArm64()
+    iosSimulatorArm64()
 
     sourceSets {
         commonMain.dependencies {

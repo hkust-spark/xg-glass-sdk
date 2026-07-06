@@ -2,6 +2,13 @@ import XCTest
 import XgGlassMetaTesting
 @testable import XgGlassSample
 
+final class ActiveClientKindTests: XCTestCase {
+    func testEvenClientKindIsExposedInPicker() {
+        XCTAssertTrue(ActiveClientKind.allCases.contains(.even))
+        XCTAssertEqual(ActiveClientKind.even.title, "Even G1")
+    }
+}
+
 final class FrameGlassesClientTransitionTests: XCTestCase {
     func testConnectedWhileDisconnectedBecomesConnected() {
         let next = FrameGlassesClient.resolveRuntimeStateTransition(

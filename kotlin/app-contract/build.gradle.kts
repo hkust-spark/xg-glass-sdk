@@ -31,6 +31,7 @@ kotlin {
             export(project(":core"))
             export(project(":device-simulator-ios"))
             export(project(":device-omi-ios"))
+            export(project(":device-even"))
             xcf.add(this)
         }
     }
@@ -44,6 +45,7 @@ kotlin {
             // The iOS framework aggregates the shared API and available iOS device adapters.
             api(project(":device-simulator-ios"))
             api(project(":device-omi-ios"))
+            api(project(":device-even"))
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
