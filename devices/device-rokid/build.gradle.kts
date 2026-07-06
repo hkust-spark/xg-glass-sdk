@@ -18,7 +18,7 @@ dependencies {
     }
 
     // We keep JSON small and stable for custom view layout.
-    api("com.google.code.gson:gson:2.10.1")
+    api("com.google.code.gson:gson:2.14.0")
 
     // Required because the adapter takes an AppCompatActivity and uses AndroidX APIs.
     api("androidx.appcompat:appcompat:1.7.0")
