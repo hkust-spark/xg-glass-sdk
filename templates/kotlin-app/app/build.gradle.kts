@@ -47,7 +47,7 @@ val appMinSdk = if (hasMetaDatAccess) 29 else 28
 
 android {
     namespace = "com.example.xgglassapp"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.xgglassapp"
@@ -153,6 +153,6 @@ dependencies {
     implementation(project(":xgglass_app_logic"))
 
     implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.core:core-ktx:1.17.0")
     implementation("com.google.android.material:material:1.12.0")
 }

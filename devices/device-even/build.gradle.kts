@@ -34,7 +34,7 @@ kotlin {
 
 extensions.configure<LibraryExtension>("android") {
     namespace = "com.xgglass.device.even"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         minSdk = 28
     }
