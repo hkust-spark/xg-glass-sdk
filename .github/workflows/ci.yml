@@ -128,9 +128,11 @@ jobs:
 
   ios:
     name: iOS Kotlin
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.app/Contents/Developer
     steps:
       - name: Check out
         uses: actions/checkout@v7

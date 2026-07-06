@@ -1,6 +1,6 @@
 [versions]
 agp = "8.13.2"
-kotlin = "2.1.0"
+kotlin = "2.4.0"
 coroutines = "1.8.1"
 
 [plugins]
