@@ -17,7 +17,7 @@ dependencies {
     // Keep versions aligned with `xg-glass-sdk/gradle/libs.versions.toml`.
     compileOnly("com.android.tools.build:gradle:8.13.1")
     compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
-    implementation("com.vanniktech:gradle-maven-publish-plugin:0.30.0")
+    implementation("com.vanniktech:gradle-maven-publish-plugin:0.37.0")
 }
 
 gradlePlugin {
