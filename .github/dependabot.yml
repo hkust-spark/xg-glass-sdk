@@ -12,8 +12,8 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     ignore:
-      # Gradle 9.6+ removed internal APIs that AGP 8.x depends on; majors are
-      # blocked on the coordinated toolchain upgrade (AGP 9 + Kotlin 2.2), #36.
+      # Gradle 9.6+ removed internal APIs that AGP 8.x depends on; majors stay
+      # blocked until the coordinated AGP 9 leg of #36 lands.
       - dependency-name: "gradle-wrapper"
         update-types: ["version-update:semver-major"]
       # AGP 9 is the other half of the same coordinated upgrade (#36).
@@ -21,20 +21,15 @@ updates:
       # plugin ids that the version catalog's "agp" key resolves to.
       - dependency-name: "com.android.*"
         update-types: ["version-update:semver-major"]
-      # Kotlin 2.2+ (currently 2.4) is the third leg of #36; the catalog's
+      # Kotlin toolchain bumps stay deliberate under #36; the catalog's
       # "kotlin" key resolves to org.jetbrains.kotlin.* plugin ids, and
       # build-logic depends on org.jetbrains.kotlin:* artifacts. Patches
-      # within 2.1.x stay allowed. (Deliberately NOT "org.jetbrains.kotlin*",
+      # within 2.4.x stay allowed. (Deliberately NOT "org.jetbrains.kotlin*",
       # which would also swallow the org.jetbrains.kotlinx ecosystem.)
       - dependency-name: "org.jetbrains.kotlin.*"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "org.jetbrains.kotlin:*"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
-      # coroutines 1.11+ ships Kotlin/Native klibs produced by the Kotlin 2.2
-      # compiler -- unreadable by our 2.1 toolchain (broke main's iOS job on
-      # 2026-07-06). Stay on 1.10.x until #36 lands.
-      - dependency-name: "org.jetbrains.kotlinx:kotlinx-coroutines*"
-        versions: [">= 1.11.0"]
       # CameraX 1.7+ is beyond the Step 1 compileSdk 36 boundary; revisit in
       # later #36 rounds after the Android minor-API/toolchain frontier moves.
       - dependency-name: "androidx.camera:*"
@@ -43,9 +38,9 @@ updates:
       # on the compileSdk 36-compatible frontier until later #36 rounds.
       - dependency-name: "androidx.core:*"
         versions: [">= 1.18.0"]
-      # 0.31+ releases progressively require newer Kotlin (0.37 needs >= 2.2.0);
-      # repo is on Kotlin 2.1. Re-enable when #36 lands. Both the plugin id
-      # and the build-logic artifact form.
+      # 0.31+ releases progressively require newer Kotlin; keep Maven Publish
+      # upgrades deliberate under #36. Both the plugin id and the build-logic
+      # artifact form.
       - dependency-name: "com.vanniktech.maven.publish"
       - dependency-name: "com.vanniktech:gradle-maven-publish-plugin"
       # CXR-M 1.2.2 breaks the device-rokid compile and buys nothing we need
