@@ -317,7 +317,7 @@ def _disable_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(commands, "_ensure_java_runtime", lambda _env: None)
     monkeypatch.setattr(commands, "_resolve_android_sdk", lambda: None)
     monkeypatch.setattr(commands, "_write_local_properties", lambda _project, _android_sdk: None)
-    monkeypatch.setattr(commands, "_ensure_flutter_module_ready", lambda _project, _cfg: None)
+    monkeypatch.setattr(commands, "_ensure_flutter_module_ready", lambda _project, _cfg, **_kwargs: None)
     monkeypatch.setattr(commands, "_find_flutter_cmd", lambda: None)
     monkeypatch.setattr(commands, "_persist_env", lambda **_kwargs: None)
     monkeypatch.setattr(commands, "_print_manual_shell_setup", lambda **_kwargs: None)
