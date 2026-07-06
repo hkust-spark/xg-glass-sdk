@@ -10,7 +10,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    # Temporarily raised from 5 so the backlog surfaces in one wave instead of
+    # backfilling one PR per merge; drop back to 5 once the queue is drained.
+    open-pull-requests-limit: 15
     ignore:
       # Gradle 9.6+ removed internal APIs that AGP 8.x depends on; majors are
       # blocked on the coordinated toolchain upgrade (AGP 9 + Kotlin 2.2), #36.
@@ -36,8 +38,10 @@ updates:
       - dependency-name: "org.jetbrains.kotlinx:kotlinx-coroutines*"
         versions: [">= 1.11.0"]
       # 0.31+ releases progressively require newer Kotlin (0.37 needs >= 2.2.0);
-      # repo is on Kotlin 2.1. Re-enable when #36 lands.
+      # repo is on Kotlin 2.1. Re-enable when #36 lands. Both the plugin id
+      # and the build-logic artifact form.
       - dependency-name: "com.vanniktech.maven.publish"
+      - dependency-name: "com.vanniktech:gradle-maven-publish-plugin"
 
   - package-ecosystem: "pip"
     directory: "/tools"
