@@ -20,7 +20,7 @@ dependencies {
     api(libs.mwdat.camera)
     api(libs.mwdat.display)
 
-    api("androidx.appcompat:appcompat:1.7.0")
+    api("androidx.appcompat:appcompat:1.7.1")
     api("androidx.core:core-ktx:1.19.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
 
