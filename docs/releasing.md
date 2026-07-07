@@ -132,6 +132,16 @@ python -m twine check dist/*
 cd ..
 ```
 
+If Homebrew Python or another system Python does not have the `build` module
+available, use the equivalent isolated `uvx` invocations instead:
+
+```bash
+cd tools
+uvx --from build pyproject-build
+uvx twine check dist/*
+cd ..
+```
+
 ## 3. Maven Central
 
 Publish to the Central Portal staging repository:
@@ -179,6 +189,12 @@ After the release is live, verify from a clean directory:
 swift package init --type executable
 swift package resolve
 ```
+
+On this build host, `swift package resolve` can fail over non-interactive SSH
+with keychain `status -25308` when the login keychain is locked. In that case,
+the equivalent verification is to download the `XgGlassKit.xcframework.zip`
+release asset and compare its SHA-256 against the checksum committed in
+`Package.swift`.
 
 ## 6. Post-Release Verification
 
