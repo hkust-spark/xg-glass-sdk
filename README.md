@@ -254,6 +254,7 @@ Per-device hardware-validation status is listed in the device table above.
 ### Contributors (extend the SDK)
 
 If you want to **extend xg.glass itself** (new devices, new APIs, build tooling), start with [Contributor Guide](https://xg.glass/contributor-guide/).
+For device ports, use the [Adding a Device Adapter](./docs/adding-a-device-adapter.md) guide.
 
 For local development, clone the repository and use the editable CLI package under `tools/`, or invoke the root launcher directly:
 
