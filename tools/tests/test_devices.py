@@ -199,11 +199,11 @@ def test_cmd_init_partial_even_simulator_filters_generated_files(monkeypatch, tm
 
     app_gradle = (dst / "app" / "build.gradle.kts").read_text(encoding="utf-8")
     assert "xgglass-universal-full" not in app_gradle
-    assert "xgglass-core:0.1.0" in app_gradle
-    assert "xgglass-core-android:0.1.0" in app_gradle
-    assert "xgglass-app-contract:0.1.0" in app_gradle
-    assert "xgglass-device-even:0.1.0" in app_gradle
-    assert "xgglass-device-simulator:0.1.0" in app_gradle
+    assert "xgglass-core:0.2.0" in app_gradle
+    assert "xgglass-core-android:0.2.0" in app_gradle
+    assert "xgglass-app-contract:0.2.0" in app_gradle
+    assert "xgglass-device-even:0.2.0" in app_gradle
+    assert "xgglass-device-simulator:0.2.0" in app_gradle
     assert "xgglass-device-rokid" not in app_gradle
     assert "xgglass-device-frame-embedded" not in app_gradle
     assert "xgglass-device-meta" not in app_gradle
@@ -278,8 +278,8 @@ def test_template_rayneo_selection_includes_installer_and_runtime_artifacts() ->
         parse_device_selection("rayneo", sim=False),
     )
 
-    assert "xgglass-device-rayneo-installer:0.1.0" in filtered
-    assert "xgglass-device-rayneo-runtime:0.1.0" in filtered
+    assert "xgglass-device-rayneo-installer:0.2.0" in filtered
+    assert "xgglass-device-rayneo-runtime:0.2.0" in filtered
     assert "xgglass-universal-full" not in filtered
 
 
@@ -303,8 +303,8 @@ def test_cmd_init_default_keeps_universal_full_and_no_devices_yaml(monkeypatch, 
     assert code == 0
     assert "devices:" not in (dst / "xg-glass.yaml").read_text(encoding="utf-8")
     app_gradle = (dst / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-    assert "xgglass-universal-full:0.1.0" in app_gradle
-    assert "xgglass-device-even:0.1.0" not in app_gradle
+    assert "xgglass-universal-full:0.2.0" in app_gradle
+    assert "xgglass-device-even:0.2.0" not in app_gradle
     assert "xg:device:" not in app_gradle
 
     settings = (dst / "settings.gradle.kts").read_text(encoding="utf-8")

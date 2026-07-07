@@ -18,8 +18,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "XgGlassKit",
-            url: "https://github.com/hkust-spark/xg-glass-sdk/releases/download/0.1.0/XgGlassKit.xcframework.zip",
-            checksum: "e3bcc04d9e0e71f0110ed9d400c5a20b193a9335fc6018c7e8f47c6a6802780f"
+            url: "https://github.com/hkust-spark/xg-glass-sdk/releases/download/0.2.0/XgGlassKit.xcframework.zip",
+            checksum: "5548d26c723ac737217f55cc1ecc4420b46ae851ca3dcc6bb3ee4ece38195337"
         ),
         .target(
             name: "XgGlass",

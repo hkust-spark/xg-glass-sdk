@@ -161,6 +161,12 @@ xg-glass install
 xg-glass run
 ```
 
+Generated Android apps include starter commands for capture, display, and a short microphone recording, so the default template is runnable end to end. To create a production-sized app with only selected adapters, pass `--devices`:
+
+```bash
+xg-glass init /path/to/myapp --devices even,simulator
+```
+
 ### Even Realities G1 Android setup
 
 Use `EvenGlassesClient` for the Android dual-BLE adapter:
@@ -999,7 +1005,8 @@ xg-glass run --sim --video_url <url> MyEntry.kt      # simulator + YouTube/Bilib
 xg-glass run --sdk /path/to/xg-glass-sdk MyEntry.kt  # force a local SDK checkout
 
 # Full project workflow
-xg-glass init myapp       # create project, auto-downloads cached SDK if needed
+xg-glass init myapp       # create all-device demo project, auto-downloads cached SDK if needed
+xg-glass init myapp --devices even,simulator  # create project with selected adapters only
 xg-glass build             # build APK
 xg-glass install           # install on device
 xg-glass run               # launch app

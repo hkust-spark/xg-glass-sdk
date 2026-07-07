@@ -6,7 +6,7 @@ visible during development, but its developer-preview dependencies and API surfa
 validation against the current Android XR SDK before it can be treated as functional.
 
 > **Release note:** This is a non-functional preview scaffold. It is **not** published to Maven
-> Central in 0.1.0, and applications should not depend on it.
+> Central, and applications should not depend on it.
 
 ## Dependency Pinning
 

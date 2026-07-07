@@ -329,7 +329,7 @@ class MainActivity : AppCompatActivity() {
                     appendLog("WARN: disconnect previous client failed: ${e.message}")
                 }
 
-                val newClient = when (model) {
+                val newClient: GlassesClient = when (model) {
                     // xg:device:simulator:begin
                     GlassesModel.SIMULATOR -> SimulatorGlassesClient(
                         activity = this@MainActivity,

@@ -1,6 +1,6 @@
 # Your First App (Android, Maven)
 
-This quickstart builds a minimal Android app against the published Maven artifacts for xg.glass `0.1.0`. It uses the Android simulator client first, so you can test without physical glasses.
+This quickstart builds a minimal Android app against the published Maven artifacts for xg.glass `0.2.0`. It uses the Android simulator client first, so you can test without physical glasses.
 
 Use Android Gradle Plugin `9.1.1`, Kotlin `2.4.0`, `compileSdk = 36`, and `minSdk = 28`.
 
@@ -82,7 +82,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("io.github.hkust-spark:xgglass-universal:0.1.0")
+    implementation("io.github.hkust-spark:xgglass-universal:0.2.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")

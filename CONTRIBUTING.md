@@ -8,7 +8,7 @@ Thanks for helping improve xg.glass. This SDK spans Android, iOS, Python CLI too
 
 - JDK 17 or newer. The Android Studio bundled JBR is known to work.
 - Android SDK and platform tools.
-- Use the root Gradle wrapper. The SDK publishes Maven artifacts under `io.github.hkust-spark:xgglass-*:0.1.0`.
+- Use the root Gradle wrapper. The SDK publishes Maven artifacts under `io.github.hkust-spark:xgglass-*:0.2.0`.
 
 ### iOS
 

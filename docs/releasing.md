@@ -7,23 +7,23 @@ and iOS Swift Package assets.
 
 This repository publishes the Android/Kotlin SDK artifacts under:
 
-- `io.github.hkust-spark:xgglass-universal:0.1.0`
-- `io.github.hkust-spark:xgglass-core:0.1.0`
-- `io.github.hkust-spark:xgglass-core-android:0.1.0`
-- `io.github.hkust-spark:xgglass-app-contract:0.1.0`
-- `io.github.hkust-spark:xgglass-device-rokid:0.1.0`
-- `io.github.hkust-spark:xgglass-device-rayneo-installer:0.1.0`
-- `io.github.hkust-spark:xgglass-device-rayneo-runtime:0.1.0`
-- `io.github.hkust-spark:xgglass-device-inmo-runtime:0.1.0`
-- `io.github.hkust-spark:xgglass-device-simulator:0.1.0`
-- `io.github.hkust-spark:xgglass-device-omi:0.1.0`
-- `io.github.hkust-spark:xgglass-device-even:0.1.0`
-- `io.github.hkust-spark:xgglass-device-meta:0.1.0`
-- `io.github.hkust-spark:xgglass-device-frame-flutter:0.1.0`
+- `io.github.hkust-spark:xgglass-universal:0.2.0`
+- `io.github.hkust-spark:xgglass-core:0.2.0`
+- `io.github.hkust-spark:xgglass-core-android:0.2.0`
+- `io.github.hkust-spark:xgglass-app-contract:0.2.0`
+- `io.github.hkust-spark:xgglass-device-rokid:0.2.0`
+- `io.github.hkust-spark:xgglass-device-rayneo-installer:0.2.0`
+- `io.github.hkust-spark:xgglass-device-rayneo-runtime:0.2.0`
+- `io.github.hkust-spark:xgglass-device-inmo-runtime:0.2.0`
+- `io.github.hkust-spark:xgglass-device-simulator:0.2.0`
+- `io.github.hkust-spark:xgglass-device-omi:0.2.0`
+- `io.github.hkust-spark:xgglass-device-even:0.2.0`
+- `io.github.hkust-spark:xgglass-device-meta:0.2.0`
+- `io.github.hkust-spark:xgglass-device-frame-flutter:0.2.0`
 
 `xgglass-device-meta` is intentionally published as an optional artifact. The
 aggregate `universal` artifact does not depend on it, so consumers can resolve
-`io.github.hkust-spark:xgglass-universal:0.1.0` without access to the Meta
+`io.github.hkust-spark:xgglass-universal:0.2.0` without access to the Meta
 GitHub Packages repository. Consumers that explicitly add `xgglass-device-meta`
 must also add Meta's GitHub Packages repository and provide a `read:packages`
 token.
@@ -49,7 +49,7 @@ package/XgGlassKit umbrella on iOS.
 The Swift package dependency form is:
 
 ```swift
-.package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.1.0")
+.package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.2.0")
 ```
 
 ## 0. Prerequisites
@@ -90,20 +90,23 @@ Run the Android/Kotlin compile and unit-test matrix:
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew --console=plain \
-    :app:compileDebugKotlin \
     :core:assembleAndroidMain \
     :app-contract:assembleAndroidMain \
     :core-android:compileDebugKotlin \
     :universal:compileDebugKotlin \
     :universal-full:compileDebugKotlin \
     :device-android-xr:compileDebugKotlin \
+    :device-even:assembleAndroidMain \
     :device-frame-embedded:compileDebugKotlin \
     :device-frame-flutter:compileDebugKotlin \
+    :device-inmo-runtime:compileDebugKotlin \
     :device-omi:compileDebugKotlin \
     :device-rayneo-installer:compileDebugKotlin \
     :device-rayneo-runtime:compileDebugKotlin \
     :device-rokid:compileDebugKotlin \
     :device-simulator:compileDebugKotlin \
+    :device-even:testAndroidHostTest \
+    :device-inmo-runtime:testDebugUnitTest \
     :app-contract:testAndroidHostTest \
     :core:testAndroidHostTest \
     :core-android:testDebugUnitTest
@@ -115,6 +118,7 @@ Run the iOS/Kotlin tests and framework assembly:
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew --console=plain \
     :core:iosSimulatorArm64Test \
+    :device-even:iosSimulatorArm64Test \
     :device-omi-ios:iosSimulatorArm64Test \
     :app-contract:assembleXgGlassKitXCFramework
 ```
@@ -191,4 +195,4 @@ Also verify the released coordinates on Central Search and the artifacts under
 
 ## 7. Tag Convention
 
-Use a plain semver tag such as `0.1.0`. Do not prefix tags with `v`.
+Use a plain semver tag such as `0.2.0`. Do not prefix tags with `v`.

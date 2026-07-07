@@ -6,7 +6,7 @@ It defines the Kotlin-side `FrameGlassesClient`, `FrameFlutterBridge`, and chann
 
 ## What This Is Not
 
-This artifact is not a complete working Frame integration by itself. The embedded Flutter module at [`third_party/frame/frame_module`](../../third_party/frame/frame_module) is not published to Maven Central in 0.1.0, so Maven consumers only get the bridge API/contract. A Frame app still needs a host that embeds the Flutter module and provides a `FrameFlutterBridge` implementation.
+This artifact is not a complete working Frame integration by itself. The embedded Flutter module at [`third_party/frame/frame_module`](../../third_party/frame/frame_module) is not published to Maven Central, so Maven consumers only get the bridge API/contract. A Frame app still needs a host that embeds the Flutter module and provides a `FrameFlutterBridge` implementation.
 
 ## How To Use Frame Today
 

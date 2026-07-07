@@ -6,12 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-07
+
 ### Added
 
 - Even Realities G1 adapter on Android and iOS, including dual-BLE left/right arm connection, paged display output, LC3 microphone passthrough, and tap events.
 - INMO Air3 on-glasses Android runtime adapter, including camera, display, microphone, raw/encoded audio playback, and tap events through host Activity key forwarding.
 - Meta iOS microphone capture over Bluetooth HFP, with actual sample-rate reporting and route validation so the phone microphone is not silently substituted.
 - Core API support for `GlassesModel.EVEN`, `GlassesModel.INMO`, and `AudioEncoding.LC3`.
+- CLI generated-project device selection with `xg-glass init --devices`, including marker-based template filtering, explicit artifact sets for partial selections, and byte-identical default output when no device selection is requested.
+- Generated Android app starter commands for capture, display, and microphone smoke tests, so fresh projects are end-to-end runnable out of the box.
 - CLI first-run SDK auto-download for `xg-glass init` and single-file `xg-glass run`, cached under `~/.xg-glass/sdk/` with `--sdk` still available as an explicit checkout override.
 - iOS dependency-guard CI for Kotlin/Native tasks on dependency pull requests.
 - App-size design spike documenting measured generated-APK deltas and the decision to prefer per-artifact opt-in over Play Feature Delivery or runtime dynamic loading as the default direction.
@@ -19,13 +23,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Frame Android client now uses the shared base-client lifecycle plumbing and maps bridge state changes, including spontaneous reconnect/disconnect transitions, into the unified `ConnectionState`.
-- Gradle wrapper updated to 8.14.5 in the repository and Android app template.
-- Dependency refresh: Android Gradle Plugin 8.13.2, Kotlin 2.1.21, coroutines 1.10.2, CameraX 1.6.1, Dokka 2.2.0, Gson 2.14.0, AndroidX Core 1.19.0, AppCompat 1.7.1, ExifInterface 1.4.2, Tink 1.22.0, AndroidX Test JUnit 1.3.0, AndroidX Test Core/Runner 1.7.0, and GitHub Actions major-version updates for checkout, setup-java, setup-python, setup-android, gradle/actions, deploy-pages, and upload-pages-artifact.
+- `xg-glass run --sim` for generated projects now shares the single-file quick-mode path for simulator settings, emulator auto-boot, install, and launch.
+- Toolchain upgraded to Gradle 9.3.1, Android Gradle Plugin 9.1.1, Kotlin 2.4.0, coroutines 1.11.0, `compileSdk` 36, AndroidX Core 1.17.0, CameraX 1.6.1, Dokka 2.2.0, and vanniktech Maven Publish 0.37.0.
+- Kotlin Multiplatform Android modules migrated to `com.android.kotlin.multiplatform.library`, with build-logic convention updates for AGP built-in Kotlin.
+- Embedded Frame Android support now consumes Flutter's `build aar` output for debug and release builds instead of a project dependency on the generated Flutter module.
+- iOS CI jobs now run on `macos-26` with a pinned Xcode selection.
 
 ### Fixed
 
+- Generated-app compatibility was restored after dependency refreshes, with CI coverage for generated simulator app assembly.
+- Per-device Android modules now declare the runtime permissions their code paths use, so partial `--devices` selections get correct merged manifests instead of silently auto-denying undeclared requests such as `CAMERA` and `RECORD_AUDIO` in RayNeo-only apps.
+- RayNeo-only generated app templates now compile by giving the filtered client factory an explicit `GlassesClient` type.
+- Simulator `--local_video` and `--video_url` inputs are now wired through generated-project runs, stale simulator video paths are reset, and adb/device readiness checks fail loudly instead of silently continuing.
 - Meta iOS HFP microphone teardown and routing hardening: disconnect/deinit now end streams, start is non-reentrant across permission prompts, route identity is pinned to the accepted HFP port, engine configuration changes are observed, teardown warnings are surfaced, and normal audio chunks cannot be emitted after end-of-stream.
-- Coroutines dependency pinned to 1.10.2 after the 1.11.0 release introduced Kotlin 2.2-built klibs that were incompatible with the current toolchain.
 - Dependabot ignore coverage expanded for blocked CXR-M and Android/Kotlin toolchain upgrades that require separate hardware or toolchain validation.
 
 ## [0.1.0] - 2026-07-02
