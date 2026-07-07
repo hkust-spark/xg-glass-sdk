@@ -83,6 +83,13 @@ Then add the manual CHANGELOG entry for the release.
 
 - Update `docs/ai-assistant-guide.md` and `CHANGELOG.md` for any new devices or APIs in the release.
 
+Regenerate the AI assistant source bundle after version or docs updates; CI
+checks that this file is current:
+
+```bash
+python3 scripts/gen_llms_full.py
+```
+
 ## 2. Full Verification
 
 Run the Android/Kotlin compile and unit-test matrix:
@@ -123,10 +130,11 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     :app-contract:assembleXgGlassKitXCFramework
 ```
 
-Build and check the CLI wheel:
+Run the CLI pytest suite, then build and check the CLI wheel:
 
 ```bash
 cd tools
+PYTHONPATH=. python -m pytest -q tests
 python -m build
 python -m twine check dist/*
 cd ..
@@ -137,6 +145,7 @@ available, use the equivalent isolated `uvx` invocations instead:
 
 ```bash
 cd tools
+PYTHONPATH=. uvx pytest -q tests
 uvx --from build pyproject-build
 uvx twine check dist/*
 cd ..
