@@ -18,6 +18,7 @@ cd /tmp/xg-sim-loop
 ```
 
 When an Android Emulator is available, use the `run` command's `--sim` flag and optionally `--local_video` to feed `capturePhoto()` from a video file instead of camera hardware.
+For the full simulator smoke path used by nightly CI, run `scripts/sim-e2e.sh`; it writes logcat, screenshots, UI XML, and per-step verdicts to its evidence directory.
 
 ## Development Environment
 

@@ -131,6 +131,8 @@ python3 -m venv /tmp/xg-cli-venv
 ./xg-glass run --help
 ```
 
+Run `scripts/sim-e2e.sh` when adapter or template changes should prove the generated Simulator app still connects, captures, displays, records microphone audio, emits synthetic gestures, and disconnects on an Android Emulator.
+
 Keep protocol unit tests large enough to pin the wire format. The current no-hardware baselines are 29 Even protocol tests, 16 Omi iOS protocol/photo tests, and 10 INMO runtime-policy tests.
 
 Until someone validates on hardware, document the posture as "adapter shipped, hardware validation pending." Link the call-for-testers issue when you need community coverage: https://github.com/hkust-spark/xg-glass-sdk/issues/63.

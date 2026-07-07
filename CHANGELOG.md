@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Added `GlassesEvent.LongPress` and `DeviceCapabilities.supportsLongPressEvents`, with Even G1, INMO Air3, and Simulator event support plus generated-app simulator buttons for hardware-free tap and long-press testing.
+- Added a portable `scripts/sim-e2e.sh` simulator smoke test and nightly KVM GitHub Actions workflow with logcat, screenshot, UI XML, and per-step evidence artifacts.
 
 ## [0.2.0] - 2026-07-07
 

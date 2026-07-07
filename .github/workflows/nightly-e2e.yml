@@ -1,0 +1,56 @@
+name: Nightly E2E
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulator-e2e:
+    name: Simulator E2E (nightly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Enable KVM
+        run: |
+          # GitHub-hosted Android emulator recipe: allow the runner user to access /dev/kvm.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Disable generated Flutter Android module
+        run: |
+          # The generated Flutter module needs local .android/local.properties and a Flutter SDK.
+          rm -rf third_party/frame/frame_module/.android
+
+      - name: Run simulator E2E
+        env:
+          XG_SIM_E2E_EVIDENCE_DIR: ${{ runner.temp }}/xg-sim-e2e-evidence
+          XG_SIM_E2E_WORKDIR: ${{ runner.temp }}/xg-sim-e2e-project
+        run: scripts/sim-e2e.sh
+
+      - name: Upload simulator E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: simulator-e2e-evidence
+          path: ${{ runner.temp }}/xg-sim-e2e-evidence
+          if-no-files-found: warn
