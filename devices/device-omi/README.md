@@ -34,8 +34,9 @@ This module integrates **Omi Glass** into the unified `xg-glass` API surface.
   devices that send it.
 - Legacy firmware caveats: a single tap can be followed by power-off/disconnect, and
   `Tap(1)` has at least 300 ms firmware-side latency for double-tap disambiguation.
-- The Android and iOS Omi modules currently duplicate the small button parser to keep each
-  module independently testable; deduplicate this protocol helper as a 0.3 cleanup item.
+- The Android and iOS Omi modules share the pure button parser from `devices/omi-shared`
+  while keeping platform wiring per-module; the 0.3 cleanup plan is still to merge these
+  adapters into one Kotlin Multiplatform module.
 
 ### Hardware verification checklist
 

@@ -37,6 +37,8 @@ import com.xgglass.core.GlassesModel
 import com.xgglass.core.MicrophoneOptions
 import com.xgglass.core.MicrophoneSession
 import com.xgglass.core.PlayAudioOptions
+import com.xgglass.device.omi.protocol.OmiButtonEvent
+import com.xgglass.device.omi.protocol.OmiButtonEvents
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

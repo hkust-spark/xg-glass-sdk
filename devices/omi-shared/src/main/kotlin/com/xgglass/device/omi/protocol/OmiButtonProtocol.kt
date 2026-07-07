@@ -1,4 +1,4 @@
-package com.xgglass.device.omi
+package com.xgglass.device.omi.protocol
 
 /**
  * Omi DevKit button protocol parser.

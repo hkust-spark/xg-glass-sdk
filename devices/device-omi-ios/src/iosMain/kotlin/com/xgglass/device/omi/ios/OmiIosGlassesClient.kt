@@ -16,6 +16,8 @@ import com.xgglass.core.GlassesModel
 import com.xgglass.core.MicrophoneOptions
 import com.xgglass.core.MicrophoneSession
 import com.xgglass.core.PlayAudioOptions
+import com.xgglass.device.omi.protocol.OmiButtonEvent
+import com.xgglass.device.omi.protocol.OmiButtonEvents
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.addressOf

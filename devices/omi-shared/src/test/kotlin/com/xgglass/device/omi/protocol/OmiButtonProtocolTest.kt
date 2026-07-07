@@ -1,4 +1,4 @@
-package com.xgglass.device.omi
+package com.xgglass.device.omi.protocol
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
