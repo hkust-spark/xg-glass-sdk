@@ -111,6 +111,80 @@ def test_generated_project_run_sim_without_video_resets_stale_build_config(monke
     assert 'buildConfigField("String", "XG_SIM_VIDEO_PATH", "\\"\\"")' in app_gradle
 
 
+def test_quick_run_threads_devices_and_sim_to_init(monkeypatch, tmp_path) -> None:
+    captured = {}
+    entry = tmp_path / "MyEntry.kt"
+    entry.write_text("package com.example\nclass MyEntry\n", encoding="utf-8")
+    sdk = tmp_path / "sdk"
+    template = sdk / "templates" / "kotlin-app"
+    template.mkdir(parents=True)
+
+    monkeypatch.setattr(commands, "resolve_sdk", lambda _raw_sdk, subcommand: sdk)
+    monkeypatch.setattr(commands, "_resolve_quick_run_template", lambda resolved_sdk: template)
+    monkeypatch.setattr(commands, "cmd_init", lambda init_args: captured.setdefault("init_args", init_args) or 0)
+    monkeypatch.setattr(commands, "_copy_kt_into_project", lambda *_args: None)
+    monkeypatch.setattr(commands, "_prepare_simulator_run_project", lambda project, args: captured.setdefault("sim_project", project) or None)
+    monkeypatch.setattr(
+        commands,
+        "_build_install_run_project",
+        lambda project, args, *, ensure_simulator, sim_video: captured.update(
+            {
+                "project": project,
+                "ensure_simulator": ensure_simulator,
+                "sim_video": sim_video,
+            }
+        )
+        or 0,
+    )
+
+    args = _run_args(
+        tmp_path,
+        sim=True,
+        kt_file=str(entry),
+        save=str(tmp_path / "saved"),
+        entry_class="com.example.MyEntry",
+        devices="even",
+    )
+
+    assert commands.cmd_run(args) == 0
+
+    init_args = captured["init_args"]
+    assert init_args.devices == "even"
+    assert init_args.sim is True
+    assert captured["ensure_simulator"] is True
+
+
+@pytest.mark.parametrize("sim", [False, True])
+def test_quick_run_without_devices_threads_default_none(monkeypatch, tmp_path, sim) -> None:
+    captured = {}
+    entry = tmp_path / "MyEntry.kt"
+    entry.write_text("package com.example\nclass MyEntry\n", encoding="utf-8")
+    sdk = tmp_path / "sdk"
+    template = sdk / "templates" / "kotlin-app"
+    template.mkdir(parents=True)
+
+    monkeypatch.setattr(commands, "resolve_sdk", lambda _raw_sdk, subcommand: sdk)
+    monkeypatch.setattr(commands, "_resolve_quick_run_template", lambda resolved_sdk: template)
+    monkeypatch.setattr(commands, "cmd_init", lambda init_args: captured.setdefault("init_args", init_args) or 0)
+    monkeypatch.setattr(commands, "_copy_kt_into_project", lambda *_args: None)
+    monkeypatch.setattr(commands, "_prepare_simulator_run_project", lambda _project, _args: None)
+    monkeypatch.setattr(commands, "_build_install_run_project", lambda *_args, **_kwargs: 0)
+
+    args = _run_args(
+        tmp_path,
+        sim=sim,
+        kt_file=str(entry),
+        save=str(tmp_path / "saved"),
+        entry_class="com.example.MyEntry",
+    )
+
+    assert commands.cmd_run(args) == 0
+
+    init_args = captured["init_args"]
+    assert init_args.devices is None
+    assert init_args.sim is sim
+
+
 def test_run_project_prefers_template_main_activity(monkeypatch, tmp_path) -> None:
     calls = []
     args = _run_args(tmp_path, sim=False)
@@ -226,6 +300,12 @@ def _run_args(
     serial: str | None = None,
     local_video: str | None = None,
     package: str | None = None,
+    kt_file: str | None = None,
+    save: str | None = None,
+    keep_tmp: bool = False,
+    entry_class: str | None = None,
+    sdk: str | None = None,
+    devices: str | None = None,
 ) -> argparse.Namespace:
     return argparse.Namespace(
         project=str(project),
@@ -234,12 +314,13 @@ def _run_args(
         config=DEFAULT_CONFIG_FILE,
         serial=serial,
         package=package,
-        kt_file=None,
-        save=None,
-        keep_tmp=False,
-        entry_class=None,
-        sdk=None,
+        kt_file=kt_file,
+        save=save,
+        keep_tmp=keep_tmp,
+        entry_class=entry_class,
+        sdk=sdk,
         sim=sim,
+        devices=devices,
         local_video=local_video,
         video_url=None,
     )

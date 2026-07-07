@@ -74,6 +74,13 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--entry-class", help="Quick mode: override inferred entry class (optional).")
     p_run.add_argument("--sdk", help="Quick mode: override sdkPath (optional).")
     p_run.add_argument("--sim", action="store_true", help="Build for Android Emulator (x86_64) and enable simulator backend.")
+    p_run.add_argument(
+        "--devices",
+        help=(
+            "Quick mode only. Comma-separated devices to include: rokid, rayneo, meta, frame, "
+            "omi, even, inmo, simulator, or all (default). --sim adds simulator."
+        ),
+    )
     p_run.add_argument("--local_video", help="(sim mode) Local video file path to use as capturePhoto source.")
     p_run.add_argument("--video_url", help="(sim mode) Video URL (YouTube/Bilibili) to download and use as capturePhoto source.")
 
@@ -87,6 +94,9 @@ def main(argv: list[str] | None = None) -> int:
         has_video = getattr(args, "local_video", None) or getattr(args, "video_url", None)
         if has_video and not getattr(args, "sim", False):
             parser.error("--local_video and --video_url require --sim mode.")
+        is_quick_mode = bool(getattr(args, "kt_file", None)) and str(args.kt_file).lower().endswith(".kt")
+        if getattr(args, "devices", None) and not is_quick_mode:
+            parser.error("--devices requires quick mode (pass a .kt file).")
 
     try:
         if args.cmd == "init":

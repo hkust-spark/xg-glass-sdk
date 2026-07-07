@@ -286,7 +286,14 @@ def cmd_run(args: argparse.Namespace) -> int:
             project_dir = Path(tempfile.mkdtemp(prefix="run-", dir=str(base)))
             keep = bool(getattr(args, "keep_tmp", False))
 
-        _init_project(dst=project_dir, template=template, sdk=sdk, entry_class=entry_class)
+        _init_project(
+            dst=project_dir,
+            template=template,
+            sdk=sdk,
+            entry_class=entry_class,
+            devices=getattr(args, "devices", None),
+            sim=sim_enabled,
+        )
         _copy_kt_into_project(project_dir, kt)
 
         sim_video = _prepare_simulator_run_project(project_dir, args) if sim_enabled else None
@@ -421,7 +428,15 @@ def _am_start_output_failed(output: str) -> bool:
     return False
 
 
-def _init_project(*, dst: Path, template: Path, sdk: Path, entry_class: str) -> None:
+def _init_project(
+    *,
+    dst: Path,
+    template: Path,
+    sdk: Path,
+    entry_class: str,
+    devices: str | None = None,
+    sim: bool = False,
+) -> None:
     """
     Internal helper: same behavior as `xg-glass init`, but callable from quick mode.
     """
@@ -431,6 +446,8 @@ def _init_project(*, dst: Path, template: Path, sdk: Path, entry_class: str) -> 
             template=str(template),
             sdk=str(sdk),
             entry_class=str(entry_class),
+            devices=devices,
+            sim=sim,
         )
     )
 

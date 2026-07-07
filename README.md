@@ -201,9 +201,12 @@ If you don't have glasses right now, the simulator supports development and test
 
 ```bash
 xg-glass run --sdk /path/to/xg-glass-sdk --sim /path/to/MyEntry.kt
+xg-glass run --sdk /path/to/xg-glass-sdk --sim --devices simulator /path/to/MyEntry.kt
 xg-glass run --sdk /path/to/xg-glass-sdk --sim --local_video /path/to/video.mp4 /path/to/MyEntry.kt
 xg-glass run --sdk /path/to/xg-glass-sdk --sim --video_url <youtube-or-bilibili-url> /path/to/MyEntry.kt
 ```
+
+In quick mode, `--devices` is available only when passing a `.kt` file; generated-project runs keep the device set fixed by `xg-glass init`.
 
 The launch of Android Emulator may take several minutes. You can keep it on to save time for the next run.
 

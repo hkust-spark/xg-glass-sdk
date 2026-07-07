@@ -98,7 +98,14 @@ Optional:
 - `--save ./myapp`: persist the temporary project as a real project (so you can continue development)
 - `--keep-tmp`: keep the temporary directory for debugging
 - `--sim`: build a simulator-compatible APK (x86_64) and enable simulator backend
+- `--devices <list>`: quick mode only; include only selected device adapters in the generated project
 - `--local_video <mp4>` / `--video_url <url>`: in `--sim` mode, feed simulator `capturePhoto()` from a local/downloaded video
+
+Example:
+
+```bash
+xg-glass run --sdk /path/to/xg-glass-sdk --sim --devices simulator /path/to/MyEntry.kt
+```
 
 ### Options
 

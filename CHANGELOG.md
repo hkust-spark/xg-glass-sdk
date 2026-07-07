@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Added `GlassesEvent.LongPress` and `DeviceCapabilities.supportsLongPressEvents`, with Even G1, INMO Air3, and Simulator event support plus generated-app simulator buttons for hardware-free tap and long-press testing.
 - Added a portable `scripts/sim-e2e.sh` simulator smoke test and nightly KVM GitHub Actions workflow with logcat, screenshot, UI XML, and per-step evidence artifacts.
+- Added `xg-glass run --devices` for single-file quick mode, so generated quick-run projects can use the same adapter selection as `xg-glass init`.
 - Added Omi DevKit button-service mapping on Android and iOS, with tap capability gated on discovered button services and legacy long-press events emitted when field firmware sends them.
 
 ## [0.2.0] - 2026-07-07

@@ -177,6 +177,31 @@ def test_init_parser_passes_devices(monkeypatch, tmp_path) -> None:
     assert captured == {"devices": "even", "sim": True}
 
 
+def test_run_devices_requires_quick_mode(capsys, tmp_path) -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["run", "--project", str(tmp_path), "--devices", "even"])
+
+    assert exc.value.code == 2
+    assert "--devices requires quick mode (pass a .kt file)." in capsys.readouterr().err
+
+
+def test_run_devices_quick_mode_parses(monkeypatch, tmp_path) -> None:
+    captured = {}
+    entry = tmp_path / "MyEntry.kt"
+
+    def fake_cmd_run(args):
+        captured["devices"] = args.devices
+        captured["kt_file"] = args.kt_file
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_run", fake_cmd_run)
+
+    code = cli.main(["run", "--devices", "even", str(entry)])
+
+    assert code == 0
+    assert captured == {"devices": "even", "kt_file": str(entry)}
+
+
 def test_cmd_init_partial_even_simulator_filters_generated_files(monkeypatch, tmp_path) -> None:
     _disable_bootstrap(monkeypatch)
     repo = _repo_root()
