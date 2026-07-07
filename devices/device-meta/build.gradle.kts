@@ -20,13 +20,13 @@ dependencies {
     api(libs.mwdat.camera)
     api(libs.mwdat.display)
 
-    api("androidx.appcompat:appcompat:1.7.1")
+    api(libs.androidx.appcompat)
     api(libs.androidx.core.ktx)
-    implementation("androidx.exifinterface:exifinterface:1.4.2")
+    implementation(libs.androidx.exifinterface)
 
     androidTestImplementation(libs.mwdat.mockdevice)
-    androidTestImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.3.0")
-    androidTestImplementation("androidx.test:core-ktx:1.7.0")
-    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation(libs.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.core.ktx)
+    androidTestImplementation(libs.androidx.test.runner)
 }

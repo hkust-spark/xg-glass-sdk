@@ -10,7 +10,7 @@ android {
 dependencies {
     api(project(":core"))
     implementation(libs.androidx.core.ktx)
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation(libs.kotlinx.coroutines.android)
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit")
-    testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.junit4)
 }

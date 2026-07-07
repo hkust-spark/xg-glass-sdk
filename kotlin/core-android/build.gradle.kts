@@ -10,8 +10,8 @@ android {
 dependencies {
     api(project(":core"))
 
-    implementation("com.google.crypto.tink:tink-android:1.22.0")
+    implementation(libs.tink.android)
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
-    testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.junit4)
 }

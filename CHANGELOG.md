@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Version catalog coverage now includes all versioned external dependency coordinates, including build-logic plugin classpath dependencies.
 - Frame Android client now uses the shared base-client lifecycle plumbing and maps bridge state changes, including spontaneous reconnect/disconnect transitions, into the unified `ConnectionState`.
 - `xg-glass run --sim` for generated projects now shares the single-file quick-mode path for simulator settings, emulator auto-boot, install, and launch.
 - Toolchain upgraded to Gradle 9.3.1, Android Gradle Plugin 9.1.1, Kotlin 2.4.0, coroutines 1.11.0, `compileSdk` 36, AndroidX Core 1.17.0, CameraX 1.6.1, Dokka 2.2.0, and vanniktech Maven Publish 0.37.0.

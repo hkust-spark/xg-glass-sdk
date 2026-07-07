@@ -11,5 +11,5 @@ dependencies {
     api(project(":core"))
 
     // ADB-over-TCP client library (talks to adbd:5555 directly)
-    api("com.tananaev:adblib:1.3")
+    api(libs.adblib)
 }

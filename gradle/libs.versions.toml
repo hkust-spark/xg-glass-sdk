@@ -4,6 +4,15 @@ kotlin = "2.4.0"
 coroutines = "1.11.0"
 androidxCamera = "1.6.1"
 androidxCore = "1.17.0"
+appcompat = "1.7.1"
+exifinterface = "1.4.2"
+gson = "2.14.0"
+tinkAndroid = "1.22.0"
+adblib = "1.3"
+junit4 = "4.13.2"
+androidxTestExtJunit = "1.3.0"
+androidxTestCoreKtx = "1.7.0"
+androidxTestRunner = "1.7.0"
 mwdat = "0.8.0"
 mavenPublish = "0.37.0"
 dokka = "2.2.0"
@@ -17,6 +26,9 @@ maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPubli
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 
 [libraries]
+android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+maven-publish-plugin = { module = "com.vanniktech:gradle-maven-publish-plugin", version.ref = "mavenPublish" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
@@ -24,6 +36,15 @@ androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "
 androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "androidxCamera" }
 androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "androidxCamera" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExtJunit" }
+androidx-test-core-ktx = { module = "androidx.test:core-ktx", version.ref = "androidxTestCoreKtx" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+tink-android = { module = "com.google.crypto.tink:tink-android", version.ref = "tinkAndroid" }
+adblib = { module = "com.tananaev:adblib", version.ref = "adblib" }
+junit4 = { module = "junit:junit", version.ref = "junit4" }
 mwdat-core = { module = "com.meta.wearable:mwdat-core", version.ref = "mwdat" }
 mwdat-camera = { module = "com.meta.wearable:mwdat-camera", version.ref = "mwdat" }
 mwdat-display = { module = "com.meta.wearable:mwdat-display", version.ref = "mwdat" }

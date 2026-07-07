@@ -14,10 +14,9 @@ repositories {
 
 dependencies {
     // Needed to compile against Android Gradle Plugin DSL types (LibraryExtension / ApplicationExtension).
-    // Keep versions aligned with `xg-glass-sdk/gradle/libs.versions.toml`.
-    compileOnly("com.android.tools.build:gradle:9.1.1")
-    compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.0")
-    implementation("com.vanniktech:gradle-maven-publish-plugin:0.37.0")
+    compileOnly(libs.android.gradle.plugin)
+    compileOnly(libs.kotlin.gradle.plugin)
+    implementation(libs.maven.publish.plugin)
 }
 
 gradlePlugin {
