@@ -7,6 +7,7 @@ PYTHON_BIN="${PYTHON:-python3}"
 HELPER="${REPO_ROOT}/scripts/sim_e2e_drive.py"
 
 WORKDIR="${XG_SIM_E2E_WORKDIR:-/tmp/xg-sim-e2e-project}"
+QUICK_WORKDIR="${XG_SIM_E2E_QUICK_WORKDIR:-/tmp/xg-sim-e2e-quick}"
 EVIDENCE_DIR="${XG_SIM_E2E_EVIDENCE_DIR:-/tmp/xg-sim-e2e-evidence-$(date -u +%Y%m%dT%H%M%SZ)}"
 AVD_NAME="${XG_SIM_E2E_AVD_NAME:-xg_glass_avd}"
 AVD_HOME="${XG_SIM_E2E_AVD_HOME:-/tmp/xg-sim-e2e-avd-home}"
@@ -37,6 +38,7 @@ write_summary() {
   {
     printf 'Simulator E2E step summary\n'
     printf 'workdir=%s\n' "${WORKDIR}"
+    printf 'quick_workdir=%s\n' "${QUICK_WORKDIR}"
     printf 'evidence_dir=%s\n' "${EVIDENCE_DIR}"
     printf 'avd_name=%s\n' "${AVD_NAME}"
     printf 'avd_home=%s\n' "${AVD_HOME}"
@@ -366,10 +368,39 @@ wait_for_boot_completed() {
   return 1
 }
 
+run_quick_mode_stage() {
+  local adb="$1"
+  local quick_entry="${QUICK_WORKDIR}/QuickEntry.kt"
+  local source_entry="${REPO_ROOT}/templates/kotlin-app/xgglass_app_logic/src/main/java/com/example/xgglassapp/logic/ExampleAppEntry.kt"
+
+  rm -rf "${QUICK_WORKDIR}"
+  mkdir -p "${QUICK_WORKDIR}"
+  if ! cp "${source_entry}" "${quick_entry}"; then
+    record_step "FAIL" "quick_run_prepare" "failed to copy ${source_entry}"
+    return 1
+  fi
+  record_step "PASS" "quick_run_prepare" "copied template entry to ${quick_entry}"
+
+  "${adb}" -s "${SERIAL}" logcat -c >/dev/null 2>&1 || true
+  if (
+    cd "${QUICK_WORKDIR}" \
+      && "${XG_GLASS}" run "${quick_entry}" --sim --devices simulator --serial "${SERIAL}" --keep-tmp
+  ) > "${EVIDENCE_DIR}/quick-run.log" 2>&1; then
+    record_step "PASS" "quick_run_sim" "xg-glass run QuickEntry.kt --sim --devices simulator completed on ${SERIAL}"
+  else
+    record_step "FAIL" "quick_run_sim" "see ${EVIDENCE_DIR}/quick-run.log"
+    return 1
+  fi
+
+  wait_for_log "${adb}" "quick_run_launch" 'connect\(SIMULATOR\) => true' 60 || return 1
+  save_screenshot "${adb}" "08-quick-run-launched"
+}
+
 main() {
   mkdir -p "${EVIDENCE_DIR}"
   log "Evidence directory: ${EVIDENCE_DIR}"
   log "Generated project workdir: ${WORKDIR}"
+  log "Quick-run workdir: ${QUICK_WORKDIR}"
   log "Script-owned AVD home: ${AVD_HOME}"
   if [[ -z "${XG_SIM_E2E_AVD_HOME+x}" ]]; then
     rm -rf "${AVD_HOME}"
@@ -453,6 +484,8 @@ main() {
   tap_text "${adb}" "disconnect" "Disconnect" || return
   wait_for_log "${adb}" "disconnect" 'disconnect\(\) => true' 15 || return
   save_screenshot "${adb}" "07-disconnect"
+
+  run_quick_mode_stage "${adb}" || return
 }
 
 main "$@"

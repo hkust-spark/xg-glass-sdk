@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import platform
 import subprocess
+import sys
 import urllib.error
 from pathlib import Path
 
@@ -10,6 +12,16 @@ from .constants import _ANDROID_SDK_PACKAGES, _MANAGED_ANDROID_SDK_DIR
 from .downloads import _download_file, _extract_archive, _run_quiet
 from .java import _ensure_java_runtime
 from .paths import _ensure_executable
+
+_ANDROID_STUDIO_MANUAL_INSTALL_URL = "https://developer.android.com/studio"
+_ANDROID_COMMANDLINE_TOOLS_BUILD = "11076708"
+_ANDROID_COMMANDLINE_TOOLS_SHA256 = {
+    # Source: official Google dl.google.com pinned command-line tools archives.
+    # The Android Studio page currently lists newer command-line tools and no longer exposes build 11076708.
+    "mac": "7bc5c72ba0275c80a8f19684fb92793b83a6b5c94d4d179fc5988930282d7e64",
+    "win": "4d6931209eebb1bfb7c7e8b240a6a3cb3ab24479ea294f3539429574b1eec862",
+    "linux": "2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258",
+}
 
 
 def _android_sdk_has_platform_tools(sdk: str | Path | None) -> bool:
@@ -75,8 +87,7 @@ def _auto_download_android_sdk() -> str:
     print("Android SDK not found. Downloading Android SDK command-line tools...")
     print(f"  Install location: {_MANAGED_ANDROID_SDK_DIR}")
 
-    # TODO: no published checksum available for this pinned commandline-tools download URL.
-    url = f"https://dl.google.com/android/repository/commandlinetools-{os_tag}-11076708_latest.zip"
+    url = f"https://dl.google.com/android/repository/commandlinetools-{os_tag}-{_ANDROID_COMMANDLINE_TOOLS_BUILD}_latest.zip"
 
     _MANAGED_ANDROID_SDK_DIR.mkdir(parents=True, exist_ok=True)
     archive_path = _MANAGED_ANDROID_SDK_DIR / "cmdline-tools.zip"
@@ -89,8 +100,10 @@ def _auto_download_android_sdk() -> str:
         archive_path.unlink(missing_ok=True)
         raise RuntimeError(
             f"Failed to download Android SDK command-line tools: {exc}\n"
-            "Please install the Android SDK manually: https://developer.android.com/studio"
+            f"Please install the Android SDK manually: {_ANDROID_STUDIO_MANUAL_INSTALL_URL}"
         ) from exc
+
+    _verify_commandline_tools_archive(os_tag, archive_path)
 
     print("  Extracting...")
     try:
@@ -119,7 +132,7 @@ def _auto_download_android_sdk() -> str:
     if not sdkmanager.exists():
         raise RuntimeError(
             f"sdkmanager not found at: {sdkmanager}\n"
-            "Please install the Android SDK manually: https://developer.android.com/studio"
+            f"Please install the Android SDK manually: {_ANDROID_STUDIO_MANUAL_INSTALL_URL}"
         )
 
     # Accept licenses and install required packages.
@@ -154,11 +167,42 @@ def _auto_download_android_sdk() -> str:
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(
             f"Failed to install Android SDK packages: {exc}\n"
-            "Please install the Android SDK manually: https://developer.android.com/studio"
+            f"Please install the Android SDK manually: {_ANDROID_STUDIO_MANUAL_INSTALL_URL}"
         ) from exc
 
     print("  Android SDK installed successfully.")
     return sdk_root
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        while True:
+            chunk = f.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_commandline_tools_archive(os_tag: str, archive_path: Path) -> None:
+    expected = _ANDROID_COMMANDLINE_TOOLS_SHA256.get(os_tag)
+    if not expected:
+        print(
+            f"  Warning: no SHA-256 checksum pinned for Android command-line tools os_tag={os_tag}; "
+            "proceeding without archive verification.",
+            file=sys.stderr,
+        )
+        return
+
+    actual = _sha256_file(archive_path)
+    if actual != expected:
+        archive_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"Android SDK command-line tools SHA-256 mismatch for {archive_path.name}: "
+            f"expected {expected}, got {actual}.\n"
+            f"Please install the Android SDK manually: {_ANDROID_STUDIO_MANUAL_INSTALL_URL}"
+        )
 
 
 def _ensure_sdk_local_properties(sdk_root: Path) -> None:
