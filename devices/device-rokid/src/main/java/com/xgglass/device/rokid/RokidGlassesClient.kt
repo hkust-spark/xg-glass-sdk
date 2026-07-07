@@ -66,7 +66,7 @@ import kotlin.coroutines.resumeWithException
  *
  * Notes:
  * - This SDK does NOT request runtime permissions; the host app must handle permissions.
- * - CXR-M v1.0.4 requires an SN authorization file (`.lc`) + developer `clientSecret` to connect.
+ * - CXR-M v1.2.2 requires an SN authorization file (`.lc`) + developer `clientSecret` to connect.
  */
 class RokidGlassesClient(
     private val activity: AppCompatActivity,
@@ -284,13 +284,34 @@ class RokidGlassesClient(
             val running = AtomicBoolean(true)
             val seq = AtomicLong(0)
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            fun finishStream() {
+                if (!running.compareAndSet(true, false)) return
+                scope.cancel()
+                activeMic = null
+                shared.tryEmit(
+                    AudioChunk(
+                        bytes = ByteArray(0),
+                        format = fmt,
+                        sequence = seq.incrementAndGet(),
+                        endOfStream = true,
+                    )
+                )
+            }
 
             val listener = object : AudioStreamListener {
-                override fun onStartAudioStream(codecType: Int, streamType: String?) {
-                    // no-op
+                override fun onStartAudioStream(
+                    streamId: Int,
+                    codecType: Int,
+                    modeOrChannels: Int,
+                    streamType: String?
+                ) {
+                    emitLog(
+                        "Rokid: audio stream started id=$streamId codec=$codecType " +
+                            "modeOrChannels=$modeOrChannels stream=$streamType"
+                    )
                 }
 
-                override fun onAudioStream(data: ByteArray?, offset: Int, length: Int) {
+                override fun onAudioStream(streamId: Int, data: ByteArray?, offset: Int, length: Int) {
                     if (!running.get()) return
                     if (data == null) return
                     if (length <= 0) return
@@ -306,12 +327,28 @@ class RokidGlassesClient(
                         )
                     )
                 }
+
+                override fun onAudioStreamFinish(streamId: Int) {
+                    emitLog("Rokid: audio stream finished id=$streamId")
+                    finishStream()
+                }
             }
 
             // Register listener first to avoid losing the first chunks.
             CxrApi.getInstance().setAudioStreamListener(listener)
 
-            val st = CxrApi.getInstance().openAudioRecord(codecType, streamType)
+            // CXR-M 1.2.x replaces openAudioRecord(codec, cmd) with explicit
+            // (codec, mode, intent, denoiseMode). Decompiled 1.2.2 bytecode
+            // confirms denoiseMode=2 is the SDK default; no sample-rate or
+            // channel-count parameter is exposed on the microphone capture API.
+            // Keep the added mode value centralized until the compatibility
+            // capture mode can be revalidated on Rokid hardware.
+            val st = CxrApi.getInstance().openAudioRecord(
+                codecType,
+                ROKID_AUDIO_RECORD_MODE_COMPAT,
+                streamType,
+                ROKID_AUDIO_DENOISE_MODE_DEFAULT,
+            )
             if (st == ValueUtil.CxrStatus.REQUEST_FAILED) {
                 CxrApi.getInstance().setAudioStreamListener(null)
                 return Result.failure(GlassesError.Transport("Rokid openAudioRecord REQUEST_FAILED"))
@@ -326,23 +363,14 @@ class RokidGlassesClient(
                 override val audio: Flow<AudioChunk> = shared
 
                 override suspend fun stop() {
-                    if (!running.compareAndSet(true, false)) return
+                    if (!running.get()) return
                     try {
                         CxrApi.getInstance().closeAudioRecord(streamType)
                     } catch (_: Exception) {}
                     try {
                         CxrApi.getInstance().setAudioStreamListener(null)
                     } catch (_: Exception) {}
-                    scope.cancel()
-                    activeMic = null
-                    shared.tryEmit(
-                        AudioChunk(
-                            bytes = ByteArray(0),
-                            format = fmt,
-                            sequence = seq.incrementAndGet(),
-                            endOfStream = true,
-                        )
-                    )
+                    finishStream()
                 }
             }
 
@@ -413,6 +441,10 @@ class RokidGlassesClient(
                         completed = true
                         cont.resumeWithException(GlassesError.Transport("Rokid initWifiP2P failed: $errorCode"))
                     }
+                }
+
+                override fun onP2pDeviceAvailable(name: String?, address: String?, info: String?) {
+                    emitLog("Rokid: Wi‑Fi P2P device available name=$name address=$address info=$info")
                 }
             })
 
@@ -564,21 +596,24 @@ class RokidGlassesClient(
                 ) {
                     if (!socketUuid.isNullOrBlank() && !macAddress.isNullOrBlank()) {
                         if (done.compareAndSet(false, true)) {
-                        cont.resume(socketUuid to macAddress)
+                            cont.resume(socketUuid to macAddress)
                         }
                     } else {
                         if (done.compareAndSet(false, true)) {
-                        cont.resumeWithException(GlassesError.Transport("onConnectionInfo missing uuid/mac"))
+                            cont.resumeWithException(GlassesError.Transport("onConnectionInfo missing uuid/mac"))
                         }
                     }
                 }
 
                 override fun onConnected() = Unit
+                override fun onInActiveConnected(socketUuid: String?, macAddress: String?) {
+                    emitLog("Rokid: inactive Bluetooth connection available uuid=$socketUuid mac=$macAddress")
+                }
                 override fun onDisconnected() = Unit
 
                 override fun onFailed(errorCode: ValueUtil.CxrBluetoothErrorCode?) {
                     if (done.compareAndSet(false, true)) {
-                    cont.resumeWithException(GlassesError.Transport("initBluetooth failed: $errorCode"))
+                        cont.resumeWithException(GlassesError.Transport("initBluetooth failed: $errorCode"))
                     }
                 }
             })
@@ -601,20 +636,24 @@ class RokidGlassesClient(
 
                 override fun onConnected() {
                     if (done.compareAndSet(false, true)) {
-                    cont.resume(Unit)
+                        cont.resume(Unit)
                     }
+                }
+
+                override fun onInActiveConnected(socketUuid: String?, macAddress: String?) {
+                    emitLog("Rokid: inactive Bluetooth connection available uuid=$socketUuid mac=$macAddress")
                 }
 
                 override fun onDisconnected() {
                     if (done.compareAndSet(false, true)) {
-                    cont.resumeWithException(GlassesError.Transport("connectBluetooth disconnected"))
+                        cont.resumeWithException(GlassesError.Transport("connectBluetooth disconnected"))
                     }
                 }
 
                 override fun onFailed(errorCode: ValueUtil.CxrBluetoothErrorCode?) {
                     if (done.compareAndSet(false, true)) {
-                    cont.resumeWithException(GlassesError.Transport("connectBluetooth failed: $errorCode"))
-                }
+                        cont.resumeWithException(GlassesError.Transport("connectBluetooth failed: $errorCode"))
+                    }
                 }
             }, snLc, clientSecret)
         }
@@ -623,7 +662,7 @@ class RokidGlassesClient(
     private fun requireAuthorization(): Pair<ByteArray, String> {
         val auth = options.authorization
             ?: throw GlassesError.Transport(
-                "Rokid authorization missing. CXR-M v1.0.4 requires SN authorization file (.lc) bytes + clientSecret. " +
+                "Rokid authorization missing. CXR-M v1.2.2 requires SN authorization file (.lc) bytes + clientSecret. " +
                     "Provide them via RokidGlassesClient.RokidOptions(authorization = RokidAuthorization(...))."
             )
         if (auth.snLc.isEmpty()) {
@@ -659,7 +698,7 @@ class RokidGlassesClient(
     )
 
     /**
-     * CXR-M v1.0.4 Bluetooth connect requires:
+     * CXR-M v1.2.2 Bluetooth connect requires:
      * - `snLc`: SN authorization file (`.lc`) bound to the device SN (downloaded from Rokid console)
      * - `clientSecret`: developer credential (will be normalized by removing `-`)
      *
@@ -686,6 +725,8 @@ class RokidGlassesClient(
 
     private companion object {
         const val ROKID_SERVICE_UUID = "00009100-0000-1000-8000-00805f9b34fb"
+        const val ROKID_AUDIO_RECORD_MODE_COMPAT = 1
+        const val ROKID_AUDIO_DENOISE_MODE_DEFAULT = 2
 
         const val PREFS_BT = "xgglass_rokid_bt_reconnect"
         const val PREF_KEY_SOCKET_UUID = "socket_uuid"

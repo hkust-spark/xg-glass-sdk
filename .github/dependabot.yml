@@ -45,11 +45,6 @@ updates:
       # artifact form.
       - dependency-name: "com.vanniktech.maven.publish"
       - dependency-name: "com.vanniktech:gradle-maven-publish-plugin"
-      # CXR-M 1.2.2 breaks the device-rokid compile and buys nothing we need
-      # (see issue #9's SDK survey). The 1.0.4 adapter is hardware-validated;
-      # migrate deliberately alongside a Rokid hardware session (#29).
-      - dependency-name: "com.rokid.cxr:client-m"
-
   - package-ecosystem: "pip"
     directory: "/tools"
     schedule:

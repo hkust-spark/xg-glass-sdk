@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Added `GlassesEvent.LongPress` and `DeviceCapabilities.supportsLongPressEvents`, with Even G1, INMO Air3, and Simulator event support plus generated-app simulator buttons for hardware-free tap and long-press testing.
 
+### Changed
+
+- Rokid Android support now targets CXR-M 1.2.2, including the updated audio, Bluetooth, and Wi-Fi callback surfaces and the SDK's 16 KB-aligned native libraries.
+
 ## [0.2.0] - 2026-07-07
 
 ### Added
