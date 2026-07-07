@@ -222,6 +222,39 @@ def test_cmd_init_partial_even_simulator_filters_generated_files(monkeypatch, tm
     _assert_no_device_markers(dst)
 
 
+def test_cmd_init_cross_drive_sdk_path_falls_back_to_absolute(monkeypatch, tmp_path) -> None:
+    _disable_bootstrap(monkeypatch)
+    repo = _repo_root()
+    dst = tmp_path / "app"
+
+    def fail_relpath(_path, _start=None):
+        raise ValueError("path is on mount D:, start on mount C:")
+
+    monkeypatch.setattr(commands.os.path, "relpath", fail_relpath)
+
+    code = commands.cmd_init(
+        argparse.Namespace(
+            dir=str(dst),
+            template=str(repo / "templates" / "kotlin-app"),
+            sdk=str(repo),
+            entry_class=_ENTRY_CLASS,
+            sim=False,
+            devices=None,
+            no_shell_setup=True,
+        )
+    )
+
+    assert code == 0
+    expected_sdk = repo.resolve().as_posix()
+    cfg = (dst / "xg-glass.yaml").read_text(encoding="utf-8")
+    assert f'sdkPath: "{expected_sdk}"' in cfg
+    assert f'rayneoMercuryAarDir: "{expected_sdk}/third_party/rayneo/aar"' in cfg
+
+    settings = (dst / "settings.gradle.kts").read_text(encoding="utf-8")
+    assert f'includeBuild("{expected_sdk}/build-logic")' in settings
+    assert f'includeBuild("{expected_sdk}")' in settings
+
+
 def test_cmd_init_default_recursively_strips_all_markers(monkeypatch, tmp_path) -> None:
     _disable_bootstrap(monkeypatch)
     repo = _repo_root()

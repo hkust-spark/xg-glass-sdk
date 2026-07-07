@@ -17,13 +17,13 @@ jobs:
   analyze:
     name: CodeQL / ${{ matrix.language }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
           - language: java-kotlin
-            build-mode: none
+            build-mode: manual
           - language: python
             build-mode: ""
 
@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Initialize CodeQL
-        if: matrix.build-mode == 'none'
+        if: matrix.build-mode == 'manual'
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
@@ -43,6 +43,52 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
+
+      - name: Set up Java
+        if: matrix.build-mode == 'manual'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        if: matrix.build-mode == 'manual'
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Gradle
+        if: matrix.build-mode == 'manual'
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Disable generated Flutter Android module
+        if: matrix.build-mode == 'manual'
+        run: |
+          # third_party/frame/frame_module/.android is generated and not tracked.
+          # If it appears in a runner checkout, remove it so Gradle configures the non-embedded module set.
+          rm -rf third_party/frame/frame_module/.android
+
+      - name: Compile Android modules for CodeQL
+        if: matrix.build-mode == 'manual'
+        run: |
+          ./gradlew --console=plain \
+            :core:assembleAndroidMain \
+            :core-android:compileDebugKotlin \
+            :app-contract:assembleAndroidMain \
+            :universal:compileDebugKotlin \
+            :universal-full:compileDebugKotlin \
+            :device-rokid:compileDebugKotlin \
+            :device-even:assembleAndroidMain \
+            :device-omi:compileDebugKotlin \
+            :device-simulator:compileDebugKotlin \
+            :device-rayneo-installer:compileDebugKotlin \
+            :device-rayneo-runtime:compileDebugKotlin \
+            :device-inmo-runtime:compileDebugKotlin \
+            :device-android-xr:compileDebugKotlin \
+            :device-frame-flutter:compileDebugKotlin \
+            :device-inmo-runtime:testDebugUnitTest \
+            :device-even:testAndroidHostTest \
+            :app-contract:testAndroidHostTest \
+            :core-android:testDebugUnitTest \
+            :core:testAndroidHostTest
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4

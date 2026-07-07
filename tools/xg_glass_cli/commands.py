@@ -76,6 +76,14 @@ def _resolve_init_paths(raw_sdk: str | Path | None, raw_template: str | Path | N
     return sdk, template
 
 
+def _relative_sdk_path_or_absolute(sdk: Path, project_dir: Path) -> str:
+    try:
+        return Path(os.path.relpath(sdk, project_dir)).as_posix()
+    except ValueError:
+        # Windows cannot make a relative path across drives; Gradle/YAML accept an absolute SDK path.
+        return sdk.as_posix()
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     dst = Path(args.dir).expanduser().resolve()
     sdk, template = _resolve_init_paths(getattr(args, "sdk", None), getattr(args, "template", None))
@@ -111,7 +119,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     _filter_project_devices(dst, selection)
 
     # Patch template placeholders.
-    rel_sdk = Path(os.path.relpath(sdk, dst)).as_posix()
+    rel_sdk = _relative_sdk_path_or_absolute(sdk, dst)
     _replace_project_placeholders(dst, rel_sdk=rel_sdk, entry_class=entry_class)
 
     # Patch xg-glass.yaml (if template provides it).
