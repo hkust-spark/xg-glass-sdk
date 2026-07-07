@@ -11,7 +11,7 @@ glasses.
   Toast.
 - Microphone capture through the shared Android `AudioRecord` helper.
 - Raw/encoded audio playback through the shared Android audio helpers.
-- Single-tap events when the host Activity forwards key events.
+- Single-tap and long-press events when the host Activity forwards key events.
 
 ## No Vendor SDK
 
@@ -35,8 +35,8 @@ override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
 
 The current SDK maps `KEYCODE_ENTER` (`66`) to `GlassesEvent.Tap(1)`. Air2
 documentation maps DPAD `19/20/21/22` to swipes and `289/290` to long-press
-gestures; those are intentionally left unhandled until the cross-device input
-API lands.
+gestures; `289/290` are emitted as `GlassesEvent.LongPress` while swipes remain
+unhandled until the cross-device input API lands.
 
 ## Hardware Verification Checklist
 

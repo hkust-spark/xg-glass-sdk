@@ -92,6 +92,7 @@ class EvenIosGlassesClient(
         canPlayTts = false,
         canPlayAudioBytes = false,
         supportsTapEvents = true,
+        supportsLongPressEvents = true,
         supportsStreamingTextUpdates = true,
     ),
     eventBufferOverflow = BufferOverflow.SUSPEND,
@@ -562,10 +563,20 @@ class EvenIosGlassesClient(
             EvenMicNotificationResult.NotMic -> Unit
         }
 
-        val tapCount = EvenStateEvents.tapCount(value)
-        if (tapCount != null) {
-            _events.tryEmit(GlassesEvent.Tap(tapCount))
-            return
+        when (val event = EvenStateEvents.stateEvent(value)) {
+            is EvenStateEvent.Tap -> {
+                _events.tryEmit(GlassesEvent.Tap(event.count))
+                return
+            }
+            EvenStateEvent.LongPress -> {
+                _events.tryEmit(GlassesEvent.LongPress)
+                return
+            }
+            EvenStateEvent.AiRecordOver -> {
+                // LongPress is emitted on the 0x17 begin signal; 0x18 is the vendor AI recording end marker.
+                return
+            }
+            null -> Unit
         }
 
         if (connection.completeResponse(value)) return

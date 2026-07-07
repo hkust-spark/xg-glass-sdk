@@ -38,6 +38,7 @@ final class FrameGlassesClient: BaseGlassesClient {
                 canPlayTts: false,
                 canPlayAudioBytes: false,
                 supportsTapEvents: true,
+                supportsLongPressEvents: false,
                 supportsStreamingTextUpdates: true
             ),
             eventBufferOverflow: .dropOldest

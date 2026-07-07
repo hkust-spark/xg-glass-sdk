@@ -8,7 +8,7 @@ Android-first adapter for Even Realities G1 glasses.
 - Uses the Nordic UART service exposed by both arms.
 - Sends display text with the G1 text paging frame.
 - Starts microphone capture on the right arm and forwards raw LC3 frames through `PushMicrophoneSession`.
-- Maps simple TouchBar events to `GlassesEvent.Tap`.
+- Maps simple TouchBar events to `GlassesEvent.Tap` and the Even AI begin packet (`0x17`) to `GlassesEvent.LongPress`.
 - Does not support camera capture. G1 has no camera path in this adapter.
 - Does not support speaker playback, TTS, or raw audio playback.
 

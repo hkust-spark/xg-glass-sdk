@@ -22,5 +22,14 @@ sealed class ConnectionState {
 sealed class GlassesEvent {
     data class Log(val message: String) : GlassesEvent()
     data class Warning(val message: String) : GlassesEvent()
+    /** A physical tap gesture, such as a single tap or double tap. */
     data class Tap(val count: Int) : GlassesEvent()
+
+    /**
+     * A physical long-press gesture.
+     *
+     * On current confirmed devices this is typically the vendor's AI/action-button gesture;
+     * devices may also consume it for their own assistant UI.
+     */
+    data object LongPress : GlassesEvent()
 }

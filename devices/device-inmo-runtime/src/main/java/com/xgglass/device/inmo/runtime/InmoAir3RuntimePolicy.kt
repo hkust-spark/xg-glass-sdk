@@ -13,12 +13,15 @@ object InmoAir3RuntimePolicy {
 
     sealed class HostKeyAction {
         data class Tap(val count: Int) : HostKeyAction()
+        data object LongPress : HostKeyAction()
         object Unhandled : HostKeyAction()
     }
 
     fun hostKeyAction(keyCode: Int): HostKeyAction =
         when (keyCode) {
             KEYCODE_ENTER -> HostKeyAction.Tap(1)
+            KEYCODE_ONE_FINGER_LONG_PRESS,
+            KEYCODE_TWO_FINGER_LONG_PRESS -> HostKeyAction.LongPress
             else -> HostKeyAction.Unhandled
         }
 

@@ -260,7 +260,14 @@ class EvenStateEventsTest {
     @Test
     fun ignoresNonTapStateEvents() {
         assertNull(EvenStateEvents.tapCount(byteArrayOf(0xF5.toByte(), 0x17)))
+        assertNull(EvenStateEvents.tapCount(byteArrayOf(0xF5.toByte(), 0x18)))
         assertNull(EvenStateEvents.tapCount(byteArrayOf(0x4E, 0x01)))
         assertNull(EvenStateEvents.tapCount(byteArrayOf(0xF5.toByte())))
+    }
+
+    @Test
+    fun mapsEvenAiBeginToLongPressAndEndToIgnoredMarker() {
+        assertEquals(EvenStateEvent.LongPress, EvenStateEvents.stateEvent(byteArrayOf(0xF5.toByte(), 0x17)))
+        assertEquals(EvenStateEvent.AiRecordOver, EvenStateEvents.stateEvent(byteArrayOf(0xF5.toByte(), 0x18)))
     }
 }

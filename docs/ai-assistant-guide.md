@@ -39,16 +39,16 @@ Write your app logic once against these four APIs, and it runs on all supported 
 
 ## 2. Supported Devices
 
-| Device | Model Enum | Camera | Display | Mic | Speaker | Tap Events | Notes |
-|--------|-----------|--------|---------|-----|---------|------------|-------|
+| Device | Model Enum | Camera | Display | Mic | Speaker | Input Events | Notes |
+|--------|-----------|--------|---------|-----|---------|--------------|-------|
 | Rokid Glasses | `GlassesModel.ROKID` | Yes | Yes | Yes | Yes (TTS + raw) | No | Android phone-side adapter |
 | Meta AI Glasses | `GlassesModel.META` | Yes | No on iOS; Android display-capable models may enable it after connect | Yes (Android and iOS Bluetooth HFP) | Android raw; iOS no | No | iOS mic requires the glasses to be the active HFP input; hardware validation pending for iOS mic |
-| Brilliant Labs Frame | `GlassesModel.FRAME` | Yes | Yes | Yes | No | Yes | Working integration uses the source/CLI flow with the embedded Flutter module |
+| Brilliant Labs Frame | `GlassesModel.FRAME` | Yes | Yes | Yes | No | Tap | Working integration uses the source/CLI flow with the embedded Flutter module |
 | RayNeo x2 validated / x3 Pro untested | `GlassesModel.RAYNEO` | Yes | Yes | Yes | Yes (raw) | No | On-glasses Android runtime |
-| INMO Air3 | `GlassesModel.INMO` | Yes | Yes | Yes | Yes (raw/encoded bytes) | Yes, when the host Activity forwards key events | On-glasses Android runtime; hardware validation pending |
+| INMO Air3 | `GlassesModel.INMO` | Yes | Yes | Yes | Yes (raw/encoded bytes) | Tap + long press, when the host Activity forwards key events | On-glasses Android runtime; hardware validation pending |
 | Omi Glass | `GlassesModel.OMI` | No | No | Yes | No | No | Audio-focused BLE adapter |
-| Even Realities G1 | `GlassesModel.EVEN` | No | Yes | Yes (LC3 passthrough) | No | Yes | Dual-BLE Android + iOS adapter; hardware validation pending |
-| Simulator (Emulator) | `GlassesModel.SIMULATOR` | Yes (webcam/video) | Yes | Yes on Android simulator | Yes (TTS + raw) | No | Local development without glasses hardware |
+| Even Realities G1 | `GlassesModel.EVEN` | No | Yes | Yes (LC3 passthrough) | No | Tap + long press | Dual-BLE Android + iOS adapter; hardware validation pending |
+| Simulator (Emulator) | `GlassesModel.SIMULATOR` | Yes (webcam/video) | Yes | Yes on Android simulator | Yes (TTS + raw) | Synthetic tap + long press | Local development without glasses hardware |
 
 Check capabilities at runtime via `ctx.client.capabilities`:
 
@@ -57,6 +57,7 @@ val caps = ctx.client.capabilities
 if (caps.canRecordAudio) { /* safe to use startMicrophone() */ }
 if (caps.canPlayTts) { /* safe to use playAudio(AudioSource.Tts(...)) */ }
 if (caps.supportsTapEvents) { /* safe to expect GlassesEvent.Tap */ }
+if (caps.supportsLongPressEvents) { /* safe to expect GlassesEvent.LongPress */ }
 ```
 
 ---
@@ -179,7 +180,7 @@ val client = EvenGlassesClient(context)
 
 The generated Android host requests BLE permissions for Even: `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT` on Android 12+, or `ACCESS_FINE_LOCATION`, `BLUETOOTH`, and `BLUETOOTH_ADMIN` on older Android versions. G1 exposes two BLE peripherals, one left arm and one right arm; the adapter scans until it finds a matching pair, connects both arms, and sends microphone-enable commands to the right arm.
 
-Display output is paged through the G1 text paging frame. Microphone chunks are raw LC3 frames with `format.encoding = AudioEncoding.LC3`, `sampleRateHz = 16000`, and one channel; xg.glass does not decode them, so your app or ASR layer must decode LC3 on the host. Simple TouchBar packets are emitted as `GlassesEvent.Tap`. The adapter is shipped but still needs real G1 hardware validation.
+Display output is paged through the G1 text paging frame. Microphone chunks are raw LC3 frames with `format.encoding = AudioEncoding.LC3`, `sampleRateHz = 16000`, and one channel; xg.glass does not decode them, so your app or ASR layer must decode LC3 on the host. Simple TouchBar packets are emitted as `GlassesEvent.Tap`, and the Even AI begin packet (`0x17`) is emitted as `GlassesEvent.LongPress`. The adapter is shipped but still needs real G1 hardware validation.
 
 ### Even Realities G1 iOS setup
 
@@ -189,7 +190,7 @@ The iOS adapter is exposed through `XgGlassKit` and the `EvenIosGlassesClient` K
 let client = EvenIosGlassesClient(options: EvenIosOptions(connectTimeoutMs: 30_000))
 ```
 
-It uses CoreBluetooth to scan for the paired left/right arms and has the same no-camera, paged-display, LC3 microphone, and tap-event behavior as the Android adapter. Hardware validation is still pending.
+It uses CoreBluetooth to scan for the paired left/right arms and has the same no-camera, paged-display, LC3 microphone, tap-event, and long-press behavior as the Android adapter. Hardware validation is still pending.
 
 ### INMO Air3 on-glasses runtime setup
 
@@ -201,7 +202,7 @@ import com.xgglass.device.inmo.runtime.InmoRuntimeGlassesClient
 val client = InmoRuntimeGlassesClient(this)
 ```
 
-Forward Activity key-down events to surface tap events:
+Forward Activity key-down events to surface tap and long-press events:
 
 ```kotlin
 override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -211,7 +212,7 @@ override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
 }
 ```
 
-The current SDK maps `KEYCODE_ENTER` to `GlassesEvent.Tap(1)`. Camera captures include `CapturedImage.rotationDegrees` when Android reports `CameraCharacteristics.SENSOR_ORIENTATION`. Microphone capture is PCM through the shared Android microphone helper; `AudioEncoding.LC3` and `AudioEncoding.OPUS` are rejected for INMO microphone capture. Hardware validation is pending.
+The current SDK maps `KEYCODE_ENTER` to `GlassesEvent.Tap(1)` and the documented long-press keycodes `289/290` to `GlassesEvent.LongPress`. Camera captures include `CapturedImage.rotationDegrees` when Android reports `CameraCharacteristics.SENSOR_ORIENTATION`. Microphone capture is PCM through the shared Android microphone helper; `AudioEncoding.LC3` and `AudioEncoding.OPUS` are rejected for INMO microphone capture. Hardware validation is pending.
 
 ### Meta iOS microphone setup
 
@@ -505,6 +506,7 @@ data class DeviceCapabilities(
     val canPlayTts: Boolean = false,
     val canPlayAudioBytes: Boolean = false,
     val supportsTapEvents: Boolean = false,
+    val supportsLongPressEvents: Boolean = false,
     val supportsStreamingTextUpdates: Boolean = false,
 )
 ```
@@ -515,12 +517,13 @@ if (caps.canRecordAudio) { /* safe to call startMicrophone() */ }
 if (caps.canPlayTts)     { /* safe to call playAudio(AudioSource.Tts(...)) */ }
 if (caps.canPlayAudioBytes) { /* safe to call playAudio(AudioSource.RawBytes(...)) */ }
 if (caps.supportsTapEvents) { /* safe to expect GlassesEvent.Tap from events */ }
+if (caps.supportsLongPressEvents) { /* safe to expect GlassesEvent.LongPress from events */ }
 ```
 
 Relevant new-device capability profiles:
 
-- Even G1: display, LC3 microphone, tap events, streaming display updates; no camera or speaker.
-- INMO Air3: camera, display, PCM microphone, raw/encoded audio playback, tap events through host key forwarding.
+- Even G1: display, LC3 microphone, tap and long-press events, streaming display updates; no camera or speaker.
+- INMO Air3: camera, display, PCM microphone, raw/encoded audio playback, tap and long-press events through host key forwarding.
 - Meta iOS: camera and Bluetooth HFP microphone; no display, speaker, or tap events.
 
 ### 5.7 Events
@@ -532,15 +535,18 @@ sealed class GlassesEvent {
     data class Log(val message: String) : GlassesEvent()
     data class Warning(val message: String) : GlassesEvent()
     data class Tap(val count: Int) : GlassesEvent()  // e.g. single tap, double tap
+    data object LongPress : GlassesEvent()
 }
 ```
 
 `GlassesEvent.Tap` is currently emitted by Frame, Even G1, and INMO Air3. INMO only emits it when the host Activity forwards key events to `InmoRuntimeGlassesClient.onHostKeyEvent(keyCode)`.
+`GlassesEvent.LongPress` is typically the vendor's AI/action-button gesture; devices may also consume it for their own assistant UI. Even emits it on the `0x17` Even AI begin signal, INMO emits it for keycodes `289/290`, and Simulator clients can synthesize it for hardware-free tests.
 
 ```kotlin
 ctx.client.events.collect { event ->
     when (event) {
         is GlassesEvent.Tap -> { /* user tapped ${event.count} times */ }
+        GlassesEvent.LongPress -> { /* user long-pressed */ }
         is GlassesEvent.Log -> { /* informational: ${event.message} */ }
         is GlassesEvent.Warning -> { /* warning: ${event.message} */ }
     }

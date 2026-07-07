@@ -15,6 +15,7 @@ final class StubSwiftGlassesClient: BaseGlassesClient {
                 canPlayTts: false,
                 canPlayAudioBytes: false,
                 supportsTapEvents: false,
+                supportsLongPressEvents: false,
                 supportsStreamingTextUpdates: false
             ),
             eventBufferOverflow: .dropOldest

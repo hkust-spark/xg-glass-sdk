@@ -24,6 +24,7 @@ import com.xgglass.core.CapturedImage
 import com.xgglass.core.ConnectionState
 import com.xgglass.core.DeviceCapabilities
 import com.xgglass.core.DisplayOptions
+import com.xgglass.core.GlassesEvent
 import com.xgglass.core.GlassesError
 import com.xgglass.core.GlassesModel
 import com.xgglass.core.MicrophoneOptions
@@ -71,12 +72,24 @@ class SimulatorGlassesClient(
         canRecordAudio = true,
         canPlayTts = true,
         canPlayAudioBytes = true,
-        supportsTapEvents = false,
+        supportsTapEvents = true,
+        supportsLongPressEvents = true,
         supportsStreamingTextUpdates = false,
     ),
 ) {
 
     override val model: GlassesModel = GlassesModel.SIMULATOR
+
+    /** Testing hook that emits a synthetic [GlassesEvent.Tap] without glasses hardware. */
+    fun simulateTap(count: Int) {
+        require(count > 0) { "Tap count must be positive." }
+        _events.tryEmit(GlassesEvent.Tap(count))
+    }
+
+    /** Testing hook that emits a synthetic [GlassesEvent.LongPress] without glasses hardware. */
+    fun simulateLongPress() {
+        _events.tryEmit(GlassesEvent.LongPress)
+    }
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageCapture: ImageCapture? = null

@@ -63,6 +63,7 @@ class InmoRuntimeGlassesClient(
         canPlayTts = false,
         canPlayAudioBytes = true,
         supportsTapEvents = true,
+        supportsLongPressEvents = true,
         supportsStreamingTextUpdates = false,
     ),
     eventBufferOverflow = BufferOverflow.SUSPEND,
@@ -80,14 +81,18 @@ class InmoRuntimeGlassesClient(
     /**
      * Forward host Activity key-down events here.
      *
-     * Today only ENTER (66) is emitted as [GlassesEvent.Tap]. INMO Air2 documentation maps
-     * DPAD 19/20/21/22 to touchpad swipes and 289/290 to long-press gestures; those remain
-     * unhandled until the cross-device input API lands in issue #9.
+     * ENTER (66) is emitted as [GlassesEvent.Tap]. INMO Air2 documentation maps
+     * DPAD 19/20/21/22 to touchpad swipes and 289/290 to long-press gestures; the
+     * long-press keycodes are emitted as [GlassesEvent.LongPress].
      */
     fun onHostKeyEvent(keyCode: Int): Boolean {
         return when (val action = InmoAir3RuntimePolicy.hostKeyAction(keyCode)) {
             is InmoAir3RuntimePolicy.HostKeyAction.Tap -> {
                 _events.tryEmit(GlassesEvent.Tap(action.count))
+                true
+            }
+            InmoAir3RuntimePolicy.HostKeyAction.LongPress -> {
+                _events.tryEmit(GlassesEvent.LongPress)
                 true
             }
             InmoAir3RuntimePolicy.HostKeyAction.Unhandled -> false

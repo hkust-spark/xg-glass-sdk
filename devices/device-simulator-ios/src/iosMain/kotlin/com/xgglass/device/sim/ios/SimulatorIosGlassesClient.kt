@@ -6,6 +6,7 @@ import com.xgglass.core.CapturedImage
 import com.xgglass.core.ConnectionState
 import com.xgglass.core.DeviceCapabilities
 import com.xgglass.core.DisplayOptions
+import com.xgglass.core.GlassesEvent
 import com.xgglass.core.GlassesError
 import com.xgglass.core.GlassesModel
 import com.xgglass.core.BaseGlassesClient
@@ -33,11 +34,23 @@ class SimulatorIosGlassesClient(
         canRecordAudio = false,
         canPlayTts = false,
         canPlayAudioBytes = false,
-        supportsTapEvents = false,
+        supportsTapEvents = true,
+        supportsLongPressEvents = true,
         supportsStreamingTextUpdates = false,
     ),
 ) {
     override val model: GlassesModel = GlassesModel.SIMULATOR
+
+    /** Testing hook that emits a synthetic [GlassesEvent.Tap] without glasses hardware. */
+    fun simulateTap(count: Int) {
+        require(count > 0) { "Tap count must be positive." }
+        _events.tryEmit(GlassesEvent.Tap(count))
+    }
+
+    /** Testing hook that emits a synthetic [GlassesEvent.LongPress] without glasses hardware. */
+    fun simulateLongPress() {
+        _events.tryEmit(GlassesEvent.LongPress)
+    }
 
     override suspend fun doConnect() {
         emitLog("Simulator (iOS): connect (no-op)")

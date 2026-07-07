@@ -406,6 +406,7 @@ class MainActivity : AppCompatActivity() {
                             is GlassesEvent.Log -> appendLog(ev.message)
                             is GlassesEvent.Warning -> appendLog("WARN: ${ev.message}")
                             is GlassesEvent.Tap -> appendLog("TAP: ${ev.count}")
+                            GlassesEvent.LongPress -> appendLog("LONG_PRESS")
                         }
                     }
                 }
@@ -503,6 +504,7 @@ class MainActivity : AppCompatActivity() {
                             is GlassesEvent.Log -> appendLog(ev.message)
                             is GlassesEvent.Warning -> appendLog("WARN: ${ev.message}")
                             is GlassesEvent.Tap -> appendLog("TAP: ${ev.count}")
+                            GlassesEvent.LongPress -> appendLog("LONG_PRESS")
                         }
                     }
                 }
@@ -782,6 +784,22 @@ class MainActivity : AppCompatActivity() {
             llCommands.addView(TextView(this).apply { text = "No commands for PHONE/${model.name}" })
             return
         }
+
+        // xg:device:simulator:begin
+        if (model == GlassesModel.SIMULATOR) {
+            val simulatorClient = client as? SimulatorGlassesClient
+            if (simulatorClient != null) {
+                llCommands.addView(Button(this).apply {
+                    text = "Simulate Tap"
+                    setOnClickListener { simulatorClient.simulateTap(1) }
+                })
+                llCommands.addView(Button(this).apply {
+                    text = "Simulate Long-press"
+                    setOnClickListener { simulatorClient.simulateLongPress() }
+                })
+            }
+        }
+        // xg:device:simulator:end
 
         cmds.forEach { cmd ->
             llCommands.addView(Button(this).apply {

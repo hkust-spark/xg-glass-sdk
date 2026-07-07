@@ -55,13 +55,13 @@ class InmoAir3RuntimePolicyTest {
     }
 
     @Test
-    fun longPressKeysAreUnhandledForFutureInputApi() {
+    fun longPressKeysMapToLongPress() {
         assertSame(
-            InmoAir3RuntimePolicy.HostKeyAction.Unhandled,
+            InmoAir3RuntimePolicy.HostKeyAction.LongPress,
             InmoAir3RuntimePolicy.hostKeyAction(InmoAir3RuntimePolicy.KEYCODE_ONE_FINGER_LONG_PRESS),
         )
         assertSame(
-            InmoAir3RuntimePolicy.HostKeyAction.Unhandled,
+            InmoAir3RuntimePolicy.HostKeyAction.LongPress,
             InmoAir3RuntimePolicy.hostKeyAction(InmoAir3RuntimePolicy.KEYCODE_TWO_FINGER_LONG_PRESS),
         )
     }

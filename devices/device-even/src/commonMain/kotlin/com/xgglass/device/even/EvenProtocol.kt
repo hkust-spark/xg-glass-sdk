@@ -324,6 +324,12 @@ internal object EvenMicProtocol {
     }
 }
 
+internal sealed class EvenStateEvent {
+    data class Tap(val count: Int) : EvenStateEvent()
+    data object LongPress : EvenStateEvent()
+    data object AiRecordOver : EvenStateEvent()
+}
+
 internal object EvenStateEvents {
     // Source: community and official state-event command; g1-ble-protocol.txt lines 523-531,
     // /tmp/even-ref/EvenDemoApp/lib/ble_manager.dart lines 154-177.
@@ -340,15 +346,21 @@ internal object EvenStateEvents {
     const val EVEN_AI_START = 0x17
     const val EVEN_AI_RECORD_OVER = 0x18
 
-    fun tapCount(packet: ByteArray): Int? {
+    fun stateEvent(packet: ByteArray): EvenStateEvent? {
         if (packet.size < 2) return null
         if ((packet[0].toInt() and 0xFF) != COMMAND) return null
         return when (packet[1].toInt() and 0xFF) {
-            SINGLE_TAP -> 1
-            DOUBLE_TAP -> 2
-            TRIPLE_TAP_A, TRIPLE_TAP_B -> 3
+            SINGLE_TAP -> EvenStateEvent.Tap(1)
+            DOUBLE_TAP -> EvenStateEvent.Tap(2)
+            TRIPLE_TAP_A, TRIPLE_TAP_B -> EvenStateEvent.Tap(3)
+            EVEN_AI_START -> EvenStateEvent.LongPress
+            EVEN_AI_RECORD_OVER -> EvenStateEvent.AiRecordOver
             else -> null
         }
+    }
+
+    fun tapCount(packet: ByteArray): Int? {
+        return (stateEvent(packet) as? EvenStateEvent.Tap)?.count
     }
 }
 

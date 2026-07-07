@@ -92,6 +92,7 @@ public final class MetaGlassesClient: BaseGlassesClient {
                 canPlayTts: false,
                 canPlayAudioBytes: false,
                 supportsTapEvents: false,
+                supportsLongPressEvents: false,
                 supportsStreamingTextUpdates: false
             ),
             eventBufferOverflow: .dropOldest
@@ -505,6 +506,7 @@ public final class MetaGlassesClient: BaseGlassesClient {
                 canPlayTts: current.canPlayTts,
                 canPlayAudioBytes: current.canPlayAudioBytes,
                 supportsTapEvents: current.supportsTapEvents,
+                supportsLongPressEvents: current.supportsLongPressEvents,
                 supportsStreamingTextUpdates: current.supportsStreamingTextUpdates
             )
         }
