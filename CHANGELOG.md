@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added `xg-glass run --devices` for single-file quick mode, so generated quick-run projects can use the same adapter selection as `xg-glass init`.
 - Added generated `llms-full.txt` docs ingestion output with a stdlib generator and CI freshness guard.
 - Added Omi DevKit button-service mapping on Android and iOS, with tap capability gated on discovered button services and legacy long-press events emitted when field firmware sends them.
+- Added Play Feature Delivery guidance for app-owned dynamic feature modules that defer heavy Frame and Meta Android adapters.
 
 ### Fixed
 

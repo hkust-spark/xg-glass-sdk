@@ -9,6 +9,7 @@ Full inlined docs live in [llms-full.txt](llms-full.txt).
 - [AI Assistant Guide](docs/ai-assistant-guide.md) - primary full API reference for AI assistants.
 - [README](README.md) - installation channels, device matrix, and repository overview.
 - [Your First App for Android](docs/getting-started-android.md) - Maven-based Android quickstart.
+- [Play Feature Delivery for Heavy Android Adapters](docs/play-feature-delivery.md) - consuming-app layout for deferring Frame and Meta adapters in Play-distributed Android apps.
 - [iOS Device Support](docs/ios-device-support.md) - iOS feasibility and supported adapter notes.
 - [Swift Package Setup](docs/swift-package.md) - SwiftPM products and iOS quick start.
 
