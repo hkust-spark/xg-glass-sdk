@@ -24,6 +24,8 @@ xg-glass run
 
 For generated simulator projects, `xg-glass run --sim` now performs the simulator one-shot flow: it applies simulator build settings, builds, starts an Android Emulator when the selected serial is not already online, installs the APK, and launches it. `--local_video /path/to/video.mp4` and `--video_url <url>` use the same simulator video path as quick mode.
 
+Set `XG_EMULATOR_ARGS` to append extra flags to the auto-started emulator command. For headless CI runners, use `XG_EMULATOR_ARGS="-no-window -gpu swiftshader_indirect -no-audio -no-boot-anim"`.
+
 Commands that create or synthesize a project (`xg-glass init` and `xg-glass run <file.kt>`) download the matching `xg-glass-sdk` release on first use and cache it under `~/.xg-glass/sdk/`:
 
 ```sh

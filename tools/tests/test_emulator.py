@@ -54,6 +54,39 @@ def test_launch_emulator_process_detaches_on_posix(monkeypatch) -> None:
     assert stderr_path.name.startswith("xg-glass-emulator-")
 
 
+def test_launch_emulator_process_appends_env_args(monkeypatch) -> None:
+    captured = {}
+
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(emulator.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(emulator.subprocess, "Popen", fake_popen)
+
+    emulator._launch_emulator_process(
+        "/sdk/emulator/emulator",
+        "xg_glass_avd",
+        {
+            "ANDROID_HOME": "/sdk",
+            "XG_EMULATOR_ARGS": "-no-window -gpu swiftshader_indirect -no-audio -no-boot-anim",
+        },
+    )
+
+    assert captured["cmd"] == [
+        "/sdk/emulator/emulator",
+        "-avd",
+        "xg_glass_avd",
+        "-no-snapshot-load",
+        "-no-window",
+        "-gpu",
+        "swiftshader_indirect",
+        "-no-audio",
+        "-no-boot-anim",
+    ]
+    assert captured["kwargs"]["env"]["XG_EMULATOR_ARGS"] == "-no-window -gpu swiftshader_indirect -no-audio -no-boot-anim"
+
+
 def test_ensure_emulator_waits_for_requested_serial_not_other_ready_emulator(monkeypatch, tmp_path) -> None:
     _arrange_emulator_launch(monkeypatch, tmp_path)
     device_outputs = iter(

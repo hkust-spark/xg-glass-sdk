@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -103,8 +104,10 @@ def _launch_emulator_process(emu: str, avd_name: str, env: dict[str, str]):
             popen_kwargs["creationflags"] = creationflags
     else:
         popen_kwargs["start_new_session"] = True
+    extra_args = shlex.split(env.get("XG_EMULATOR_ARGS", ""))
+    cmd = [emu, "-avd", avd_name, "-no-snapshot-load", *extra_args]
     try:
-        process = subprocess.Popen([emu, "-avd", avd_name, "-no-snapshot-load"], **popen_kwargs)
+        process = subprocess.Popen(cmd, **popen_kwargs)
     finally:
         stderr_file.close()
     return process, stderr_path

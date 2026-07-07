@@ -53,6 +53,7 @@ jobs:
         env:
           XG_SIM_E2E_EVIDENCE_DIR: ${{ runner.temp }}/xg-sim-e2e-evidence
           XG_SIM_E2E_WORKDIR: ${{ runner.temp }}/xg-sim-e2e-project
+          XG_EMULATOR_ARGS: -no-window -gpu swiftshader_indirect -no-audio -no-boot-anim
         run: scripts/sim-e2e.sh
 
       - name: Upload simulator E2E evidence
