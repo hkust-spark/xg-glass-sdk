@@ -36,6 +36,14 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Install emulator host dependencies
+        run: |
+          # The emulator's qemu binary hard-links libpulse.so.0, which the
+          # hosted ubuntu image does not ship (first dispatch failed with
+          # exit 127: "error while loading shared libraries: libpulse.so.0").
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libpulse0
+
       - name: Disable generated Flutter Android module
         run: |
           # The generated Flutter module needs local .android/local.properties and a Flutter SDK.
