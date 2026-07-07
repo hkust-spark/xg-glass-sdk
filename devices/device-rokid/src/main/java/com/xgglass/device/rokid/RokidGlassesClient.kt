@@ -40,6 +40,7 @@ import com.xgglass.core.PhotoQuality
 import com.xgglass.core.PlayAudioOptions
 import com.xgglass.core.android.playPcmViaAudioTrack
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -52,6 +53,7 @@ import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -284,8 +286,12 @@ class RokidGlassesClient(
             val running = AtomicBoolean(true)
             val seq = AtomicLong(0)
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-            fun finishStream() {
-                if (!running.compareAndSet(true, false)) return
+            val expectedStreamId = AtomicInteger(ROKID_AUDIO_STREAM_ID_UNSET)
+            val unexpectedStreamIdEvents = AtomicInteger(0)
+            val nullAudioFrameDrops = AtomicInteger(0)
+            val invalidAudioFrameDrops = AtomicInteger(0)
+
+            fun finishStreamAfterGate() {
                 scope.cancel()
                 activeMic = null
                 shared.tryEmit(
@@ -298,6 +304,29 @@ class RokidGlassesClient(
                 )
             }
 
+            fun finishStream() {
+                if (!running.compareAndSet(true, false)) return
+                finishStreamAfterGate()
+            }
+
+            fun warnUnexpectedStreamId(eventName: String, streamId: Int, expected: Int) {
+                val count = unexpectedStreamIdEvents.incrementAndGet()
+                if (shouldRateLimitLog(count)) {
+                    val expectedText = if (expected == ROKID_AUDIO_STREAM_ID_UNSET) "unset" else expected.toString()
+                    emitWarn(
+                        "Rokid: ignored $eventName for unexpected audio stream id=$streamId " +
+                            "expected=$expectedText; count=$count"
+                    )
+                }
+            }
+
+            fun isExpectedStreamId(eventName: String, streamId: Int): Boolean {
+                val expected = expectedStreamId.get()
+                if (expected == streamId) return true
+                warnUnexpectedStreamId(eventName, streamId, expected)
+                return false
+            }
+
             val listener = object : AudioStreamListener {
                 override fun onStartAudioStream(
                     streamId: Int,
@@ -305,6 +334,18 @@ class RokidGlassesClient(
                     modeOrChannels: Int,
                     streamType: String?
                 ) {
+                    val previous = expectedStreamId.get()
+                    if (previous == ROKID_AUDIO_STREAM_ID_UNSET) {
+                        expectedStreamId.compareAndSet(ROKID_AUDIO_STREAM_ID_UNSET, streamId)
+                    } else if (previous != streamId) {
+                        warnUnexpectedStreamId("audio stream start", streamId, previous)
+                    }
+
+                    // The 1.2.2 Java listener bytecode exposes this third int
+                    // only by position. Native strings around StartAudioStream
+                    // mention codec/originCodec/channels; the record API still
+                    // has no sample-rate/channel-count parameters, so keep the
+                    // public AudioFormat sampleRateHz/channelCount unknown.
                     emitLog(
                         "Rokid: audio stream started id=$streamId codec=$codecType " +
                             "modeOrChannels=$modeOrChannels stream=$streamType"
@@ -312,12 +353,40 @@ class RokidGlassesClient(
                 }
 
                 override fun onAudioStream(streamId: Int, data: ByteArray?, offset: Int, length: Int) {
+                    if (!isExpectedStreamId("audio stream frame", streamId)) return
                     if (!running.get()) return
-                    if (data == null) return
-                    if (length <= 0) return
+                    if (data == null) {
+                        val count = nullAudioFrameDrops.incrementAndGet()
+                        if (shouldRateLimitLog(count)) {
+                            emitWarn(
+                                "Rokid: dropped null audio frame streamId=$streamId " +
+                                    "offset=$offset length=$length; count=$count"
+                            )
+                        }
+                        return
+                    }
+                    if (length <= 0) {
+                        val count = invalidAudioFrameDrops.incrementAndGet()
+                        if (shouldRateLimitLog(count)) {
+                            emitWarn(
+                                "Rokid: dropped invalid audio frame streamId=$streamId " +
+                                    "offset=$offset length=$length dataSize=${data.size}; count=$count"
+                            )
+                        }
+                        return
+                    }
                     val start = offset.coerceAtLeast(0)
                     val end = (offset + length).coerceAtMost(data.size)
-                    if (end <= start) return
+                    if (end <= start) {
+                        val count = invalidAudioFrameDrops.incrementAndGet()
+                        if (shouldRateLimitLog(count)) {
+                            emitWarn(
+                                "Rokid: dropped invalid audio frame streamId=$streamId " +
+                                    "offset=$offset length=$length dataSize=${data.size}; count=$count"
+                            )
+                        }
+                        return
+                    }
                     val bytes = data.copyOfRange(start, end)
                     shared.tryEmit(
                         AudioChunk(
@@ -329,6 +398,7 @@ class RokidGlassesClient(
                 }
 
                 override fun onAudioStreamFinish(streamId: Int) {
+                    if (!isExpectedStreamId("audio stream finish", streamId)) return
                     emitLog("Rokid: audio stream finished id=$streamId")
                     finishStream()
                 }
@@ -363,14 +433,14 @@ class RokidGlassesClient(
                 override val audio: Flow<AudioChunk> = shared
 
                 override suspend fun stop() {
-                    if (!running.get()) return
+                    if (!running.compareAndSet(true, false)) return
                     try {
                         CxrApi.getInstance().closeAudioRecord(streamType)
                     } catch (_: Exception) {}
                     try {
                         CxrApi.getInstance().setAudioStreamListener(null)
                     } catch (_: Exception) {}
-                    finishStream()
+                    finishStreamAfterGate()
                 }
             }
 
@@ -396,6 +466,7 @@ class RokidGlassesClient(
                 btReady = true
                 return
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 // Common in practice: cached reconnect info becomes stale after re-pair/reset/firmware changes.
                 // Fall back to scan+init flow automatically.
                 emitWarn("Rokid: BT reconnect failed, falling back to scan/init: ${e.message}")
@@ -607,7 +678,11 @@ class RokidGlassesClient(
 
                 override fun onConnected() = Unit
                 override fun onInActiveConnected(socketUuid: String?, macAddress: String?) {
-                    emitLog("Rokid: inactive Bluetooth connection available uuid=$socketUuid mac=$macAddress")
+                    emitWarn(
+                        "Rokid: vendor reported inactive Bluetooth connection uuid=$socketUuid mac=$macAddress; " +
+                            "adapter is intentionally not resolving connect from this callback. If connect later " +
+                            "times out, vendor resolved via inactive-connected; report on PR 66."
+                    )
                 }
                 override fun onDisconnected() = Unit
 
@@ -641,7 +716,11 @@ class RokidGlassesClient(
                 }
 
                 override fun onInActiveConnected(socketUuid: String?, macAddress: String?) {
-                    emitLog("Rokid: inactive Bluetooth connection available uuid=$socketUuid mac=$macAddress")
+                    emitWarn(
+                        "Rokid: vendor reported inactive Bluetooth connection uuid=$socketUuid mac=$macAddress; " +
+                            "adapter is intentionally not resolving connect from this callback. If connect later " +
+                            "times out, vendor resolved via inactive-connected; report on PR 66."
+                    )
                 }
 
                 override fun onDisconnected() {
@@ -689,6 +768,9 @@ class RokidGlassesClient(
             .apply()
     }
 
+    private fun shouldRateLimitLog(count: Int): Boolean =
+        count == 1 || count % RATE_LIMIT_EVERY == 0
+
     data class RokidOptions(
         val connectTimeoutMs: Long = 30_000,
         val defaultWidth: Int = 2400,
@@ -727,6 +809,8 @@ class RokidGlassesClient(
         const val ROKID_SERVICE_UUID = "00009100-0000-1000-8000-00805f9b34fb"
         const val ROKID_AUDIO_RECORD_MODE_COMPAT = 1
         const val ROKID_AUDIO_DENOISE_MODE_DEFAULT = 2
+        const val ROKID_AUDIO_STREAM_ID_UNSET = Int.MIN_VALUE
+        const val RATE_LIMIT_EVERY = 50
 
         const val PREFS_BT = "xgglass_rokid_bt_reconnect"
         const val PREF_KEY_SOCKET_UUID = "socket_uuid"
