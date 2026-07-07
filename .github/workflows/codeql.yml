@@ -22,8 +22,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - language: java-kotlin
-            build-mode: manual
+          # java-kotlin is gated out until CodeQL supports Kotlin 2.4:
+          # the extractor hard-fails with "Kotlin version 2.4.0 is too
+          # recent. CodeQL currently supports versions below 2.3.30"
+          # (github/codeql#21938). The manual-build steps below stay in
+          # place; re-enable by restoring this matrix entry:
+          #   - language: java-kotlin
+          #     build-mode: manual
           - language: python
             build-mode: ""
 
