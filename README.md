@@ -60,7 +60,7 @@ Choose one installation channel depending on the platform you are targeting.
 
 #### Android (Maven Central)
 
-Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.2.0`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`. Note that the Maven group is only the distribution namespace — Kotlin packages in code are `com.xgglass.*` (for example `import com.xgglass.core.GlassesClient`).
+Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.2.1`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`. Note that the Maven group is only the distribution namespace — Kotlin packages in code are `com.xgglass.*` (for example `import com.xgglass.core.GlassesClient`).
 
 New to the SDK? Follow [Your First App (Android)](./docs/getting-started-android.md).
 
@@ -89,7 +89,7 @@ dependencyResolutionManagement {
 
 // your app module's build.gradle.kts
 dependencies {
-    implementation("io.github.hkust-spark:xgglass-universal:0.2.0")
+    implementation("io.github.hkust-spark:xgglass-universal:0.2.1")
 }
 ```
 
@@ -128,7 +128,7 @@ dependencyResolutionManagement {
 
 // your app module's build.gradle.kts
 dependencies {
-    implementation("io.github.hkust-spark:xgglass-device-meta:0.2.0")
+    implementation("io.github.hkust-spark:xgglass-device-meta:0.2.1")
 }
 ```
 
@@ -139,7 +139,7 @@ The Swift Package is hosted from this repository and requires iOS 16+. It publis
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.2.0")
+    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.2.1")
 ],
 targets: [
     .target(

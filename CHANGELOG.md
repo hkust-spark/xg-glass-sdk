@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+### Fixed
+
+## [0.2.1] - 2026-07-07
+
+### Added
+
 - Added `GlassesEvent.LongPress` and `DeviceCapabilities.supportsLongPressEvents`, with Even G1, INMO Air3, and Simulator event support plus generated-app simulator buttons for hardware-free tap and long-press testing.
 - Added a portable `scripts/sim-e2e.sh` simulator smoke test and nightly KVM GitHub Actions workflow with logcat, screenshot, UI XML, and per-step evidence artifacts.
 - Added `xg-glass run --devices` for single-file quick mode, so generated quick-run projects can use the same adapter selection as `xg-glass init`.
@@ -23,6 +29,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added nightly simulator quick-run E2E coverage and verified managed Android command-line tools downloads with pinned SHA-256 checksums.
 - Frame adapters now map spontaneous runtime reconnect/drop events consistently on Android and iOS, and end active microphone streams on disconnect/drop so audio collectors do not hang.
 - Surfaced rejected SDK event emissions through `BaseGlassesClient.droppedEventCount` and a one-shot warning when `SUSPEND` event buffers overflow.
+
+### Notes
+
+- Patch-style release: all changes since 0.2.0 are additive or fixes, with no breaking API changes.
 
 ## [0.2.0] - 2026-07-07
 
