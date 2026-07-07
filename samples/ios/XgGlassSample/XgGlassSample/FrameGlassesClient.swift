@@ -2,16 +2,49 @@
 import Foundation
 import XgGlassMetaTesting
 
+protocol FrameRuntime: AnyObject {
+    var latestState: FrameFlutterState { get }
+
+    func addEventObserver(_ observer: @escaping ([String: Any]) -> Void) -> UUID
+    func removeEventObserver(_ id: UUID)
+    func addStateObserver(_ observer: @escaping (FrameFlutterState) -> Void) -> UUID
+    func removeStateObserver(_ id: UUID)
+    func invoke(
+        method: String,
+        arguments: [String: Any]?,
+        completion: @escaping (Any?, FlutterError?) -> Void
+    )
+    func connect(completion: @escaping (Bool, FlutterError?) -> Void)
+    func disconnect(completion: @escaping (Bool, FlutterError?) -> Void)
+    func capturePhoto(
+        arguments: [String: Any],
+        completion: @escaping (FlutterStandardTypedData?, FlutterError?) -> Void
+    )
+    func displayText(
+        arguments: [String: Any],
+        completion: @escaping (Bool, FlutterError?) -> Void
+    )
+    func shutdown()
+}
+
+extension FrameFlutterRuntime: FrameRuntime {}
+
 final class FrameGlassesClient: BaseGlassesClient {
-    private let runtime: FrameFlutterRuntime?
+    private let runtime: FrameRuntime?
     private let runtimeStartupError: Error?
     private let ownsRuntime: Bool
     private let connectTimeoutSeconds: TimeInterval
     private var eventObserverToken: UUID?
     private var stateObserverToken: UUID?
     private var activeMicSink: PushMicrophoneSession?
+    private var activeMicLastSequence: Int64 = -1
+    private let micLock = NSLock()
+    private let lifecycleLock = NSLock()
+    private var hasCompletedConnect = false
+    private var connectInFlight = false
+    private var disconnectInFlight = false
 
-    init(runtime: FrameFlutterRuntime? = nil, connectTimeoutSeconds: TimeInterval = 10) {
+    init(runtime: FrameRuntime? = nil, connectTimeoutSeconds: TimeInterval = 10) {
         if let runtime {
             // Injected runtime is owned by the caller; do not shut it down on deinit.
             self.runtime = runtime
@@ -77,10 +110,13 @@ final class FrameGlassesClient: BaseGlassesClient {
 
         let resolver = FrameCompletionResolver<Error?>(completionHandler)
         let timeoutSeconds = connectTimeoutSeconds
+        markConnectInFlight(true)
         let timeout = DispatchWorkItem { [weak self] in
             let message = "Frame connect failed: timed out waiting for Flutter BLE connect after \(timeoutSeconds) seconds"
             self?.emitWarn(message: message)
-            resolver.resolve(GlassesError.Transport(detail: message, cause: nil).asError())
+            if resolver.resolve(GlassesError.Transport(detail: message, cause: nil).asError()) {
+                self?.finishConnect(success: false)
+            }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: timeout)
 
@@ -91,9 +127,13 @@ final class FrameGlassesClient: BaseGlassesClient {
         runtime.connect { _, error in
             timeout.cancel()
             if let error {
-                resolver.resolve(frameTransportError("Frame connect failed", error: error))
+                if resolver.resolve(frameTransportError("Frame connect failed", error: error)) {
+                    self.finishConnect(success: false)
+                }
             } else {
-                resolver.resolve(nil)
+                if resolver.resolve(nil) {
+                    self.finishConnect(success: true)
+                }
             }
         }
     }
@@ -107,15 +147,17 @@ final class FrameGlassesClient: BaseGlassesClient {
 
     override func disconnect(completionHandler: @escaping @Sendable (Error?) -> Void) {
         guard let runtime else {
-            clearActiveMic()
+            endActiveMic()
             _state.setValue(ConnectionState.Disconnected.shared)
             completionHandler(nil)
             return
         }
 
+        markDisconnectInFlight(true)
         runtime.disconnect { [weak self] _, error in
-            self?.clearActiveMic()
+            self?.endActiveMic()
             self?._state.setValue(ConnectionState.Disconnected.shared)
+            self?.markDisconnectInFlight(false)
             if let error {
                 // frameTransportError is a free function, so a released `self` cannot collapse
                 // a real error into a false success.
@@ -208,46 +250,61 @@ final class FrameGlassesClient: BaseGlassesClient {
                 format: format,
                 onStop: { [weak self] in
                     self?.runtime?.invoke(method: "stopMicrophone", arguments: nil) { _, _ in }
-                    self?.clearActiveMic()
+                    self?.clearActiveMicReference()
                 },
                 extraBufferCapacity: 128
             )
-            self.activeMicSink = sink
+            self.setActiveMic(sink)
             completionHandler(sink, nil)
         }
     }
 
     private func handleRuntimeState(_ state: FrameFlutterState) {
+        let current = _state.value as? ConnectionState
         if let transition = Self.resolveRuntimeStateTransition(
-            current: _state.value as? ConnectionState,
-            runtime: state
+            current: current,
+            runtime: state,
+            hasCompletedConnect: lifecycleFlag(\.hasCompletedConnect),
+            connectInFlight: lifecycleFlag(\.connectInFlight),
+            disconnectInFlight: lifecycleFlag(\.disconnectInFlight)
         ) {
+            if transition is ConnectionState.Disconnected, current is ConnectionState.Connected {
+                endActiveMic()
+            }
             _state.setValue(transition)
+            if transition is ConnectionState.Connected, current is ConnectionState.Disconnected {
+                emitLog(message: "Frame runtime reported a spontaneous reconnect")
+            }
         }
     }
 
     static func resolveRuntimeStateTransition(
         current: ConnectionState?,
-        runtime: FrameFlutterState
+        runtime: FrameFlutterState,
+        hasCompletedConnect: Bool,
+        connectInFlight: Bool = false,
+        disconnectInFlight: Bool = false
     ) -> ConnectionState? {
+        // Explicit connect()/disconnect() calls own their transient states. Runtime events only model
+        // spontaneous BLE changes after the first successful connection.
+        if connectInFlight || disconnectInFlight {
+            return nil
+        }
+
         switch runtime {
         case .connecting:
             // The base owns Connecting during connect().
             return nil
         case .connected:
-            // A connected event during connect() races the connect reply, so ignore it.
-            // A connected event from Disconnected/Error means Dart/BLE recovered on its own.
-            if current is ConnectionState.Disconnected || current is ConnectionState.Error {
+            if hasCompletedConnect, current is ConnectionState.Disconnected {
                 return ConnectionState.Connected.shared
             }
             return nil
         case .disconnected:
-            // Do not let a post-failure disconnected event clobber Error, and do not let the
-            // observer own the in-flight Connecting state.
-            if current is ConnectionState.Error || current is ConnectionState.Connecting {
-                return nil
+            if current is ConnectionState.Connected {
+                return ConnectionState.Disconnected.shared
             }
-            return ConnectionState.Disconnected.shared
+            return nil
         case .error(let message):
             return ConnectionState.Error(error: GlassesError.Transport(
                 detail: "Frame error: \(message)",
@@ -280,18 +337,18 @@ final class FrameGlassesClient: BaseGlassesClient {
     }
 
     private func handleAudioEvent(_ payload: [String: Any]) {
-        guard let sink = activeMicSink else {
+        guard let sink = currentActiveMicSink() else {
             return
         }
 
         let sequence = int64Value(payload["sequence"]) ?? 0
         if (payload["eos"] as? Bool) == true {
-            sink.emitEndOfStream(sequence: sequence)
-            clearActiveMic()
+            endActiveMic(sequence: sequence)
             return
         }
 
         if let bytes = payload["bytes"] as? FlutterStandardTypedData {
+            recordActiveMicSequence(sequence)
             _ = sink.emit(bytes: bytes.data.toKotlinByteArray(), sequence: sequence)
         }
     }
@@ -434,14 +491,72 @@ final class FrameGlassesClient: BaseGlassesClient {
         return nil
     }
 
-    private func clearActiveMic() {
-        if Thread.isMainThread {
-            activeMicSink = nil
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                self?.activeMicSink = nil
-            }
+    private func setActiveMic(_ sink: PushMicrophoneSession) {
+        micLock.lock()
+        activeMicSink = sink
+        activeMicLastSequence = -1
+        micLock.unlock()
+    }
+
+    private func currentActiveMicSink() -> PushMicrophoneSession? {
+        micLock.lock()
+        defer { micLock.unlock() }
+        return activeMicSink
+    }
+
+    private func recordActiveMicSequence(_ sequence: Int64) {
+        micLock.lock()
+        if activeMicSink != nil {
+            activeMicLastSequence = sequence
         }
+        micLock.unlock()
+    }
+
+    private func endActiveMic(sequence: Int64? = nil) {
+        micLock.lock()
+        guard let sink = activeMicSink else {
+            micLock.unlock()
+            return
+        }
+        let endSequence = sequence ?? activeMicLastSequence + 1
+        activeMicSink = nil
+        activeMicLastSequence = -1
+        micLock.unlock()
+        sink.emitEndOfStream(sequence: endSequence)
+    }
+
+    private func clearActiveMicReference() {
+        micLock.lock()
+        activeMicSink = nil
+        activeMicLastSequence = -1
+        micLock.unlock()
+    }
+
+    private func markConnectInFlight(_ value: Bool) {
+        lifecycleLock.lock()
+        connectInFlight = value
+        lifecycleLock.unlock()
+    }
+
+    private func finishConnect(success: Bool) {
+        lifecycleLock.lock()
+        if success {
+            hasCompletedConnect = true
+        }
+        connectInFlight = false
+        lifecycleLock.unlock()
+    }
+
+    private func markDisconnectInFlight(_ value: Bool) {
+        lifecycleLock.lock()
+        disconnectInFlight = value
+        lifecycleLock.unlock()
+    }
+
+    private func lifecycleFlag(_ keyPath: KeyPath<FrameGlassesClient, Bool>) -> Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return self[keyPath: keyPath]
     }
 }
 
@@ -484,12 +599,14 @@ private final class FrameCompletionResolver<T>: @unchecked Sendable {
         self.completion = completion
     }
 
-    func resolve(_ value: T) {
+    @discardableResult
+    func resolve(_ value: T) -> Bool {
         lock.lock()
         let current = completion
         completion = nil
         lock.unlock()
         current?(value)
+        return current != nil
     }
 }
 

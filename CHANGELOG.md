@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Added nightly simulator quick-run E2E coverage and verified managed Android command-line tools downloads with pinned SHA-256 checksums.
+- Frame adapters now map spontaneous runtime reconnect/drop events consistently on Android and iOS, and end active microphone streams on disconnect/drop so audio collectors do not hang.
 - Surfaced rejected SDK event emissions through `BaseGlassesClient.droppedEventCount` and a one-shot warning when `SUSPEND` event buffers overflow.
 
 ## [0.2.0] - 2026-07-07

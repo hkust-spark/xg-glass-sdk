@@ -7,13 +7,16 @@ import com.xgglass.core.ConnectionState
 import com.xgglass.core.DeviceCapabilities
 import com.xgglass.core.DisplayOptions
 import com.xgglass.core.GlassesError
+import com.xgglass.core.GlassesEvent
 import com.xgglass.core.GlassesModel
 import com.xgglass.core.MicrophoneOptions
 import com.xgglass.core.MicrophoneSession
 import com.xgglass.core.PlayAudioOptions
+import com.xgglass.core.PushMicrophoneSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.collect
@@ -44,13 +47,35 @@ class FrameGlassesClient(
     private val stateScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     @Volatile
-    private var activeMic: MicrophoneSession? = null
+    private var activeMic: ActiveMicrophone? = null
+
+    @Volatile
+    private var hasCompletedConnect: Boolean = false
+
+    @Volatile
+    private var connectInFlight: Boolean = false
+
+    @Volatile
+    private var disconnectInFlight: Boolean = false
 
     init {
         stateScope.launch {
             bridge.state.collect { bridgeState ->
-                resolveBridgeStateTransition(current = _state.value, bridgeState = bridgeState)
-                    ?.let { next -> _state.value = next }
+                val current = _state.value
+                val next = resolveBridgeStateTransition(
+                    current = current,
+                    bridgeState = bridgeState,
+                    hasCompletedConnect = hasCompletedConnect,
+                    connectInFlight = connectInFlight,
+                    disconnectInFlight = disconnectInFlight,
+                ) ?: return@collect
+                if (next is ConnectionState.Disconnected && current is ConnectionState.Connected) {
+                    endActiveMicrophone()
+                }
+                if (next is ConnectionState.Connected && current is ConnectionState.Disconnected) {
+                    _events.emit(GlassesEvent.Log("Frame runtime reported a spontaneous reconnect"))
+                }
+                _state.value = next
             }
         }
         stateScope.launch {
@@ -61,7 +86,13 @@ class FrameGlassesClient(
     }
 
     override suspend fun doConnect() {
-        bridge.connect().getOrThrow()
+        connectInFlight = true
+        try {
+            bridge.connect().getOrThrow()
+            hasCompletedConnect = true
+        } finally {
+            connectInFlight = false
+        }
     }
 
     override fun mapConnectError(error: Exception): GlassesError {
@@ -69,17 +100,18 @@ class FrameGlassesClient(
     }
 
     override suspend fun disconnect() {
+        disconnectInFlight = true
         try {
             bridge.disconnect()
         } finally {
             try {
-                activeMic?.stop()
+                stopActiveMicrophone(notifyBridge = true)
             } catch (ce: CancellationException) {
                 throw ce
             } catch (_: Exception) {
             } finally {
-                activeMic = null
                 _state.value = ConnectionState.Disconnected
+                disconnectInFlight = false
             }
         }
     }
@@ -97,39 +129,94 @@ class FrameGlassesClient(
 
         val fmtRes = bridge.startMicrophone(options)
         return fmtRes.map { fmt ->
-            val session = object : MicrophoneSession {
-                override val format = fmt
-                override val audio = bridge.microphone
-                override suspend fun stop() {
-                    try {
-                        bridge.stopMicrophone()
-                    } finally {
-                        if (activeMic === this) {
-                            activeMic = null
-                        }
+            val sink = PushMicrophoneSession(format = fmt)
+            val active = ActiveMicrophone(sink = sink)
+            activeMic = active
+            active.bridgeJob = stateScope.launch {
+                bridge.microphone.collect { chunk ->
+                    active.lastSequence = chunk.sequence
+                    if (chunk.endOfStream) {
+                        endActiveMicrophone(active, sequence = chunk.sequence)
+                    } else {
+                        active.sink.emit(bytes = chunk.bytes, sequence = chunk.sequence)
                     }
                 }
             }
-            activeMic = session
+            val session = object : MicrophoneSession {
+                override val format = fmt
+                override val audio = sink.audio
+                override suspend fun stop() {
+                    stopActiveMicrophone(active, notifyBridge = true)
+                }
+            }
             session
         }
     }
 
-    private fun resolveBridgeStateTransition(
+    internal fun resolveBridgeStateTransition(
         current: ConnectionState,
         bridgeState: FrameFlutterState,
-    ): ConnectionState? = when (bridgeState) {
-        FrameFlutterState.Disconnected -> when (current) {
-            is ConnectionState.Connected, ConnectionState.Disconnected -> ConnectionState.Disconnected
-            else -> null
+        hasCompletedConnect: Boolean,
+        connectInFlight: Boolean,
+        disconnectInFlight: Boolean,
+    ): ConnectionState? {
+        // Explicit connect()/disconnect() calls own their transient states. Bridge events only model
+        // spontaneous runtime changes after the first successful connection.
+        if (connectInFlight || disconnectInFlight) return null
+
+        return when (bridgeState) {
+            FrameFlutterState.Disconnected -> when (current) {
+                is ConnectionState.Connected -> ConnectionState.Disconnected
+                else -> null
+            }
+            FrameFlutterState.Connecting -> null
+            FrameFlutterState.Connected -> when {
+                hasCompletedConnect && current is ConnectionState.Disconnected -> ConnectionState.Connected
+                else -> null
+            }
+            is FrameFlutterState.Error -> ConnectionState.Error(
+                GlassesError.Transport("Frame error: ${bridgeState.message}")
+            )
         }
-        FrameFlutterState.Connecting -> null
-        FrameFlutterState.Connected -> when (current) {
-            ConnectionState.Disconnected, is ConnectionState.Error -> ConnectionState.Connected
-            else -> null
+    }
+
+    private suspend fun stopActiveMicrophone(
+        active: ActiveMicrophone? = activeMic,
+        notifyBridge: Boolean,
+    ) {
+        val current = active ?: return
+        if (activeMic !== current) {
+            endActiveMicrophone(current)
+            return
         }
-        is FrameFlutterState.Error -> ConnectionState.Error(
-            GlassesError.Transport("Frame error: ${bridgeState.message}")
-        )
+        try {
+            if (notifyBridge) {
+                bridge.stopMicrophone()
+            }
+        } finally {
+            endActiveMicrophone(current)
+        }
+    }
+
+    private fun endActiveMicrophone(
+        active: ActiveMicrophone? = activeMic,
+        sequence: Long? = null,
+    ) {
+        val current = active ?: return
+        current.sink.emitEndOfStream(sequence ?: current.lastSequence + 1)
+        current.bridgeJob?.cancel()
+        if (activeMic === current) {
+            activeMic = null
+        }
+    }
+
+    private class ActiveMicrophone(
+        val sink: PushMicrophoneSession,
+    ) {
+        @Volatile
+        var lastSequence: Long = -1L
+
+        @Volatile
+        var bridgeJob: Job? = null
     }
 }

@@ -1,4 +1,5 @@
 import XCTest
+@_implementationOnly import Flutter
 import XgGlassMetaTesting
 @testable import XgGlassSample
 
@@ -13,26 +14,40 @@ final class FrameGlassesClientTransitionTests: XCTestCase {
     func testConnectedWhileDisconnectedBecomesConnected() {
         let next = FrameGlassesClient.resolveRuntimeStateTransition(
             current: ConnectionState.Disconnected.shared,
-            runtime: .connected
+            runtime: .connected,
+            hasCompletedConnect: true
         )
 
         XCTAssertTrue(next is ConnectionState.Connected, "Expected Connected, got \(String(describing: next))")
     }
 
-    func testConnectedWhileErrorBecomesConnected() {
+    func testConnectedBeforePreviousSuccessIsIgnored() {
+        let next = FrameGlassesClient.resolveRuntimeStateTransition(
+            current: ConnectionState.Disconnected.shared,
+            runtime: .connected,
+            hasCompletedConnect: false
+        )
+
+        XCTAssertNil(next)
+    }
+
+    func testConnectedWhileErrorIsIgnored() {
         let current = ConnectionState.Error(error: GlassesError.Transport(detail: "previous failure", cause: nil))
         let next = FrameGlassesClient.resolveRuntimeStateTransition(
             current: current,
-            runtime: .connected
+            runtime: .connected,
+            hasCompletedConnect: true
         )
 
-        XCTAssertTrue(next is ConnectionState.Connected, "Expected Connected, got \(String(describing: next))")
+        XCTAssertNil(next)
     }
 
     func testConnectedWhileConnectingIsIgnored() {
         let next = FrameGlassesClient.resolveRuntimeStateTransition(
             current: ConnectionState.Connecting.shared,
-            runtime: .connected
+            runtime: .connected,
+            hasCompletedConnect: true,
+            connectInFlight: true
         )
 
         XCTAssertNil(next)
@@ -42,7 +57,8 @@ final class FrameGlassesClientTransitionTests: XCTestCase {
         let current = ConnectionState.Error(error: GlassesError.Transport(detail: "connect failed", cause: nil))
         let next = FrameGlassesClient.resolveRuntimeStateTransition(
             current: current,
-            runtime: .disconnected
+            runtime: .disconnected,
+            hasCompletedConnect: true
         )
 
         XCTAssertNil(next)
@@ -51,7 +67,8 @@ final class FrameGlassesClientTransitionTests: XCTestCase {
     func testDisconnectedWhileConnectedBecomesDisconnected() {
         let next = FrameGlassesClient.resolveRuntimeStateTransition(
             current: ConnectionState.Connected.shared,
-            runtime: .disconnected
+            runtime: .disconnected,
+            hasCompletedConnect: true
         )
 
         XCTAssertTrue(next is ConnectionState.Disconnected, "Expected Disconnected, got \(String(describing: next))")
@@ -60,7 +77,8 @@ final class FrameGlassesClientTransitionTests: XCTestCase {
     func testErrorBecomesConnectionStateError() {
         let next = FrameGlassesClient.resolveRuntimeStateTransition(
             current: ConnectionState.Connected.shared,
-            runtime: .error("runtime failed")
+            runtime: .error("runtime failed"),
+            hasCompletedConnect: true
         )
 
         let errorState = next as? ConnectionState.Error
@@ -72,6 +90,7 @@ final class FrameGlassesClientTransitionTests: XCTestCase {
 @MainActor
 final class FrameGlassesClientRuntimeTests: XCTestCase {
     private var client: FrameGlassesClient?
+    private var audioCollectors: [AnyObject] = []
 
     override func tearDown() {
         if let client {
@@ -82,7 +101,88 @@ final class FrameGlassesClientRuntimeTests: XCTestCase {
             wait(for: [expectation], timeout: 5)
         }
         client = nil
+        audioCollectors = []
         super.tearDown()
+    }
+
+    func testFrameRuntimeSpontaneousConnectedAfterDropRestoresConnected() throws {
+        let runtime = FakeFrameRuntime()
+        let client = FrameGlassesClient(runtime: runtime, connectTimeoutSeconds: 1)
+        self.client = client
+
+        try connect(client)
+        runtime.emitState(.disconnected)
+        XCTAssertTrue(waitForState(timeout: 2, client: client) { $0 is ConnectionState.Disconnected } is ConnectionState.Disconnected)
+
+        runtime.emitState(.connected)
+        let finalState = waitForState(timeout: 2, client: client) { $0 is ConnectionState.Connected }
+        print("FRAME_ADAPTER_SPONTANEOUS_RECONNECT_STATE=\(describe(finalState))")
+        XCTAssertTrue(finalState is ConnectionState.Connected)
+    }
+
+    func testFrameRuntimeSpontaneousDropDisconnectsAndEndsMicrophone() throws {
+        let runtime = FakeFrameRuntime()
+        let client = FrameGlassesClient(runtime: runtime, connectTimeoutSeconds: 1)
+        self.client = client
+
+        try connect(client)
+        let session = try startMicrophone(client)
+        let eos = expectEndOfStream(from: session, description: "spontaneous drop emits EOS")
+
+        runtime.emitState(.disconnected)
+
+        wait(for: [eos], timeout: 3)
+        let finalState = waitForState(timeout: 2, client: client) { $0 is ConnectionState.Disconnected }
+        print("FRAME_ADAPTER_SPONTANEOUS_DROP_STATE=\(describe(finalState))")
+        XCTAssertTrue(finalState is ConnectionState.Disconnected)
+    }
+
+    func testFrameDisconnectEndsMicrophone() throws {
+        let runtime = FakeFrameRuntime()
+        let client = FrameGlassesClient(runtime: runtime, connectTimeoutSeconds: 1)
+        self.client = client
+
+        try connect(client)
+        let session = try startMicrophone(client)
+        let counter = AudioEosCounter()
+        collectAudio(from: session, counter: counter)
+        let disconnected = expectation(description: "disconnect completes")
+
+        client.disconnect { error in
+            XCTAssertNil(error)
+            disconnected.fulfill()
+        }
+
+        wait(for: [disconnected], timeout: 3)
+        XCTAssertTrue(counter.waitForCount(1, timeout: 3))
+        print("FRAME_ADAPTER_DISCONNECT_EOS_COUNT=\(counter.count)")
+        XCTAssertEqual(runtime.disconnectCalls, 1)
+        XCTAssertEqual(counter.count, 1)
+    }
+
+    func testFrameMicrophoneEndOfStreamIsIdempotentAcrossDropAndDisconnect() throws {
+        let runtime = FakeFrameRuntime()
+        let client = FrameGlassesClient(runtime: runtime, connectTimeoutSeconds: 1)
+        self.client = client
+
+        try connect(client)
+        let session = try startMicrophone(client)
+        let counter = AudioEosCounter()
+        collectAudio(from: session, counter: counter)
+
+        runtime.emitState(.disconnected)
+        XCTAssertTrue(counter.waitForCount(1, timeout: 3))
+
+        let disconnected = expectation(description: "disconnect after spontaneous drop completes")
+        client.disconnect { error in
+            XCTAssertNil(error)
+            disconnected.fulfill()
+        }
+        wait(for: [disconnected], timeout: 3)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+
+        print("FRAME_ADAPTER_DOUBLE_EOS_COUNT=\(counter.count)")
+        XCTAssertEqual(counter.count, 1)
     }
 
     func testFrameAdapterConnectFailsHonestlyOnSimulatorAndMapsDisconnectedOperations() throws {
@@ -190,6 +290,74 @@ final class FrameGlassesClientRuntimeTests: XCTestCase {
         return displayError ?? FrameAdapterTestFailure("display unexpectedly succeeded")
     }
 
+    private func connect(_ client: FrameGlassesClient) throws {
+        let expectation = expectation(description: "Frame fake runtime connects")
+        var callbackError: Error?
+        client.connect { _, error in
+            callbackError = error
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 3)
+        if let callbackError {
+            throw callbackError
+        }
+        _ = waitForState(timeout: 2, client: client) { $0 is ConnectionState.Connected }
+    }
+
+    private func startMicrophone(_ client: FrameGlassesClient) throws -> MicrophoneSession {
+        let expectation = expectation(description: "Frame fake runtime starts microphone")
+        var session: MicrophoneSession?
+        var callbackError: Error?
+        client.startMicrophone(options: MicrophoneOptions(
+            preferredEncoding: .pcmS16Le,
+            preferredSampleRateHz: KotlinInt(int: 16_000),
+            preferredChannelCount: KotlinInt(int: 1),
+            audioHint: .default_
+        )) { result, error in
+            session = result as? MicrophoneSession
+            callbackError = error
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 3)
+        if let callbackError {
+            throw callbackError
+        }
+        guard let session else {
+            throw FrameAdapterTestFailure("startMicrophone returned no session")
+        }
+        return session
+    }
+
+    private func expectEndOfStream(from session: MicrophoneSession, description: String) -> XCTestExpectation {
+        let expectation = expectation(description: description)
+        let collector = AudioChunkCollector { chunk in
+            if chunk.endOfStream {
+                expectation.fulfill()
+            }
+        }
+        audioCollectors.append(collector)
+        session.audio.collect(collector: collector) { error in
+            if let error {
+                XCTFail("audio flow collection failed: \(error)")
+            }
+        }
+        return expectation
+    }
+
+    private func collectAudio(from session: MicrophoneSession, counter: AudioEosCounter) {
+        let collector = AudioChunkCollector { chunk in
+            if chunk.endOfStream {
+                counter.increment()
+            }
+        }
+        audioCollectors.append(collector)
+        session.audio.collect(collector: collector) { error in
+            if let error {
+                XCTFail("audio flow collection failed: \(error)")
+            }
+        }
+    }
+
     private func waitForState(
         timeout: TimeInterval,
         client: FrameGlassesClient,
@@ -223,5 +391,133 @@ private struct FrameAdapterTestFailure: LocalizedError {
 
     var errorDescription: String? {
         message
+    }
+}
+
+private final class FakeFrameRuntime: FrameRuntime {
+    private let lock = NSLock()
+    private var eventObservers: [UUID: ([String: Any]) -> Void] = [:]
+    private var stateObservers: [UUID: (FrameFlutterState) -> Void] = [:]
+
+    private(set) var latestState: FrameFlutterState = .disconnected
+    private(set) var disconnectCalls = 0
+    private(set) var stopMicrophoneCalls = 0
+
+    func addEventObserver(_ observer: @escaping ([String: Any]) -> Void) -> UUID {
+        let id = UUID()
+        lock.lock()
+        eventObservers[id] = observer
+        lock.unlock()
+        return id
+    }
+
+    func removeEventObserver(_ id: UUID) {
+        lock.lock()
+        eventObservers.removeValue(forKey: id)
+        lock.unlock()
+    }
+
+    func addStateObserver(_ observer: @escaping (FrameFlutterState) -> Void) -> UUID {
+        let id = UUID()
+        lock.lock()
+        stateObservers[id] = observer
+        let state = latestState
+        lock.unlock()
+        observer(state)
+        return id
+    }
+
+    func removeStateObserver(_ id: UUID) {
+        lock.lock()
+        stateObservers.removeValue(forKey: id)
+        lock.unlock()
+    }
+
+    func emitState(_ state: FrameFlutterState) {
+        lock.lock()
+        latestState = state
+        let observers = Array(stateObservers.values)
+        lock.unlock()
+        for observer in observers {
+            observer(state)
+        }
+    }
+
+    func invoke(method: String, arguments: [String: Any]?, completion: @escaping (Any?, FlutterError?) -> Void) {
+        switch method {
+        case "startMicrophone":
+            completion([
+                "encoding": "pcm_s16_le",
+                "sampleRateHz": 16_000,
+                "channelCount": 1,
+            ], nil)
+        case "stopMicrophone":
+            stopMicrophoneCalls += 1
+            completion(true, nil)
+        default:
+            completion(true, nil)
+        }
+    }
+
+    func connect(completion: @escaping (Bool, FlutterError?) -> Void) {
+        completion(true, nil)
+    }
+
+    func disconnect(completion: @escaping (Bool, FlutterError?) -> Void) {
+        disconnectCalls += 1
+        completion(true, nil)
+    }
+
+    func capturePhoto(arguments: [String: Any], completion: @escaping (FlutterStandardTypedData?, FlutterError?) -> Void) {
+        completion(FlutterStandardTypedData(bytes: Data([1, 2, 3])), nil)
+    }
+
+    func displayText(arguments: [String: Any], completion: @escaping (Bool, FlutterError?) -> Void) {
+        completion(true, nil)
+    }
+
+    func shutdown() {}
+}
+
+private final class AudioChunkCollector: NSObject, Kotlinx_coroutines_coreFlowCollector {
+    private let onChunk: (AudioChunk) -> Void
+
+    init(onChunk: @escaping (AudioChunk) -> Void) {
+        self.onChunk = onChunk
+    }
+
+    func emit(value: Any?, completionHandler: @escaping (Error?) -> Void) {
+        if let chunk = value as? AudioChunk {
+            onChunk(chunk)
+        }
+        completionHandler(nil)
+    }
+}
+
+private final class AudioEosCounter {
+    private let lock = NSLock()
+    private var value = 0
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func increment() {
+        lock.lock()
+        value += 1
+        lock.unlock()
+    }
+
+    func waitForCount(_ expected: Int, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if count >= expected {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        return count >= expected
     }
 }
