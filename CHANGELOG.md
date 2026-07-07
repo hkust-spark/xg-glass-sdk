@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added Omi DevKit button-service mapping on Android and iOS, with tap capability gated on discovered button services and legacy long-press events emitted when field firmware sends them.
 - Added Play Feature Delivery guidance for app-owned dynamic feature modules that defer heavy Frame and Meta Android adapters.
 - Added a deterministic JVM fake-BLE harness covering Omi Android scan, GATT callback, notification, and descriptor-write flows without hardware.
+- Added a deterministic dual-arm JVM fake-BLE harness covering Even G1 Android scan, GATT callback, notification, command-response, and disconnect flows without hardware.
 
 ### Fixed
 

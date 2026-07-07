@@ -30,5 +30,8 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
         }
+        getByName("androidHostTest").dependencies {
+            implementation(libs.mockk)
+        }
     }
 }
