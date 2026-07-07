@@ -111,6 +111,7 @@ See the repository [README install section](../README.md#getting-started) for th
 ```bash
 pip install xg-glass
 xg-glass --help   # verify installation
+xg-glass doctor   # diagnose Java, Android SDK, adb, emulator, Flutter, SDK cache, and network setup
 ```
 
 The PyPI CLI can build, install, and run inside an already-generated project that contains `xg-glass.yaml`. Commands that create a project from this SDK, including `xg-glass init` and `xg-glass run <file.kt>`, download the matching `xg-glass-sdk` release on first use and cache it under `~/.xg-glass/sdk/`. Pass `--sdk /path/to/xg-glass-sdk` to use a local checkout instead.

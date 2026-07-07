@@ -7,6 +7,7 @@ import sys
 
 from . import commands as _commands
 from .constants import DEFAULT_CONFIG_FILE, CliUsageError
+from .doctor import run_doctor
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -76,6 +77,9 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--local_video", help="(sim mode) Local video file path to use as capturePhoto source.")
     p_run.add_argument("--video_url", help="(sim mode) Video URL (YouTube/Bilibili) to download and use as capturePhoto source.")
 
+    p_doctor = sub.add_parser("doctor", help="Diagnose the local xg-glass CLI environment.")
+    p_doctor.add_argument("--offline", action="store_true", help="Skip best-effort network checks.")
+
     args = parser.parse_args(argv)
 
     # Validate: --local_video and --video_url require --sim.
@@ -93,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_install(args)
         if args.cmd == "run":
             return cmd_run(args)
+        if args.cmd == "doctor":
+            return cmd_doctor(args)
         raise RuntimeError(f"Unknown command: {args.cmd}")
     except subprocess.CalledProcessError as e:
         print(e, file=sys.stderr)
@@ -129,6 +135,10 @@ def cmd_install(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     return _commands.cmd_run(args)
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    return run_doctor(offline=getattr(args, "offline", False))
 
 
 if __name__ == "__main__":

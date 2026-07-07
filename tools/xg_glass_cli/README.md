@@ -6,6 +6,7 @@ This is a minimal command-line tool for driving an Android host project based on
 - `xg-glass build`: build the phone host APK (for RayNeo, it will auto-generate and package the glasses host APK into assets before building)
 - `xg-glass install`: install onto the phone via `adb install`
 - `xg-glass run`: launch the app via `adb shell monkey`
+- `xg-glass doctor`: diagnose Java, Android SDK, adb, emulator, Flutter, SDK cache, and network setup
 
 ## Install from PyPI
 
@@ -34,6 +35,18 @@ xg-glass run /path/to/MyEntry.kt
 ```
 
 Pass `--sdk /path/to/xg-glass-sdk` to use an existing checkout instead of the cached download. If the first-run download fails because you are offline or the matching tag is unavailable, retry when online or pass `--sdk` explicitly.
+
+## Doctor
+
+Run `xg-glass doctor` when setup, emulator boot, or build tooling fails. It prints the same Java, Android SDK, adb, emulator, Flutter, and SDK paths that the CLI commands would use, plus one-line hints.
+
+```text
+[ OK   ] python         Python 3.12.0 at /usr/bin/python3 Hint: Python >=3.9 satisfies the CLI requirement.
+[ WARN ] android-sdk    /Users/me/Library/Android/sdk is partially provisioned; missing sdkmanager. Hint: Run sdkmanager for missing packages; xg-glass can auto-provision its managed SDK.
+Summary: 0 FAIL, 1 WARN, 10 checks
+```
+
+Use `xg-glass doctor --offline` to skip the best-effort download-host checks.
 
 `xg-glass init` defaults to all supported Android devices for demos and zero-config exploration. For production-sized generated apps, pass `--devices` with a comma-separated list:
 

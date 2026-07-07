@@ -164,6 +164,8 @@ pip install xg-glass
 xg-glass --help
 ```
 
+Run `xg-glass doctor` to diagnose the Java, Android SDK, adb, emulator, Flutter, SDK cache, and network setup that the CLI will actually use.
+
 Out of the box, the PyPI CLI can build, install, and run inside an already-generated project that contains `xg-glass.yaml`. Commands that create a project from this SDK, such as `xg-glass init` and `xg-glass run <file.kt>`, need an SDK checkout passed with `--sdk` and, where needed, `--template`.
 
 ```bash
