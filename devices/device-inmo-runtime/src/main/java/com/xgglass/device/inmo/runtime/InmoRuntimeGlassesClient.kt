@@ -88,11 +88,11 @@ class InmoRuntimeGlassesClient(
     fun onHostKeyEvent(keyCode: Int): Boolean {
         return when (val action = InmoAir3RuntimePolicy.hostKeyAction(keyCode)) {
             is InmoAir3RuntimePolicy.HostKeyAction.Tap -> {
-                _events.tryEmit(GlassesEvent.Tap(action.count))
+                emitEvent(GlassesEvent.Tap(action.count))
                 true
             }
             InmoAir3RuntimePolicy.HostKeyAction.LongPress -> {
-                _events.tryEmit(GlassesEvent.LongPress)
+                emitEvent(GlassesEvent.LongPress)
                 true
             }
             InmoAir3RuntimePolicy.HostKeyAction.Unhandled -> false

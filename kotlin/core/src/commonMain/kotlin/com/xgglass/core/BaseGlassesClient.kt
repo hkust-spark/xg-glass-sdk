@@ -8,11 +8,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.Volatile
 
 /**
  * Shared state, event, and connect lifecycle plumbing for device clients.
  */
+@OptIn(ExperimentalAtomicApi::class)
 abstract class BaseGlassesClient(
     initialCapabilities: DeviceCapabilities,
     eventBufferOverflow: BufferOverflow = BufferOverflow.DROP_OLDEST,
@@ -33,10 +36,27 @@ abstract class BaseGlassesClient(
     )
     override val events: Flow<GlassesEvent> = _events
 
+    private val countNoSubscriberSuspendDrops = eventBufferOverflow == BufferOverflow.SUSPEND
+    private val totalDroppedEvents = AtomicLong(0)
+    private val unreportedDroppedEvents = AtomicLong(0)
+    private val noSubscriberBufferedEvents = AtomicLong(0)
+
     private val connectMutex = Mutex()
 
     protected open val markConnectingOnConnect: Boolean = true
     protected open val rethrowConnectCancellation: Boolean = false
+
+    /**
+     * Total event emissions rejected since this client was created.
+     *
+     * The default [BufferOverflow.DROP_OLDEST] overflow mode means `tryEmit` never returns false;
+     * losses as silently discarded oldest events are not observable via this counter.
+     * This counter observes rejected emissions for [BufferOverflow.SUSPEND] overflow clients.
+     * For no-subscriber [BufferOverflow.SUSPEND] clients, emissions beyond the base event buffer
+     * capacity are treated as rejected because there is no collector available to drain them.
+     */
+    val droppedEventCount: Long
+        get() = totalDroppedEvents.load()
 
     final override suspend fun connect(): Result<Unit> = connectMutex.withLock {
         if (shouldShortCircuitConnect(_state.value)) {
@@ -92,11 +112,51 @@ abstract class BaseGlassesClient(
         currentCapabilities = defaultCapabilities
     }
 
+    protected fun emitEvent(event: GlassesEvent): Boolean {
+        val emitted = _events.tryEmit(event)
+        if (countNoSubscriberSuspendDrops && _events.subscriptionCount.value == 0) {
+            val buffered = noSubscriberBufferedEvents.fetchAndAdd(1)
+            if (buffered >= EVENT_BUFFER_CAPACITY) {
+                recordDroppedEvent()
+                return false
+            }
+        } else {
+            noSubscriberBufferedEvents.store(0)
+        }
+        if (!emitted) {
+            recordDroppedEvent()
+            return false
+        }
+        emitPendingDropWarning()
+        return true
+    }
+
     protected fun emitLog(message: String) {
-        _events.tryEmit(GlassesEvent.Log(message))
+        emitEvent(GlassesEvent.Log(message))
     }
 
     protected fun emitWarn(message: String) {
-        _events.tryEmit(GlassesEvent.Warning(message))
+        emitEvent(GlassesEvent.Warning(message))
+    }
+
+    private fun recordDroppedEvent() {
+        totalDroppedEvents.fetchAndAdd(1)
+        unreportedDroppedEvents.fetchAndAdd(1)
+    }
+
+    private fun emitPendingDropWarning() {
+        if (_events.subscriptionCount.value == 0) return
+        val pending = unreportedDroppedEvents.load()
+        if (pending <= 0L) return
+        if (!unreportedDroppedEvents.compareAndSet(pending, 0L)) return
+
+        val notice = GlassesEvent.Warning("$pending event(s) were dropped because the event buffer was full")
+        if (!_events.tryEmit(notice)) {
+            unreportedDroppedEvents.fetchAndAdd(pending)
+        }
+    }
+
+    private companion object {
+        const val EVENT_BUFFER_CAPACITY: Long = 64
     }
 }

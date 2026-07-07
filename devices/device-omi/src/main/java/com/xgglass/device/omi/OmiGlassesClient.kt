@@ -515,7 +515,7 @@ class OmiGlassesClient(
     }
 
     private fun emitButtonEvent(event: GlassesEvent) {
-        if (!_events.tryEmit(event)) {
+        if (!emitEvent(event)) {
             val count = droppedButtonEvents.incrementAndGet()
             if (shouldRateLimitLog(count)) {
                 emitWarn("Omi: button event dropped because event buffer is full; count=$count")

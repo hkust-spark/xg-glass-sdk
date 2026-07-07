@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added generated `llms-full.txt` docs ingestion output with a stdlib generator and CI freshness guard.
 - Added Omi DevKit button-service mapping on Android and iOS, with tap capability gated on discovered button services and legacy long-press events emitted when field firmware sends them.
 
+### Fixed
+
+- Surfaced rejected SDK event emissions through `BaseGlassesClient.droppedEventCount` and a one-shot warning when `SUSPEND` event buffers overflow.
+
 ## [0.2.0] - 2026-07-07
 
 ### Added

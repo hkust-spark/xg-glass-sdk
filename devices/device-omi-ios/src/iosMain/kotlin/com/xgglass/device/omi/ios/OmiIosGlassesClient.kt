@@ -392,7 +392,7 @@ class OmiIosGlassesClient(
     }
 
     private fun emitButtonEvent(event: GlassesEvent) {
-        if (!_events.tryEmit(event)) {
+        if (!emitEvent(event)) {
             droppedButtonEvents += 1
             if (shouldRateLimitLog(droppedButtonEvents)) {
                 emitWarn("Omi iOS: button event dropped because event buffer is full; count=$droppedButtonEvents")

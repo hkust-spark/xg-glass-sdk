@@ -710,11 +710,11 @@ class EvenGlassesClient(
 
         when (val event = EvenStateEvents.stateEvent(value)) {
             is EvenStateEvent.Tap -> {
-                _events.tryEmit(GlassesEvent.Tap(event.count))
+                emitEvent(GlassesEvent.Tap(event.count))
                 return
             }
             EvenStateEvent.LongPress -> {
-                _events.tryEmit(GlassesEvent.LongPress)
+                emitEvent(GlassesEvent.LongPress)
                 return
             }
             EvenStateEvent.AiRecordOver -> {

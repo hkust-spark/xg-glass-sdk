@@ -83,12 +83,12 @@ class SimulatorGlassesClient(
     /** Testing hook that emits a synthetic [GlassesEvent.Tap] without glasses hardware. */
     fun simulateTap(count: Int) {
         require(count > 0) { "Tap count must be positive." }
-        _events.tryEmit(GlassesEvent.Tap(count))
+        emitEvent(GlassesEvent.Tap(count))
     }
 
     /** Testing hook that emits a synthetic [GlassesEvent.LongPress] without glasses hardware. */
     fun simulateLongPress() {
-        _events.tryEmit(GlassesEvent.LongPress)
+        emitEvent(GlassesEvent.LongPress)
     }
 
     private var cameraProvider: ProcessCameraProvider? = null
