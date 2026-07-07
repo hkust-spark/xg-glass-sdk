@@ -92,13 +92,22 @@ jobs:
           cd /tmp/generated-check && ./gradlew --console=plain :app:assembleDebug
 
   cli:
-    name: CLI / Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    name: ${{ matrix.job-name }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.12"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.9"
+            job-name: CLI / Python 3.9
+          - os: ubuntu-latest
+            python-version: "3.12"
+            job-name: CLI / Python 3.12
+          - os: windows-latest
+            python-version: "3.12"
+            job-name: CLI / Windows Python 3.12
     steps:
       - name: Check out
         uses: actions/checkout@v7
