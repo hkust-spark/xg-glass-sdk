@@ -91,6 +91,19 @@ jobs:
           ./xg-glass init --sim /tmp/generated-check --no-shell-setup
           cd /tmp/generated-check && ./gradlew --console=plain :app:assembleDebug
 
+  llms-full:
+    name: Docs / llms-full fresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Verify llms-full freshness
+        run: |
+          python3 scripts/gen_llms_full.py
+          git diff --exit-code llms.txt llms-full.txt
+
   cli:
     name: ${{ matrix.job-name }}
     runs-on: ${{ matrix.os }}

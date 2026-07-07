@@ -2,6 +2,8 @@
 
 xg.glass is a Kotlin Multiplatform SDK and CLI for building smart-glasses apps against one unified `GlassesClient` API across supported Android, iOS, on-glasses runtime, BLE, and simulator adapters.
 
+Full inlined docs live in [llms-full.txt](llms-full.txt).
+
 ## Docs
 
 - [AI Assistant Guide](docs/ai-assistant-guide.md) - primary full API reference for AI assistants.
@@ -9,3 +11,16 @@ xg.glass is a Kotlin Multiplatform SDK and CLI for building smart-glasses apps a
 - [Your First App for Android](docs/getting-started-android.md) - Maven-based Android quickstart.
 - [iOS Device Support](docs/ios-device-support.md) - iOS feasibility and supported adapter notes.
 - [Swift Package Setup](docs/swift-package.md) - SwiftPM products and iOS quick start.
+
+## Device adapters
+
+- [Even Realities G1 Adapter](devices/device-even/README.md) - dual-arm BLE adapter with display paging, LC3 microphone passthrough, tap/long-press events, and hardware-validation caveats.
+- [Frame Flutter Bridge](devices/device-frame-flutter/README.md) - Android bridge API and Flutter channel contract for Brilliant Labs Frame, with source/CLI flow notes for working hardware behavior.
+- [INMO Air3 Runtime Adapter](devices/device-inmo-runtime/README.md) - on-glasses Android runtime adapter using stock camera, microphone, display, audio, and forwarded key events without a vendor SDK.
+- [Omi Android Device Module](devices/device-omi/README.md) - Android BLE adapter for Omi audio/photo and button events, including service-discovery gating and legacy firmware quirks.
+- [Omi iOS Device Module](devices/device-omi-ios/README.md) - CoreBluetooth Omi adapter notes for BLE audio/photo and button events with the same long-press firmware caveats.
+
+## Contributing
+
+- [Adding a Device Adapter](docs/adding-a-device-adapter.md) - porting guide for choosing integration patterns, source-tracing protocols, wiring modules, and verifying without hardware.
+- [Contributing](CONTRIBUTING.md) - development environment, simulator loop, optional device gates, validation commands, and contribution expectations.
