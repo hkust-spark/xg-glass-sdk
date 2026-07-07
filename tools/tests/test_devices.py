@@ -16,6 +16,19 @@ from xg_glass_cli.devices import (
 _ENTRY_CLASS = "com.example.xgglassapp.logic.ExampleAppEntry"
 
 
+@pytest.fixture(scope="session")
+def sdk_version() -> str:
+    for line in (_repo_root() / "gradle.properties").read_text(encoding="utf-8").splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key == "version":
+            return value.strip()
+    raise AssertionError("version= not found in gradle.properties")
+
+
+def _xgglass_artifact(artifact_id: str, version: str) -> str:
+    return f"{artifact_id}:{version}"
+
+
 def test_parse_device_selection_default_is_all() -> None:
     selection = parse_device_selection(None, sim=False)
 
@@ -202,7 +215,9 @@ def test_run_devices_quick_mode_parses(monkeypatch, tmp_path) -> None:
     assert captured == {"devices": "even", "kt_file": str(entry)}
 
 
-def test_cmd_init_partial_even_simulator_filters_generated_files(monkeypatch, tmp_path) -> None:
+def test_cmd_init_partial_even_simulator_filters_generated_files(
+    monkeypatch, tmp_path, sdk_version
+) -> None:
     _disable_bootstrap(monkeypatch)
     repo = _repo_root()
     dst = tmp_path / "app"
@@ -224,11 +239,11 @@ def test_cmd_init_partial_even_simulator_filters_generated_files(monkeypatch, tm
 
     app_gradle = (dst / "app" / "build.gradle.kts").read_text(encoding="utf-8")
     assert "xgglass-universal-full" not in app_gradle
-    assert "xgglass-core:0.2.0" in app_gradle
-    assert "xgglass-core-android:0.2.0" in app_gradle
-    assert "xgglass-app-contract:0.2.0" in app_gradle
-    assert "xgglass-device-even:0.2.0" in app_gradle
-    assert "xgglass-device-simulator:0.2.0" in app_gradle
+    assert _xgglass_artifact("xgglass-core", sdk_version) in app_gradle
+    assert _xgglass_artifact("xgglass-core-android", sdk_version) in app_gradle
+    assert _xgglass_artifact("xgglass-app-contract", sdk_version) in app_gradle
+    assert _xgglass_artifact("xgglass-device-even", sdk_version) in app_gradle
+    assert _xgglass_artifact("xgglass-device-simulator", sdk_version) in app_gradle
     assert "xgglass-device-rokid" not in app_gradle
     assert "xgglass-device-frame-embedded" not in app_gradle
     assert "xgglass-device-meta" not in app_gradle
@@ -329,19 +344,21 @@ def test_cmd_init_rokid_selection_keeps_rokid_and_drops_even_frame(monkeypatch, 
     _assert_no_device_markers(dst)
 
 
-def test_template_rayneo_selection_includes_installer_and_runtime_artifacts() -> None:
+def test_template_rayneo_selection_includes_installer_and_runtime_artifacts(sdk_version) -> None:
     template = _repo_root() / "templates" / "kotlin-app" / "app" / "build.gradle.kts"
     filtered = filter_template_for_devices(
         template.read_text(encoding="utf-8"),
         parse_device_selection("rayneo", sim=False),
     )
 
-    assert "xgglass-device-rayneo-installer:0.2.0" in filtered
-    assert "xgglass-device-rayneo-runtime:0.2.0" in filtered
+    assert _xgglass_artifact("xgglass-device-rayneo-installer", sdk_version) in filtered
+    assert _xgglass_artifact("xgglass-device-rayneo-runtime", sdk_version) in filtered
     assert "xgglass-universal-full" not in filtered
 
 
-def test_cmd_init_default_keeps_universal_full_and_no_devices_yaml(monkeypatch, tmp_path) -> None:
+def test_cmd_init_default_keeps_universal_full_and_no_devices_yaml(
+    monkeypatch, tmp_path, sdk_version
+) -> None:
     _disable_bootstrap(monkeypatch)
     repo = _repo_root()
     dst = tmp_path / "app"
@@ -361,8 +378,8 @@ def test_cmd_init_default_keeps_universal_full_and_no_devices_yaml(monkeypatch, 
     assert code == 0
     assert "devices:" not in (dst / "xg-glass.yaml").read_text(encoding="utf-8")
     app_gradle = (dst / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-    assert "xgglass-universal-full:0.2.0" in app_gradle
-    assert "xgglass-device-even:0.2.0" not in app_gradle
+    assert _xgglass_artifact("xgglass-universal-full", sdk_version) in app_gradle
+    assert _xgglass_artifact("xgglass-device-even", sdk_version) not in app_gradle
     assert "xg:device:" not in app_gradle
 
     settings = (dst / "settings.gradle.kts").read_text(encoding="utf-8")

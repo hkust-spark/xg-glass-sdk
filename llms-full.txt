@@ -1136,7 +1136,7 @@ Choose one installation channel depending on the platform you are targeting.
 
 #### Android (Maven Central)
 
-Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.2.0`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`. Note that the Maven group is only the distribution namespace — Kotlin packages in code are `com.xgglass.*` (for example `import com.xgglass.core.GlassesClient`).
+Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.2.1`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`. Note that the Maven group is only the distribution namespace — Kotlin packages in code are `com.xgglass.*` (for example `import com.xgglass.core.GlassesClient`).
 
 New to the SDK? Follow [Your First App (Android)](./docs/getting-started-android.md).
 
@@ -1165,7 +1165,7 @@ dependencyResolutionManagement {
 
 // your app module's build.gradle.kts
 dependencies {
-    implementation("io.github.hkust-spark:xgglass-universal:0.2.0")
+    implementation("io.github.hkust-spark:xgglass-universal:0.2.1")
 }
 ```
 
@@ -1204,7 +1204,7 @@ dependencyResolutionManagement {
 
 // your app module's build.gradle.kts
 dependencies {
-    implementation("io.github.hkust-spark:xgglass-device-meta:0.2.0")
+    implementation("io.github.hkust-spark:xgglass-device-meta:0.2.1")
 }
 ```
 
@@ -1215,7 +1215,7 @@ The Swift Package is hosted from this repository and requires iOS 16+. It publis
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.2.0")
+    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.2.1")
 ],
 targets: [
     .target(
@@ -1356,7 +1356,7 @@ Source: docs/getting-started-android.md
 ================================================================================
 # Your First App (Android, Maven)
 
-This quickstart builds a minimal Android app against the published Maven artifacts for xg.glass `0.2.0`. It uses the Android simulator client first, so you can test without physical glasses.
+This quickstart builds a minimal Android app against the published Maven artifacts for xg.glass `0.2.1`. It uses the Android simulator client first, so you can test without physical glasses.
 
 Use Android Gradle Plugin `9.1.1`, Kotlin `2.4.0`, `compileSdk = 36`, and `minSdk = 28`.
 
@@ -1438,7 +1438,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("io.github.hkust-spark:xgglass-universal:0.2.0")
+    implementation("io.github.hkust-spark:xgglass-universal:0.2.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
@@ -1773,7 +1773,7 @@ Frame iOS remains local to the sample because it is backed by the Flutter add-to
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.2.0")
+    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.2.1")
 ]
 ```
 
