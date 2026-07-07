@@ -40,34 +40,19 @@ jobs:
           rm -rf third_party/frame/frame_module/.android
 
       - name: Generate Dokka HTML
-        run: ./gradlew --console=plain :core:dokkaGeneratePublicationHtml :app-contract:dokkaGeneratePublicationHtml
-
-      - name: Assemble Pages site
+        env:
+          META_PACKAGES_TOKEN: ${{ secrets.META_PACKAGES_TOKEN }}
         run: |
-          mkdir -p build/docs-site/core build/docs-site/app-contract
-          cp -R kotlin/core/build/dokka/html/. build/docs-site/core/
-          cp -R kotlin/app-contract/build/dokka/html/. build/docs-site/app-contract/
-          cat > build/docs-site/index.html <<'HTML'
-          <!doctype html>
-          <html lang="en">
-            <head>
-              <meta charset="utf-8">
-              <title>xg.glass API docs</title>
-            </head>
-            <body>
-              <h1>xg.glass API docs</h1>
-              <ul>
-                <li><a href="core/">Core API</a></li>
-                <li><a href="app-contract/">App Contract API</a></li>
-              </ul>
-            </body>
-          </html>
-          HTML
+          if [ -z "$META_PACKAGES_TOKEN" ]; then
+            echo "::error::META_PACKAGES_TOKEN is required so Pages docs include xgglass-device-meta."
+            exit 1
+          fi
+          ./gradlew --console=plain -Pgithub_token="${META_PACKAGES_TOKEN}" :dokkaGeneratePublicationHtml
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: build/docs-site
+          path: build/dokka/html
 
   deploy:
     needs: build

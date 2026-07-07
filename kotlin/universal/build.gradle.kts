@@ -3,6 +3,53 @@ plugins {
     id("com.xgglass.maven-publish")
 }
 
+val universalDokkaDir = layout.buildDirectory.dir("dokka-support/universal")
+val universalDokkaOverview = universalDokkaDir.map { it.file("universal.md") }
+val universalDokkaPackageDoc = universalDokkaDir.map { it.file("com.xgglass.universal.md") }
+val universalDokkaSource = universalDokkaDir.map { it.file("src/com/xgglass/universal/package-info.java") }
+val writeUniversalDokkaSources = tasks.register("writeUniversalDokkaSources") {
+    outputs.dir(universalDokkaDir)
+    doLast {
+        universalDokkaOverview.get().asFile.writeText(
+            """
+            # Module xgglass-universal
+
+            Published aggregate Android artifact that re-exports the core API, app contract,
+            and openly distributable Android device adapters.
+            """.trimIndent() + "\n",
+        )
+        universalDokkaPackageDoc.get().asFile.writeText(
+            """
+            # Package com.xgglass.universal
+
+            Marker package for the published xgglass-universal aggregate artifact.
+            """.trimIndent() + "\n",
+        )
+        universalDokkaSource.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(
+                """
+                /**
+                 * Marker package for the published xgglass-universal aggregate artifact.
+                 */
+                package com.xgglass.universal;
+                """.trimIndent() + "\n",
+            )
+        }
+    }
+}
+
+dokka {
+    dokkaSourceSets.configureEach {
+        includes.from(
+            writeUniversalDokkaSources.map { universalDokkaOverview.get().asFile },
+            writeUniversalDokkaSources.map { universalDokkaPackageDoc.get().asFile },
+        )
+        sourceRoots.from(writeUniversalDokkaSources.map { universalDokkaSource.get().asFile.parentFile })
+        skipEmptyPackages.set(false)
+    }
+}
+
 android {
     namespace = "com.xgglass.universal"
 }

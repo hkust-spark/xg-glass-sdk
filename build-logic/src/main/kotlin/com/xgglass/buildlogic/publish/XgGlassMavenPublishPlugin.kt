@@ -5,17 +5,28 @@ import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.publish.PublishingExtension
+import org.gradle.api.publish.maven.MavenPom
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.maven.MavenPomDeveloper
 import org.gradle.api.publish.maven.MavenPomDeveloperSpec
 import org.gradle.api.publish.maven.MavenPomLicense
 import org.gradle.api.publish.maven.MavenPomLicenseSpec
-import org.gradle.api.publish.maven.MavenPom
 import org.gradle.api.publish.maven.MavenPomScm
+import org.jetbrains.dokka.gradle.DokkaExtension
 
 class XgGlassMavenPublishPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         project.pluginManager.apply("com.vanniktech.maven.publish")
+        project.pluginManager.apply("org.jetbrains.dokka")
+        project.extensions.configure(
+            DokkaExtension::class.java,
+            object : Action<DokkaExtension> {
+                override fun execute(dokka: DokkaExtension) {
+                    dokka.moduleName.set(project.dokkaModuleName())
+                    dokka.modulePath.set(project.dokkaModulePath())
+                }
+            },
+        )
 
         project.extensions.configure(
             MavenPublishBaseExtension::class.java,
@@ -118,4 +129,8 @@ class XgGlassMavenPublishPlugin : Plugin<Project> {
         "device-frame-flutter" -> "Brilliant Labs Frame bridge API and contract for xg.glass (Flutter runtime supplied by the host app)."
         else -> "XG Glass SDK module $name."
     }
+
+    private fun Project.dokkaModuleName(): String = "xgglass-$name"
+
+    private fun Project.dokkaModulePath(): String = name
 }
