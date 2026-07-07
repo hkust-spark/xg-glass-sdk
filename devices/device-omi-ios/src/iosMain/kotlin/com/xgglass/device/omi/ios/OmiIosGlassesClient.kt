@@ -11,6 +11,7 @@ import com.xgglass.core.ConnectionState
 import com.xgglass.core.DeviceCapabilities
 import com.xgglass.core.DisplayOptions
 import com.xgglass.core.GlassesError
+import com.xgglass.core.GlassesEvent
 import com.xgglass.core.GlassesModel
 import com.xgglass.core.MicrophoneOptions
 import com.xgglass.core.MicrophoneSession
@@ -70,6 +71,8 @@ class OmiIosGlassesClient(
         canPlayTts = false,
         canPlayAudioBytes = false,
         supportsTapEvents = false,
+        // Only legacy firmware may emit code 3; advertising long-press would over-claim support.
+        supportsLongPressEvents = false,
         supportsStreamingTextUpdates = false,
     ),
     eventBufferOverflow = BufferOverflow.SUSPEND,
@@ -86,10 +89,13 @@ class OmiIosGlassesClient(
     private var photoControlCharacteristic: CBCharacteristic? = null
     private var photoDataCharacteristic: CBCharacteristic? = null
     private var timeSyncCharacteristic: CBCharacteristic? = null
+    private var buttonCharacteristic: CBCharacteristic? = null
 
     private var connectContinuation: CancellableContinuation<Unit>? = null
     private var captureContinuation: CancellableContinuation<Result<CapturedImage>>? = null
     private var audioSession: OmiMicrophoneSession? = null
+    private var ignoredButtonReleaseEvents = 0
+    private var droppedButtonEvents = 0
 
     override suspend fun doConnect() {
         withContext(Dispatchers.Main) {
@@ -322,9 +328,16 @@ class OmiIosGlassesClient(
         photoControlCharacteristic = null
         photoDataCharacteristic = null
         timeSyncCharacteristic = null
+        buttonCharacteristic = null
+        ignoredButtonReleaseEvents = 0
+        droppedButtonEvents = 0
         photoAssembler.reset()
         updateCapabilities {
-            it.copy(canCapturePhoto = false)
+            it.copy(
+                canCapturePhoto = false,
+                supportsTapEvents = false,
+                supportsLongPressEvents = false,
+            )
         }
     }
 
@@ -361,6 +374,33 @@ class OmiIosGlassesClient(
             OmiPhotoResult.Incomplete -> Unit
         }
     }
+
+    private fun handleButtonPacket(packet: ByteArray) {
+        when (val event = OmiButtonEvents.parse(packet)) {
+            is OmiButtonEvent.Tap -> emitButtonEvent(GlassesEvent.Tap(event.count))
+            OmiButtonEvent.LongPress -> emitButtonEvent(GlassesEvent.LongPress)
+            is OmiButtonEvent.Ignored -> {
+                if (event.code == OmiButtonEvents.BUTTON_RELEASE) {
+                    ignoredButtonReleaseEvents += 1
+                    if (shouldRateLimitLog(ignoredButtonReleaseEvents)) {
+                        emitLog("Omi iOS: ignored button release event; count=$ignoredButtonReleaseEvents")
+                    }
+                }
+            }
+            null -> Unit
+        }
+    }
+
+    private fun emitButtonEvent(event: GlassesEvent) {
+        if (!_events.tryEmit(event)) {
+            droppedButtonEvents += 1
+            if (shouldRateLimitLog(droppedButtonEvents)) {
+                emitWarn("Omi iOS: button event dropped because event buffer is full; count=$droppedButtonEvents")
+            }
+        }
+    }
+
+    private fun shouldRateLimitLog(count: Int): Boolean = count == 1 || count % RATE_LIMIT_EVERY == 0
 
     private fun mapThrowableToGlassesError(operation: String, error: Throwable): GlassesError =
         when (error) {
@@ -454,6 +494,7 @@ class OmiIosGlassesClient(
                 listOf(
                     cbUuid(OmiBleUuids.AUDIO_SERVICE),
                     cbUuid(OmiBleUuids.TIME_SYNC_SERVICE),
+                    cbUuid(OmiBleUuids.BUTTON_SERVICE),
                 )
             )
         }
@@ -502,6 +543,9 @@ class OmiIosGlassesClient(
                         service.matches(OmiBleUuids.TIME_SYNC_SERVICE) -> listOf(
                             cbUuid(OmiBleUuids.TIME_SYNC_WRITE),
                         )
+                        service.matches(OmiBleUuids.BUTTON_SERVICE) -> listOf(
+                            cbUuid(OmiBleUuids.BUTTON_TRIGGER),
+                        )
                         else -> emptyList()
                     },
                     service,
@@ -525,6 +569,7 @@ class OmiIosGlassesClient(
                     characteristic.matches(OmiBleUuids.PHOTO_DATA) -> photoDataCharacteristic = characteristic
                     characteristic.matches(OmiBleUuids.PHOTO_CONTROL) -> photoControlCharacteristic = characteristic
                     characteristic.matches(OmiBleUuids.TIME_SYNC_WRITE) -> timeSyncCharacteristic = characteristic
+                    characteristic.matches(OmiBleUuids.BUTTON_TRIGGER) -> buttonCharacteristic = characteristic
                 }
             }
 
@@ -537,6 +582,19 @@ class OmiIosGlassesClient(
                     it.copy(canCapturePhoto = photoControlCharacteristic != null && photoDataCharacteristic != null)
                 }
                 completeConnect()
+            }
+
+            if (didDiscoverCharacteristicsForService.matches(OmiBleUuids.BUTTON_SERVICE)) {
+                val button = buttonCharacteristic ?: return
+                // Capability is gated on service/characteristic discovery, never name/model.
+                updateCapabilities {
+                    it.copy(
+                        supportsTapEvents = true,
+                        supportsLongPressEvents = false,
+                    )
+                }
+                peripheral.setNotifyValue(true, button)
+                emitLog("Omi iOS: button service ready")
             }
         }
 
@@ -554,6 +612,9 @@ class OmiIosGlassesClient(
                     didUpdateValueForCharacteristic.matches(OmiBleUuids.AUDIO_DATA) -> {
                         emitWarn("Omi audio notification failed: ${error.localizedDescription}")
                     }
+                    didUpdateValueForCharacteristic.matches(OmiBleUuids.BUTTON_TRIGGER) -> {
+                        emitWarn("Omi button notification failed: ${error.localizedDescription}")
+                    }
                 }
                 return
             }
@@ -562,6 +623,7 @@ class OmiIosGlassesClient(
             when {
                 didUpdateValueForCharacteristic.matches(OmiBleUuids.AUDIO_DATA) -> emitAudio(packet)
                 didUpdateValueForCharacteristic.matches(OmiBleUuids.PHOTO_DATA) -> handlePhotoPacket(packet)
+                didUpdateValueForCharacteristic.matches(OmiBleUuids.BUTTON_TRIGGER) -> handleButtonPacket(packet)
             }
         }
 
@@ -575,6 +637,18 @@ class OmiIosGlassesClient(
                 if (error != null) {
                     emitWarn("Omi audio notification enable failed: ${error.localizedDescription}")
                     finishAudioSession()
+                }
+                return
+            }
+            if (didUpdateNotificationStateForCharacteristic.matches(OmiBleUuids.BUTTON_TRIGGER)) {
+                if (error != null) {
+                    emitWarn("Omi button notification enable failed: ${error.localizedDescription}")
+                    updateCapabilities {
+                        it.copy(
+                            supportsTapEvents = false,
+                            supportsLongPressEvents = false,
+                        )
+                    }
                 }
                 return
             }
@@ -604,6 +678,7 @@ class OmiIosGlassesClient(
 private fun cbUuid(value: String): CBUUID = CBUUID.UUIDWithString(value)
 
 private const val COCOA_EPOCH_SECONDS: Double = 978_307_200.0
+private const val RATE_LIMIT_EVERY = 50
 
 private fun CBService.matches(expected: String): Boolean = UUID.matches(expected)
 

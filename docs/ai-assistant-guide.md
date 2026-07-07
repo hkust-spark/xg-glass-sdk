@@ -46,7 +46,7 @@ Write your app logic once against these four APIs, and it runs on all supported 
 | Brilliant Labs Frame | `GlassesModel.FRAME` | Yes | Yes | Yes | No | Tap | Working integration uses the source/CLI flow with the embedded Flutter module |
 | RayNeo x2 validated / x3 Pro untested | `GlassesModel.RAYNEO` | Yes | Yes | Yes | Yes (raw) | No | On-glasses Android runtime |
 | INMO Air3 | `GlassesModel.INMO` | Yes | Yes | Yes | Yes (raw/encoded bytes) | Tap + long press, when the host Activity forwards key events | On-glasses Android runtime; hardware validation pending |
-| Omi Glass | `GlassesModel.OMI` | No | No | Yes | No | No | Audio-focused BLE adapter |
+| Omi Glass | `GlassesModel.OMI` | No | No | Yes | No | Tap, when button service is discovered | Audio-focused BLE adapter; legacy firmware may emit long-press events without advertising long-press capability |
 | Even Realities G1 | `GlassesModel.EVEN` | No | Yes | Yes (LC3 passthrough) | No | Tap + long press | Dual-BLE Android + iOS adapter; hardware validation pending |
 | Simulator (Emulator) | `GlassesModel.SIMULATOR` | Yes (webcam/video) | Yes | Yes on Android simulator | Yes (TTS + raw) | Synthetic tap + long press | Local development without glasses hardware |
 
@@ -525,6 +525,7 @@ Relevant new-device capability profiles:
 
 - Even G1: display, LC3 microphone, tap and long-press events, streaming display updates; no camera or speaker.
 - INMO Air3: camera, display, PCM microphone, raw/encoded audio playback, tap and long-press events through host key forwarding.
+- Omi: microphone plus tap events only when the connected device exposes the Omi button service; legacy firmware may emit long-press events, but `supportsLongPressEvents` stays false because current firmware consumes long holds for power-off.
 - Meta iOS: camera and Bluetooth HFP microphone; no display, speaker, or tap events.
 
 ### 5.7 Events
@@ -540,8 +541,8 @@ sealed class GlassesEvent {
 }
 ```
 
-`GlassesEvent.Tap` is currently emitted by Frame, Even G1, and INMO Air3. INMO only emits it when the host Activity forwards key events to `InmoRuntimeGlassesClient.onHostKeyEvent(keyCode)`.
-`GlassesEvent.LongPress` is typically the vendor's AI/action-button gesture; devices may also consume it for their own assistant UI. Even emits it on the `0x17` Even AI begin signal, INMO emits it for keycodes `289/290`, and Simulator clients can synthesize it for hardware-free tests.
+`GlassesEvent.Tap` is currently emitted by Frame, Even G1, INMO Air3, and Omi devices that expose the Omi button service. INMO only emits it when the host Activity forwards key events to `InmoRuntimeGlassesClient.onHostKeyEvent(keyCode)`.
+`GlassesEvent.LongPress` is typically the vendor's AI/action-button gesture; devices may also consume it for their own assistant UI. Even emits it on the `0x17` Even AI begin signal, INMO emits it for keycodes `289/290`, Omi maps legacy button code `3` when seen while leaving `supportsLongPressEvents` false, and Simulator clients can synthesize it for hardware-free tests.
 
 ```kotlin
 ctx.client.events.collect { event ->
