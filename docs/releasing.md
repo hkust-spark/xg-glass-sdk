@@ -114,6 +114,8 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     :device-simulator:compileDebugKotlin \
     :device-even:testAndroidHostTest \
     :device-inmo-runtime:testDebugUnitTest \
+    :device-rayneo-runtime:testDebugUnitTest \
+    :device-simulator:testDebugUnitTest \
     :app-contract:testAndroidHostTest \
     :core:testAndroidHostTest \
     :core-android:testDebugUnitTest

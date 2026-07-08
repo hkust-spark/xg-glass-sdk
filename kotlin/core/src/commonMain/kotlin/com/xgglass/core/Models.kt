@@ -43,6 +43,12 @@ data class DeviceCapabilities(
     /** True when apps may call [GlassesClient.startMicrophone]. */
     val canRecordAudio: Boolean = false,
 
+    /** True when apps may call [GlassesClient.startVideoStream]. */
+    val canStreamVideo: Boolean = false,
+
+    /** Video encodings the adapter can emit from [GlassesClient.startVideoStream]. */
+    val supportedVideoFormats: List<VideoFrameEncoding> = emptyList(),
+
     /** Device can render text-to-speech via a built-in TTS engine (e.g. Rokid). */
     val canPlayTts: Boolean = false,
 

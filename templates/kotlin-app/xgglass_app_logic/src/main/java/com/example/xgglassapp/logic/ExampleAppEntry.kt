@@ -14,7 +14,9 @@ import com.xgglass.core.DisplayOptions
 import com.xgglass.core.ImageEncoding
 import com.xgglass.core.ImageScaleMode
 import com.xgglass.core.MicrophoneOptions
+import com.xgglass.core.VideoStreamOptions
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -39,6 +41,7 @@ class ExampleAppEntry : UniversalAppEntrySimple {
             displayHelloCommand(),
             displayImageCommand(),
             micRecordCommand(seconds = 3),
+            videoStreamCommand(seconds = 3),
         )
     }
 
@@ -141,6 +144,68 @@ class ExampleAppEntry : UniversalAppEntrySimple {
                         "${session.format.channelCount ?: "?"}ch"
                 )
                 Result.success(Unit)
+            } catch (error: Throwable) {
+                Result.failure(error)
+            }
+        }
+    }
+
+    private fun videoStreamCommand(seconds: Int): UniversalCommand = object : UniversalCommand {
+        override val id: String = "video_stream_${seconds}s"
+        override val title: String = "Video stream ${seconds}s"
+
+        override suspend fun run(ctx: UniversalAppContext): Result<Unit> {
+            if (!ctx.client.capabilities.canStreamVideo) {
+                return Result.failure(IllegalStateException("video_stream: selected device cannot stream video"))
+            }
+
+            ctx.log("video_stream: starting ${seconds}s")
+            val session = ctx.client.startVideoStream(VideoStreamOptions()).getOrElse { error ->
+                ctx.log("video_stream: failed to start: ${error.message ?: error::class.simpleName}")
+                return Result.failure(error)
+            }
+
+            var frames = 0
+            var bytes = 0L
+            try {
+                withTimeoutOrNull(seconds * 1_000L) {
+                    session.frames.collect { frame ->
+                        if (!frame.endOfStream) {
+                            frames += 1
+                            bytes += frame.bytes.size.toLong()
+                        }
+                    }
+                }
+            } catch (error: CancellationException) {
+                try {
+                    session.stop()
+                } catch (stopError: Throwable) {
+                    error.addSuppressed(stopError)
+                }
+                throw error
+            } catch (error: Throwable) {
+                try {
+                    session.stop()
+                } catch (stopError: Throwable) {
+                    error.addSuppressed(stopError)
+                }
+                return Result.failure(error)
+            }
+
+            return try {
+                session.stop()
+                if (frames <= 0 || bytes <= 0L) {
+                    return Result.failure(IllegalStateException("video_stream: no frames captured"))
+                }
+                ctx.log(
+                    "video_stream: ${frames} frames, ${bytes} bytes, " +
+                        "dropped=${session.droppedFrameCount}, " +
+                        "format=${session.format.encoding}/${session.format.width ?: "?"}x" +
+                        "${session.format.height ?: "?"}/${session.format.framesPerSecond ?: "?"}fps"
+                )
+                Result.success(Unit)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
                 Result.failure(error)
             }

@@ -20,4 +20,7 @@ dependencies {
 
     api(libs.androidx.appcompat)
     api(libs.androidx.core.ktx)
+
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit")
+    testImplementation(libs.junit4)
 }

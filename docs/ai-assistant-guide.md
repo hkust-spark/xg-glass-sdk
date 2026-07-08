@@ -24,11 +24,12 @@ Despite the name, this is the full API reference for human developers too.
 
 ## 1. What is xg.glass
 
-xg.glass is a unified Kotlin SDK for building AI-powered smart glasses applications. It abstracts away vendor-specific SDKs and transports (Rokid, Brilliant Labs Frame, RayNeo, Even Realities, INMO, Meta, etc.) behind five simple primitives:
+xg.glass is a unified Kotlin SDK for building AI-powered smart glasses applications. It abstracts away vendor-specific SDKs and transports (Rokid, Brilliant Labs Frame, RayNeo, Even Realities, INMO, Meta, etc.) behind six simple primitives:
 
 | Primitive | Method | Description |
 |-----------|--------|-------------|
 | **Camera** | `capturePhoto()` | Capture a photo from the glasses camera |
+| **Video stream** | `startVideoStream()` | Stream low-latency JPEG camera frames |
 | **Display** | `display(text)` | Show text on the glasses display |
 | **Image display** | `displayImage(image)` | Show PNG/JPEG content on devices with image-capable displays |
 | **Microphone** | `startMicrophone()` | Stream audio from the glasses mic |
@@ -40,22 +41,23 @@ Write your app logic once against these APIs, and it runs on all supported glass
 
 ## 2. Supported Devices
 
-| Device | Model Enum | Camera | Text | Image | Mic | Speaker | Input Events | Battery Events | Notes |
-|--------|-----------|--------|------|-------|-----|---------|--------------|----------------|-------|
-| Rokid Glasses | `GlassesModel.ROKID` | Yes | Yes | No | Yes | Yes (TTS + raw) | No | No | Android phone-side adapter |
-| Meta AI Glasses | `GlassesModel.META` | Yes | No on iOS; Android display-capable models may enable it after connect | No | Yes (Android and iOS Bluetooth HFP) | Android raw; iOS no | No | No | iOS mic requires the glasses to be the active HFP input; hardware validation pending for iOS mic |
-| Brilliant Labs Frame | `GlassesModel.FRAME` | Yes | Yes | No | Yes | No | Tap | No | Working integration uses the source/CLI flow with the embedded Flutter module |
-| RayNeo x2 validated / x3 Pro untested | `GlassesModel.RAYNEO` | Yes | Yes | Yes | Yes | Yes (raw) | No | Yes, on-device Android battery | On-glasses Android runtime |
-| INMO Air3 | `GlassesModel.INMO` | Yes | Yes | Yes | Yes | Yes (raw/encoded bytes) | Tap + long press, when the host Activity forwards key events | Yes, on-device Android battery | On-glasses Android runtime; hardware validation pending |
-| Omi Glass | `GlassesModel.OMI` | No | No | No | Yes | No | Tap, when button service is discovered | Yes, when standard BLE Battery Service is discovered | Audio-focused BLE adapter; legacy firmware may emit long-press events without advertising long-press capability |
-| Even Realities G1 | `GlassesModel.EVEN` | No | Yes | No | Yes (LC3 passthrough) | No | Tap + long press | No | Dual-BLE Android + iOS adapter; hardware validation pending; battery packet evidence is not yet sufficient for a unified event |
-| Simulator (Emulator) | `GlassesModel.SIMULATOR` | Yes (webcam/video) | Yes | Yes on Android simulator | Yes on Android simulator | Yes (TTS + raw) | Synthetic tap + long press | Synthetic battery | Local development without glasses hardware |
+| Device | Model Enum | Camera | Video Stream | Text | Image | Mic | Speaker | Input Events | Battery Events | Notes |
+|--------|-----------|--------|--------------|------|-------|-----|---------|--------------|----------------|-------|
+| Rokid Glasses | `GlassesModel.ROKID` | Yes | No | Yes | No | Yes | Yes (TTS + raw) | No | No | Android phone-side adapter |
+| Meta AI Glasses | `GlassesModel.META` | Yes | No, phase 2 validation target | No on iOS; Android display-capable models may enable it after connect | No | Yes (Android and iOS Bluetooth HFP) | Android raw; iOS no | No | No | iOS mic requires the glasses to be the active HFP input; hardware validation pending for iOS mic |
+| Brilliant Labs Frame | `GlassesModel.FRAME` | Yes | No | Yes | No | Yes | No | Tap | No | Working integration uses the source/CLI flow with the embedded Flutter module |
+| RayNeo x2 validated / x3 Pro untested | `GlassesModel.RAYNEO` | Yes | Yes, JPEG | Yes | Yes | Yes | Yes (raw) | No | Yes, on-device Android battery | On-glasses Android runtime |
+| INMO Air3 | `GlassesModel.INMO` | Yes | Yes, JPEG | Yes | Yes | Yes | Yes (raw/encoded bytes) | Tap + long press, when the host Activity forwards key events | Yes, on-device Android battery | On-glasses Android runtime; hardware validation pending |
+| Omi Glass | `GlassesModel.OMI` | No | No | No | No | Yes | No | Tap, when button service is discovered | Yes, when standard BLE Battery Service is discovered | Audio-focused BLE adapter; legacy firmware may emit long-press events without advertising long-press capability |
+| Even Realities G1 | `GlassesModel.EVEN` | No | No | Yes | No | Yes (LC3 passthrough) | No | Tap + long press | No | Dual-BLE Android + iOS adapter; hardware validation pending; battery packet evidence is not yet sufficient for a unified event |
+| Simulator (Emulator) | `GlassesModel.SIMULATOR` | Yes (webcam/video) | Yes, JPEG | Yes | Yes on Android simulator | Yes on Android simulator | Yes (TTS + raw) | Synthetic tap + long press | Synthetic battery | Local development without glasses hardware |
 
 Check capabilities at runtime via `ctx.client.capabilities`:
 
 ```kotlin
 val caps = ctx.client.capabilities
 if (caps.canRecordAudio) { /* safe to use startMicrophone() */ }
+if (caps.canStreamVideo) { /* safe to use startVideoStream() */ }
 if (caps.canPlayTts) { /* safe to use playAudio(AudioSource.Tts(...)) */ }
 if (caps.canDisplayImages) { /* safe to use displayImage(...) */ }
 if (caps.supportsTapEvents) { /* safe to expect GlassesEvent.Tap */ }
@@ -78,6 +80,7 @@ An xg.glass app consists of a single Kotlin file implementing `UniversalAppEntry
 │  │                                    │  │
 │  │  Command.run(ctx) {                │  │
 │  │    ctx.client.capturePhoto()       │  │
+│  │    ctx.client.startVideoStream()    │  │
 │  │    ctx.client.display(text)        │  │
 │  │    ctx.client.startMicrophone()    │  │
 │  │    ctx.client.playAudio(source)    │  │
@@ -166,7 +169,7 @@ xg-glass install
 xg-glass run
 ```
 
-Generated Android apps include starter commands for capture, text display, image display, and a short microphone recording, so the default template is runnable end to end. To create a production-sized app with only selected adapters, pass `--devices`:
+Generated Android apps include starter commands for capture, text display, image display, a short microphone recording, and a three-second video-stream smoke test, so the default template is runnable end to end. To create a production-sized app with only selected adapters, pass `--devices`:
 
 ```bash
 xg-glass init /path/to/myapp --devices even,simulator
@@ -216,7 +219,7 @@ override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
 }
 ```
 
-The current SDK maps `KEYCODE_ENTER` to `GlassesEvent.Tap(1)` and the documented long-press keycodes `289/290` to `GlassesEvent.LongPress`. Battery changes are emitted as `GlassesEvent.BatteryLevel` from Android's sticky `ACTION_BATTERY_CHANGED` broadcast, with `BatteryManager.BATTERY_PROPERTY_CAPACITY` as the initial fallback. Camera captures include `CapturedImage.rotationDegrees` when Android reports `CameraCharacteristics.SENSOR_ORIENTATION`. Microphone capture is PCM through the shared Android microphone helper; `AudioEncoding.LC3` and `AudioEncoding.OPUS` are rejected for INMO microphone capture. Hardware validation is pending.
+The current SDK maps `KEYCODE_ENTER` to `GlassesEvent.Tap(1)` and the documented long-press keycodes `289/290` to `GlassesEvent.LongPress`. Battery changes are emitted as `GlassesEvent.BatteryLevel` from Android's sticky `ACTION_BATTERY_CHANGED` broadcast, with `BatteryManager.BATTERY_PROPERTY_CAPACITY` as the initial fallback. Camera captures include `CapturedImage.rotationDegrees` when Android reports `CameraCharacteristics.SENSOR_ORIENTATION`. `startVideoStream()` emits JPEG frames through a Camera2 repeating request; `capturePhoto()` returns `GlassesError.Busy` while a stream is active. Microphone capture is PCM through the shared Android microphone helper; `AudioEncoding.LC3` and `AudioEncoding.OPUS` are rejected for INMO microphone capture. Hardware validation is pending.
 
 ### Meta iOS microphone setup
 
@@ -264,10 +267,14 @@ interface GlassesClient {
     suspend fun startMicrophone(
         options: MicrophoneOptions = MicrophoneOptions()
     ): Result<MicrophoneSession>
+
+    suspend fun startVideoStream(
+        options: VideoStreamOptions = VideoStreamOptions()
+    ): Result<VideoStreamSession>
 }
 ```
 
-> **Note**: `connect()` and `disconnect()` are managed by the host. Your command code only needs to call `capturePhoto`, `display`, `displayImage`, `playAudio`, and `startMicrophone`.
+> **Note**: `connect()` and `disconnect()` are managed by the host. Your command code only needs to call `capturePhoto`, `startVideoStream`, `display`, `displayImage`, `playAudio`, and `startMicrophone`.
 
 **GlassesModel:**
 
@@ -477,7 +484,78 @@ enum class AudioEncoding {
 
 `AudioEncoding.LC3` is not PCM. Even G1 microphone sessions expose device-streamed LC3 frames; decode them before passing audio to APIs that expect PCM bytes.
 
-### 5.6 playAudio
+### 5.6 startVideoStream
+
+Opens a streaming camera session. Phase 1 adapters emit JPEG frames only: Simulator, INMO runtime, and RayNeo runtime. Requesting another encoding fails fast with `GlassesError.Unsupported`. Only one video stream may be active per client; a second call returns `GlassesError.Busy`.
+
+```kotlin
+if (ctx.client.capabilities.canStreamVideo) {
+    val session = ctx.client.startVideoStream(
+        VideoStreamOptions(frameRateTier = VideoFrameRateTier.LOW)
+    ).getOrThrow()
+
+    val frames = withTimeoutOrNull(3000L) {
+        session.frames.toList()
+    } ?: emptyList()
+
+    session.stop()
+}
+```
+
+`capturePhoto()` behavior during an active stream is adapter-specific. The simulator allows it; INMO and RayNeo runtime adapters return `GlassesError.Busy` because the Camera2 repeating session owns the camera.
+
+**VideoStreamSession:**
+
+```kotlin
+interface VideoStreamSession {
+    val format: VideoFormat              // Actual session format and fps
+    val frames: Flow<VideoFrame>         // Hot frame stream
+    val droppedFrameCount: Long          // Frames dropped by SDK backpressure
+    suspend fun stop()                   // End stream and release camera resources
+}
+```
+
+**VideoStreamOptions:**
+
+```kotlin
+data class VideoStreamOptions(
+    val preferredEncoding: VideoFrameEncoding = VideoFrameEncoding.JPEG,
+    val preferredWidth: Int? = 640,
+    val preferredHeight: Int? = 480,
+    val frameRateTier: VideoFrameRateTier = VideoFrameRateTier.LOW,
+)
+```
+
+**VideoFrame:**
+
+```kotlin
+data class VideoFrame(
+    val bytes: ByteArray,                 // JPEG bytes for Phase 1 adapters
+    val format: VideoFormat,              // Per-frame actual format
+    val sequence: Long,                   // Monotonic sequence number
+    val timestampMs: Long,                // SDK-provided epoch millis
+    val rotationDegrees: Int? = null,
+    val endOfStream: Boolean = false,
+)
+```
+
+**VideoFormat and tiers:**
+
+```kotlin
+enum class VideoFrameEncoding { JPEG, YUV_420_888, NV21, RGBA_8888, META_RAW }
+enum class VideoFrameRateTier { SLOW, LOW, MEDIUM, HIGH, NATIVE }
+
+data class VideoFormat(
+    val encoding: VideoFrameEncoding,
+    val width: Int? = null,
+    val height: Int? = null,
+    val framesPerSecond: Int? = null,
+)
+```
+
+`VideoFrameRateTier.LOW` is the default assistant-friendly tier. Adapters report the actual tier-derived fps in `session.format.framesPerSecond`. Backpressure uses drop-oldest semantics so slow collectors get the newest frames, and `droppedFrameCount` reports real SDK buffer drops.
+
+### 5.7 playAudio
 
 Plays audio on the glasses speaker. Two source types: text-to-speech (TTS) or raw audio bytes. Check `capabilities.canPlayTts` / `capabilities.canPlayAudioBytes` before calling.
 
@@ -540,7 +618,7 @@ data class PlayAudioOptions(
 )
 ```
 
-### 5.7 DeviceCapabilities
+### 5.8 DeviceCapabilities
 
 Query what the connected device supports before calling optional features:
 
@@ -550,6 +628,8 @@ data class DeviceCapabilities(
     val canDisplayText: Boolean = true,
     val canDisplayImages: Boolean = false,
     val canRecordAudio: Boolean = false,
+    val canStreamVideo: Boolean = false,
+    val supportedVideoFormats: List<VideoFrameEncoding> = emptyList(),
     val canPlayTts: Boolean = false,
     val canPlayAudioBytes: Boolean = false,
     val supportsTapEvents: Boolean = false,
@@ -562,6 +642,8 @@ data class DeviceCapabilities(
 ```kotlin
 val caps = ctx.client.capabilities
 if (caps.canRecordAudio) { /* safe to call startMicrophone() */ }
+if (caps.canStreamVideo) { /* safe to call startVideoStream() */ }
+if (VideoFrameEncoding.JPEG in caps.supportedVideoFormats) { /* JPEG stream available */ }
 if (caps.canDisplayImages) { /* safe to call displayImage(...) */ }
 if (caps.canPlayTts)     { /* safe to call playAudio(AudioSource.Tts(...)) */ }
 if (caps.canPlayAudioBytes) { /* safe to call playAudio(AudioSource.RawBytes(...)) */ }
@@ -573,12 +655,13 @@ if (caps.supportsBatteryEvents) { /* safe to expect GlassesEvent.BatteryLevel fr
 Relevant new-device capability profiles:
 
 - Even G1: text display, LC3 microphone, tap and long-press events, streaming display updates; no camera, image display, speaker, or battery events until the battery/status packet is source-traced more precisely.
-- INMO Air3: camera, text/image display, PCM microphone, raw/encoded audio playback, on-device Android battery events, and tap/long-press events through host key forwarding.
-- RayNeo runtime: camera, text/image display, PCM microphone, raw/encoded audio playback, and on-device Android battery events; no input events.
+- INMO Air3: camera, JPEG video stream, text/image display, PCM microphone, raw/encoded audio playback, on-device Android battery events, and tap/long-press events through host key forwarding.
+- RayNeo runtime: camera, JPEG video stream, text/image display, PCM microphone, raw/encoded audio playback, and on-device Android battery events; no input events.
+- Simulator: camera/webcam or local-video JPEG video stream, text/image display, PCM microphone, audio playback, synthetic input events, and synthetic battery events.
 - Omi: microphone plus battery events when the connected device exposes the standard BLE Battery Service; tap events only when it exposes the Omi button service. Legacy firmware may emit long-press events, but `supportsLongPressEvents` stays false because current firmware consumes long holds for power-off.
 - Meta iOS: camera and Bluetooth HFP microphone; no display, speaker, or tap events.
 
-### 5.7 Events
+### 5.9 Events
 
 Subscribe to non-fatal device events:
 
@@ -608,7 +691,7 @@ ctx.client.events.collect { event ->
 }
 ```
 
-### 5.8 ConnectionState
+### 5.10 ConnectionState
 
 ```kotlin
 sealed class ConnectionState {
@@ -788,7 +871,36 @@ override suspend fun run(ctx: UniversalAppContext): Result<Unit> {
 
 The host cancels the coroutine to stop the loop.
 
-### 7.4 Display + Speak Result
+### 7.4 Video Stream for Low-Latency Vision
+
+Use `startVideoStream()` when you need a continuous frame feed instead of polling `capturePhoto()`:
+
+```kotlin
+override suspend fun run(ctx: UniversalAppContext): Result<Unit> {
+    if (!ctx.client.capabilities.canStreamVideo) {
+        return Result.failure(IllegalStateException("This device cannot stream video"))
+    }
+
+    val session = ctx.client.startVideoStream(
+        VideoStreamOptions(frameRateTier = VideoFrameRateTier.LOW)
+    ).getOrThrow()
+
+    try {
+        withTimeoutOrNull(10_000L) {
+            session.frames.collect { frame ->
+                if (!frame.endOfStream) {
+                    sendJpegFrameToYourVisionModel(frame.bytes, frame.sequence)
+                }
+            }
+        }
+    } finally {
+        session.stop()
+    }
+    return Result.success(Unit)
+}
+```
+
+### 7.5 Display + Speak Result
 
 For devices with speaker support, display text and speak it aloud simultaneously:
 
@@ -806,7 +918,7 @@ override suspend fun run(ctx: UniversalAppContext): Result<Unit> {
 }
 ```
 
-### 7.5 Multi-Command App
+### 7.6 Multi-Command App
 
 Provide multiple actions for the user to choose from. Each `object : UniversalCommand` is a separate button in the host UI:
 

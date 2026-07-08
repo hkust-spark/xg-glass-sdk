@@ -7,6 +7,7 @@ glasses.
 ## What Works
 
 - Camera capture through Camera2.
+- JPEG video streaming through Camera2 repeating requests.
 - Text display through a pluggable `InmoDisplaySink`; the default sink shows a
   Toast.
 - PNG/JPEG image display through `displayImage`; the default sink decodes the
@@ -49,14 +50,29 @@ initial broadcast, falls back to `BatteryManager.BATTERY_PROPERTY_CAPACITY` if
 needed, and emits `GlassesEvent.BatteryLevel(percent)` only when the integer
 percentage changes by at least 1%. Percent values are clamped to `0..100`.
 
+## Video Streaming Behavior
+
+Phase 1 streaming is JPEG-only. Requests for `YUV_420_888`, `NV21`,
+`RGBA_8888`, or `META_RAW` fail fast with `GlassesError.Unsupported`.
+
+Only one video stream may be active per client. A second `startVideoStream()`
+returns `GlassesError.Busy`. `stop()` and `disconnect()` end the stream with an
+end-of-stream frame.
+
+`capturePhoto()` returns `GlassesError.Busy` while a video stream is active
+because the Camera2 repeating session owns the camera. The stream uses the same
+supported-JPEG-size negotiation as still capture and reports the selected
+resolution, JPEG encoding, fps tier, sequence, timestamp, and sensor rotation in
+the stream/frame metadata.
+
 ## Hardware Verification Checklist
 
 - Confirm Air3 keycodes match the Air2 table: ENTER=66, DPAD=19/20/21/22,
   BACK=4, long-press=289/290.
 - Check whether launcher/system gestures consume double-tap BACK before the app
   receives it.
-- Confirm Camera2 support level, supported JPEG sizes, and reported
-  `SENSOR_ORIENTATION` on production Air3 hardware.
+- Confirm Camera2 support level, supported JPEG sizes, repeating JPEG stream
+  behavior, and reported `SENSOR_ORIENTATION` on production Air3 hardware.
 - Confirm `displayImage` renders PNG and JPEG payloads legibly on production
   Air3 display hardware for `FIT`, `FILL`, and `CENTER` scale modes.
 - Confirm whether a usable on-device TTS engine is present; until then
@@ -68,6 +84,9 @@ percentage changes by at least 1%. Percent values are clamped to `0..100`.
 
 This module intentionally clones the small RayNeo on-glasses runtime pattern
 instead of extracting a shared base class. That keeps RayNeo behavior unchanged
-while INMO-specific deltas are still being hardware validated. A mechanical
-shared base for Camera2/audio/display helpers is a reasonable 0.3 refactor once
-both runtimes have stable device coverage.
+while INMO-specific deltas are still being hardware validated. The video-stream
+Camera2 helper is also duplicated per runtime module because both artifacts ship
+together in `universal-full`; sharing via a `srcDir` trick would create
+duplicate classes. A mechanical shared base for Camera2/audio/display/video
+helpers is a reasonable 0.3 refactor once both runtimes have stable device
+coverage.

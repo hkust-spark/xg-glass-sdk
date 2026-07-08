@@ -1,5 +1,6 @@
 package com.xgglass.device.rayneo.runtime
 
+import android.annotation.SuppressLint
 import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -43,16 +44,25 @@ import com.xgglass.core.MicrophoneOptions
 import com.xgglass.core.MicrophoneSession
 import com.xgglass.core.PcmFormat
 import com.xgglass.core.PlayAudioOptions
+import com.xgglass.core.PushVideoStreamSession
+import com.xgglass.core.VideoFormat
+import com.xgglass.core.VideoFrame
+import com.xgglass.core.VideoFrameEncoding
+import com.xgglass.core.VideoStreamOptions
+import com.xgglass.core.VideoStreamSession
 import com.xgglass.core.android.openAndroidMicrophone
 import com.xgglass.core.android.playEncodedViaMediaPlayer
 import com.xgglass.core.android.playPcmViaAudioTrack
 import com.xgglass.core.android.rayNeoPcmBufferSize
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -75,6 +85,8 @@ class RayNeoRuntimeGlassesClient(
         canDisplayText = true,
         canDisplayImages = true,
         canRecordAudio = true,
+        canStreamVideo = true,
+        supportedVideoFormats = listOf(VideoFrameEncoding.JPEG),
         canPlayTts = false,
         canPlayAudioBytes = true,
         supportsTapEvents = false,
@@ -87,9 +99,12 @@ class RayNeoRuntimeGlassesClient(
     override val model: GlassesModel = GlassesModel.RAYNEO
 
     @Volatile private var activeMic: MicrophoneSession? = null
+    @Volatile private var activeVideoSession: PushVideoStreamSession? = null
+    @Volatile private var activeVideoStream: RayNeoVideoStreamHandle? = null
     @Volatile private var activePlayer: MediaPlayer? = null
     @Volatile private var batteryReceiver: BroadcastReceiver? = null
     @Volatile private var lastBatteryPercent: Int? = null
+    private val videoStreamGate = RayNeoSingleVideoStreamGate()
 
     override val markConnectingOnConnect: Boolean = false
 
@@ -99,6 +114,7 @@ class RayNeoRuntimeGlassesClient(
 
     override suspend fun disconnect() {
         unregisterBatteryEvents()
+        try { activeVideoSession?.stop() } catch (_: Exception) {}
         try { activeMic?.stop() } catch (_: Exception) {}
         activeMic = null
         try { activePlayer?.release() } catch (_: Exception) {}
@@ -151,6 +167,7 @@ class RayNeoRuntimeGlassesClient(
     override suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage> {
         if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
         if (!hasCameraPermission()) return Result.failure(GlassesError.PermissionDenied)
+        if (activeVideoSession != null) return Result.failure(GlassesError.Busy)
 
         return try {
             val timeoutMs = options.timeoutMs
@@ -170,8 +187,65 @@ class RayNeoRuntimeGlassesClient(
                     sourceModel = GlassesModel.RAYNEO,
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(GlassesError.Transport("RayNeo capture failed: ${e.message ?: e::class.java.simpleName}", e))
+        }
+    }
+
+    override suspend fun startVideoStream(options: VideoStreamOptions): Result<VideoStreamSession> {
+        if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
+        if (!hasCameraPermission()) return Result.failure(GlassesError.PermissionDenied)
+        if (options.preferredEncoding != VideoFrameEncoding.JPEG) {
+            return Result.failure(
+                GlassesError.Unsupported(
+                    "RayNeo runtime video stream: ${options.preferredEncoding} not supported; only JPEG is available"
+                )
+            )
+        }
+        if (!videoStreamGate.tryAcquire()) return Result.failure(GlassesError.Busy)
+
+        return try {
+            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val cameraId = chooseCameraId(cameraManager)
+                ?: throw GlassesError.Transport("No camera available")
+            val targetWidth = (options.preferredWidth ?: 640).coerceIn(320, 3840)
+            val targetHeight = (options.preferredHeight ?: 480).coerceIn(240, 2160)
+            val (actualWidth, actualHeight) = chooseBestSize(cameraManager, cameraId, targetWidth, targetHeight)
+            val fps = RayNeoVideoStreamPolicy.framesPerSecond(options.frameRateTier)
+            val intervalMs = RayNeoVideoStreamPolicy.frameIntervalMs(options.frameRateTier)
+
+            lateinit var session: PushVideoStreamSession
+            session = PushVideoStreamSession(
+                format = VideoFormat(
+                    encoding = VideoFrameEncoding.JPEG,
+                    width = actualWidth,
+                    height = actualHeight,
+                    framesPerSecond = fps,
+                ),
+                onStop = { clearActiveVideoStream(session = session) },
+            )
+            activeVideoSession = session
+            startRepeatingJpegVideoStream(
+                cameraManager = cameraManager,
+                cameraId = cameraId,
+                width = actualWidth,
+                height = actualHeight,
+                framesPerSecond = fps,
+                frameIntervalMs = intervalMs,
+                session = session,
+            )
+            Result.success(session)
+        } catch (e: CancellationException) {
+            clearActiveVideoStream(session = null)
+            throw e
+        } catch (e: Exception) {
+            clearActiveVideoStream(session = null)
+            Result.failure(
+                (e as? GlassesError)
+                    ?: GlassesError.Transport("RayNeo startVideoStream failed: ${e.message ?: e::class.java.simpleName}", e)
+            )
         }
     }
 
@@ -436,6 +510,160 @@ class RayNeoRuntimeGlassesClient(
         }
     }
 
+    @SuppressLint("MissingPermission")
+    private suspend fun startRepeatingJpegVideoStream(
+        cameraManager: CameraManager,
+        cameraId: String,
+        width: Int,
+        height: Int,
+        framesPerSecond: Int,
+        frameIntervalMs: Long,
+        session: PushVideoStreamSession,
+    ): RayNeoVideoStreamHandle {
+        val thread = HandlerThread("rayneo-video-stream").apply { start() }
+        val handler = Handler(thread.looper)
+        val reader = ImageReader.newInstance(width, height, android.graphics.ImageFormat.JPEG, 2)
+        val stopped = AtomicBoolean(false)
+        val sequence = AtomicLong(0)
+        val nextFrameAtMs = AtomicLong(0)
+
+        var device: CameraDevice? = null
+        var captureSession: CameraCaptureSession? = null
+
+        fun cleanup() {
+            if (!stopped.compareAndSet(false, true)) return
+            try {
+                captureSession?.stopRepeating()
+            } catch (_: Exception) {}
+            try {
+                captureSession?.close()
+            } catch (_: Exception) {}
+            try {
+                device?.close()
+            } catch (_: Exception) {}
+            try {
+                reader.close()
+            } catch (_: Exception) {}
+            try {
+                thread.quitSafely()
+            } catch (_: Exception) {}
+        }
+
+        val handle = RayNeoVideoStreamHandle { cleanup() }
+
+        return suspendCancellableCoroutine { cont ->
+            fun fail(error: GlassesError) {
+                if (stopped.get()) return
+                if (cont.isActive) {
+                    cont.resumeWithException(error)
+                    cleanup()
+                } else {
+                    emitWarn("RayNeo video stream ended: ${error.message}")
+                    session.emitEndOfStream(sequence.get())
+                    cleanup()
+                    clearActiveVideoStream(session)
+                }
+            }
+
+            cont.invokeOnCancellation { cleanup() }
+
+            reader.setOnImageAvailableListener({ r ->
+                val image = r.acquireLatestImage() ?: return@setOnImageAvailableListener
+                try {
+                    if (stopped.get()) return@setOnImageAvailableListener
+                    val now = System.currentTimeMillis()
+                    if (nextFrameAtMs.get() > now) return@setOnImageAvailableListener
+                    nextFrameAtMs.set(now + frameIntervalMs)
+
+                    val buf = image.planes[0].buffer
+                    val bytes = ByteArray(buf.remaining())
+                    buf.get(bytes)
+                    val frameSequence = sequence.getAndIncrement()
+                    session.emit(
+                        VideoFrame(
+                            bytes = bytes,
+                            format = VideoFormat(
+                                encoding = VideoFrameEncoding.JPEG,
+                                width = width,
+                                height = height,
+                                framesPerSecond = framesPerSecond,
+                            ),
+                            sequence = frameSequence,
+                            timestampMs = now,
+                            rotationDegrees = null,
+                        )
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    fail(GlassesError.Transport("RayNeo video frame failed: ${e.message}", e))
+                } finally {
+                    image.close()
+                }
+            }, handler)
+
+            cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                override fun onOpened(camera: CameraDevice) {
+                    if (stopped.get()) {
+                        camera.close()
+                        return
+                    }
+                    device = camera
+                    @Suppress("DEPRECATION")
+                    camera.createCaptureSession(
+                        listOf(reader.surface),
+                        object : CameraCaptureSession.StateCallback() {
+                            override fun onConfigured(s: CameraCaptureSession) {
+                                if (stopped.get()) {
+                                    s.close()
+                                    return
+                                }
+                                captureSession = s
+                                try {
+                                    val req = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                                        addTarget(reader.surface)
+                                        set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                                    }
+                                    s.setRepeatingRequest(req.build(), null, handler)
+                                    if (cont.isActive) {
+                                        activeVideoStream = handle
+                                        cont.resume(handle)
+                                    }
+                                } catch (e: Exception) {
+                                    fail(GlassesError.Transport("RayNeo video repeating request failed: ${e.message}", e))
+                                }
+                            }
+
+                            override fun onConfigureFailed(s: CameraCaptureSession) {
+                                fail(GlassesError.Transport("RayNeo video camera session configure failed"))
+                            }
+                        },
+                        handler
+                    )
+                }
+
+                override fun onDisconnected(camera: CameraDevice) {
+                    fail(GlassesError.Transport("RayNeo video camera disconnected"))
+                }
+
+                override fun onError(camera: CameraDevice, error: Int) {
+                    fail(GlassesError.Transport("RayNeo video camera error: $error"))
+                }
+            }, handler)
+        }
+    }
+
+    private fun clearActiveVideoStream(session: PushVideoStreamSession?) {
+        if (session != null && activeVideoSession !== session) return
+        val stream = activeVideoStream
+        activeVideoStream = null
+        activeVideoSession = null
+        try {
+            stream?.stop()
+        } catch (_: Exception) {}
+        videoStreamGate.release()
+    }
+
     private fun chooseCameraId(cameraManager: CameraManager): String? {
         val ids = cameraManager.cameraIdList
         if (ids.isEmpty()) return null
@@ -480,6 +708,10 @@ class RayNeoRuntimeGlassesClient(
 
         return best.width to best.height
     }
+}
+
+private fun interface RayNeoVideoStreamHandle {
+    fun stop()
 }
 
 fun interface RayNeoDisplaySink {

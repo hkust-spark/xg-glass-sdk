@@ -137,7 +137,6 @@ data class VideoStreamOptions(
     val preferredWidth: Int? = 640,
     val preferredHeight: Int? = 480,
     val frameRateTier: VideoFrameRateTier = VideoFrameRateTier.LOW,
-    val timeoutMs: Long = 30_000,
 )
 
 data class VideoFrame(
@@ -166,14 +165,13 @@ interface GlassesClient {
 
 ```kotlin
 val canStreamVideo: Boolean = false
-val supportedVideoFormats: Set<VideoFrameEncoding> = emptySet()
+val supportedVideoFormats: List<VideoFrameEncoding> = emptyList()
 ```
 
-If Kotlin/Native source-jar stability matters, consider using a list rather
-than a set. The capability should mean "the adapter exposes a streaming
-session", not "the hardware has any camera". Current capability fields already
-separate still capture, display, microphone, playback, tap events, and streaming
-text updates (`kotlin/core/src/commonMain/kotlin/com/xgglass/core/Models.kt:33-57`).
+The capability should mean "the adapter exposes a streaming session", not "the
+hardware has any camera". Current capability fields already separate still
+capture, display, microphone, playback, tap events, and streaming text updates
+(`kotlin/core/src/commonMain/kotlin/com/xgglass/core/Models.kt:33-57`).
 
 ### Relationship to `capturePhoto`
 

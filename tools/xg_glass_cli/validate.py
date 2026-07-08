@@ -82,7 +82,7 @@ DEVICE_PROFILES: dict[str, DeviceProfile] = {
     "rayneo": DeviceProfile(
         device="rayneo",
         model="RAYNEO",
-        capabilities=("capture", "display", "mic"),
+        capabilities=("capture", "display", "mic", "video"),
         connect_marker=r"install\(RAYNEO\) => true",
         connect_instruction="Enter the RayNeo glasses IP address if prompted, then tap Connect to install the glasses app.",
     ),
@@ -117,14 +117,14 @@ DEVICE_PROFILES: dict[str, DeviceProfile] = {
     "inmo": DeviceProfile(
         device="inmo",
         model="INMO",
-        capabilities=("capture", "display", "mic", "tap", "long_press"),
+        capabilities=("capture", "display", "mic", "video", "tap", "long_press"),
         connect_marker=r"connect\(INMO\) => true",
         connect_instruction="Run this on the INMO host device, then tap Connect in the app.",
     ),
     "simulator": DeviceProfile(
         device="simulator",
         model="SIMULATOR",
-        capabilities=("capture", "display", "mic", "tap", "long_press"),
+        capabilities=("capture", "display", "mic", "video", "tap", "long_press"),
         connect_marker=r"connect\(SIMULATOR\) => true",
         connect_instruction="Wait for the generated simulator app to auto-connect after launch.",
         auto_tap_ui=True,
@@ -155,6 +155,14 @@ CAPABILITY_STEPS: dict[str, StepDefinition] = {
         marker=r"mic_record: [1-9][0-9]* chunks, [0-9]+ bytes",
         ui_text="Mic record 3s",
         timeout_seconds=30,
+    ),
+    "video": StepDefinition(
+        id="video",
+        title="Video stream",
+        instruction="Tap Video stream 3s in the app and confirm non-empty video frames are logged.",
+        marker=r"video_stream: [1-9][0-9]* frames, [1-9][0-9]* bytes",
+        ui_text="Video stream 3s",
+        timeout_seconds=45,
     ),
     "tap": StepDefinition(
         id="tap",

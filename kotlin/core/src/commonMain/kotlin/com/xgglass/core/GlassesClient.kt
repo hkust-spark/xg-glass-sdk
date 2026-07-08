@@ -67,4 +67,17 @@ interface GlassesClient {
      * - Implementations may require permissions (e.g. RECORD_AUDIO); the host app is responsible.
      */
     suspend fun startMicrophone(options: MicrophoneOptions = MicrophoneOptions()): Result<MicrophoneSession>
+
+    /**
+     * Start camera frame streaming and return a session that emits video frames.
+     *
+     * The default implementation keeps existing clients binary/source-compatible: devices that do
+     * not implement video streaming report [GlassesError.Unsupported].
+     */
+    suspend fun startVideoStream(options: VideoStreamOptions = VideoStreamOptions()): Result<VideoStreamSession> =
+        Result.failure(
+            GlassesError.Unsupported(
+                "${model.name} does not support startVideoStream; check DeviceCapabilities.canStreamVideo"
+            )
+        )
 }

@@ -34,18 +34,35 @@ import com.xgglass.core.MicrophoneSession
 import com.xgglass.core.PcmFormat
 import com.xgglass.core.PhotoQuality
 import com.xgglass.core.PlayAudioOptions
+import com.xgglass.core.PushVideoStreamSession
+import com.xgglass.core.VideoFormat
+import com.xgglass.core.VideoFrame
+import com.xgglass.core.VideoFrameEncoding
+import com.xgglass.core.VideoStreamOptions
+import com.xgglass.core.VideoStreamSession
 import com.xgglass.core.android.openAndroidMicrophone
 import com.xgglass.core.android.playEncodedViaMediaPlayer
 import com.xgglass.core.android.playPcmViaAudioTrack
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
+import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -74,6 +91,8 @@ class SimulatorGlassesClient(
         canDisplayText = true,
         canDisplayImages = true,
         canRecordAudio = true,
+        canStreamVideo = true,
+        supportedVideoFormats = listOf(VideoFrameEncoding.JPEG),
         canPlayTts = true,
         canPlayAudioBytes = true,
         supportsTapEvents = true,
@@ -106,6 +125,8 @@ class SimulatorGlassesClient(
     private var imageCapture: ImageCapture? = null
 
     @Volatile private var activeMic: MicrophoneSession? = null
+    @Volatile private var activeVideoSession: PushVideoStreamSession? = null
+    @Volatile private var activeVideoJob: Job? = null
     @Volatile private var tts: TextToSpeech? = null
     @Volatile private var activePlayer: MediaPlayer? = null
 
@@ -116,10 +137,21 @@ class SimulatorGlassesClient(
     private var videoCacheFile: File? = null
     /** Total duration of the video in milliseconds. */
     private var videoDurationMs: Long = 0L
+    /** Optional video width from metadata. */
+    private var videoWidth: Int? = null
+    /** Optional video height from metadata. */
+    private var videoHeight: Int? = null
+    /** Optional video rotation from metadata. */
+    private var videoRotationDegrees: Int? = null
+    /** Optional native video fps from metadata. */
+    private var videoNativeFramesPerSecond: Int? = null
     /** System.currentTimeMillis() when the virtual playback started. */
     private var videoStartTimeMs: Long = 0L
 
     private val useVideoSource: Boolean get() = videoPath != null
+    private val videoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val videoRetrieverMutex = Mutex()
+    private val videoStreamGate = SimulatorSingleVideoStreamGate()
 
     override suspend fun doConnect() {
         emitLog("Simulator: connect (no-op)")
@@ -137,6 +169,7 @@ class SimulatorGlassesClient(
 
     override suspend fun disconnect() {
         emitLog("Simulator: disconnect (no-op)")
+        try { activeVideoSession?.stop() } catch (_: Exception) {}
         try { activeMic?.stop() } catch (_: Exception) {}
         activeMic = null
         try { activePlayer?.release() } catch (_: Exception) {}
@@ -150,6 +183,10 @@ class SimulatorGlassesClient(
         videoRetriever = null
         try { videoCacheFile?.delete() } catch (_: Exception) {}
         videoCacheFile = null
+        videoWidth = null
+        videoHeight = null
+        videoRotationDegrees = null
+        videoNativeFramesPerSecond = null
 
         withContext(Dispatchers.Main) {
             cameraProvider?.unbindAll()
@@ -175,7 +212,10 @@ class SimulatorGlassesClient(
             ensureCameraUseCase(jpegQuality = quality)
             val ic = imageCapture ?: return Result.failure(GlassesError.Busy)
 
-            val cacheFile = File(activity.cacheDir, "sim_capture_${System.currentTimeMillis()}.jpg")
+            val cacheFile = File(
+                activity.cacheDir,
+                "sim_capture_${System.currentTimeMillis()}_${UUID.randomUUID()}.jpg",
+            )
 
             val r = withTimeout(options.timeoutMs) {
                 suspendCancellableCoroutine<Result<CapturedImage>> { cont ->
@@ -219,8 +259,73 @@ class SimulatorGlassesClient(
 
             emitLog("Simulator: capturePhoto => ${r.isSuccess}")
             r
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    override suspend fun startVideoStream(options: VideoStreamOptions): Result<VideoStreamSession> {
+        if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
+        if (options.preferredEncoding != VideoFrameEncoding.JPEG) {
+            return Result.failure(
+                GlassesError.Unsupported(
+                    "Simulator video stream: ${options.preferredEncoding} not supported; only JPEG is available"
+                )
+            )
+        }
+        if (!useVideoSource && !hasCameraPermission()) {
+            emitWarn("Simulator: CAMERA permission missing")
+            return Result.failure(GlassesError.PermissionDenied)
+        }
+        if (!videoStreamGate.tryAcquire()) {
+            return Result.failure(GlassesError.Busy)
+        }
+
+        return try {
+            if (!useVideoSource) {
+                ensureCameraUseCase(jpegQuality = 90)
+            }
+
+            val fps = SimulatorVideoStreamPolicy.framesPerSecond(
+                options.frameRateTier,
+                nativeFramesPerSecond = videoNativeFramesPerSecond,
+            )
+            val intervalMs = SimulatorVideoStreamPolicy.frameIntervalMs(
+                options.frameRateTier,
+                nativeFramesPerSecond = videoNativeFramesPerSecond,
+            )
+            lateinit var session: PushVideoStreamSession
+            session = PushVideoStreamSession(
+                format = VideoFormat(
+                    encoding = VideoFrameEncoding.JPEG,
+                    width = if (useVideoSource) videoWidth else null,
+                    height = if (useVideoSource) videoHeight else null,
+                    framesPerSecond = fps,
+                ),
+                onStop = { clearActiveVideoStream(session = session, cancelJob = true) },
+            )
+            activeVideoSession = session
+            activeVideoJob = videoScope.launch {
+                streamSimulatorFrames(
+                    session = session,
+                    options = options,
+                    framesPerSecond = fps,
+                    intervalMs = intervalMs,
+                )
+            }
+            emitLog("Simulator: startVideoStream => ok (${fps}fps, JPEG)")
+            Result.success(session)
+        } catch (e: CancellationException) {
+            clearActiveVideoStream(session = null, cancelJob = true)
+            throw e
+        } catch (e: Exception) {
+            clearActiveVideoStream(session = null, cancelJob = true)
+            Result.failure(
+                (e as? GlassesError)
+                    ?: GlassesError.Transport("Simulator startVideoStream failed: ${e.message}", e)
+            )
         }
     }
 
@@ -502,6 +607,17 @@ class SimulatorGlassesClient(
 
         videoRetriever = retriever
         videoCacheFile = cacheFile
+        videoWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
+        videoHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
+        videoRotationDegrees = retriever
+            .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+            ?.toIntOrNull()
+            ?.normalizeRotationDegrees()
+        videoNativeFramesPerSecond = retriever
+            .extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+            ?.toFloatOrNull()
+            ?.toInt()
+            ?.takeIf { it > 0 }
         videoStartTimeMs = System.currentTimeMillis()
         emitLog("Simulator: video source initialised – ${videoDurationMs}ms, path=$path")
     }
@@ -515,45 +631,132 @@ class SimulatorGlassesClient(
      */
     private suspend fun capturePhotoFromVideo(options: CaptureOptions): Result<CapturedImage> {
         return try {
-            val retriever = videoRetriever
-                ?: return Result.failure(GlassesError.Transport("Video source not initialised"))
-
-            val elapsed = System.currentTimeMillis() - videoStartTimeMs
-            val positionMs = if (videoDurationMs > 0) elapsed % videoDurationMs else 0L
-            // MediaMetadataRetriever uses microseconds.
-            val positionUs = positionMs * 1000L
-
-            val bitmap: Bitmap = withContext(Dispatchers.IO) {
-                retriever.getFrameAtTime(
-                    positionUs,
-                    MediaMetadataRetriever.OPTION_CLOSEST,
-                ) ?: throw GlassesError.Transport("Failed to extract frame at ${positionMs}ms")
-            }
-
             val quality = options.photoQuality.toSimulatorJpegQuality()
-            val baos = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos)
-            val jpegBytes = baos.toByteArray()
-            val w = bitmap.width
-            val h = bitmap.height
-            bitmap.recycle()
+            val frame = captureJpegFrameFromVideo(quality)
 
             val result = Result.success(
                 CapturedImage(
-                    jpegBytes = jpegBytes,
-                    width = w,
-                    height = h,
-                    rotationDegrees = null,
+                    jpegBytes = frame.bytes,
+                    width = frame.width,
+                    height = frame.height,
+                    rotationDegrees = frame.rotationDegrees,
                     sourceModel = model,
                 )
             )
-            emitLog("Simulator: capturePhoto (video @${positionMs}ms) => ${result.isSuccess}")
+            emitLog("Simulator: capturePhoto (video @${frame.positionMs}ms) => ${result.isSuccess}")
             result
         } catch (e: Exception) {
             Result.failure(
                 (e as? GlassesError) ?: GlassesError.Transport("capturePhoto(video) failed: ${e.message}", e)
             )
         }
+    }
+
+    private suspend fun streamSimulatorFrames(
+        session: PushVideoStreamSession,
+        options: VideoStreamOptions,
+        framesPerSecond: Int,
+        intervalMs: Long,
+    ) {
+        var sequence = 0L
+        try {
+            while (currentCoroutineContext().isActive && activeVideoSession === session) {
+                val started = System.currentTimeMillis()
+                val frame = if (useVideoSource) {
+                    captureJpegFrameFromVideo(jpegQuality = 90)
+                } else {
+                    captureJpegFrameFromCamera(options)
+                }
+                session.emit(
+                    VideoFrame(
+                        bytes = frame.bytes,
+                        format = VideoFormat(
+                            encoding = VideoFrameEncoding.JPEG,
+                            width = frame.width,
+                            height = frame.height,
+                            framesPerSecond = framesPerSecond,
+                        ),
+                        sequence = sequence,
+                        timestampMs = System.currentTimeMillis(),
+                        rotationDegrees = frame.rotationDegrees,
+                    )
+                )
+                sequence += 1
+
+                val remaining = intervalMs - (System.currentTimeMillis() - started)
+                if (remaining > 0) delay(remaining)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (currentCoroutineContext().isActive) {
+                emitWarn("Simulator video stream ended: ${e.message ?: e::class.java.simpleName}")
+                session.emitEndOfStream(sequence)
+            }
+        } finally {
+            clearActiveVideoStream(session = session, cancelJob = false)
+        }
+    }
+
+    private suspend fun captureJpegFrameFromCamera(options: VideoStreamOptions): SimulatorJpegFrame {
+        val image = capturePhoto(
+            CaptureOptions(
+                photoQuality = PhotoQuality.HIGH,
+                targetWidth = options.preferredWidth,
+                targetHeight = options.preferredHeight,
+                timeoutMs = SIMULATOR_STREAM_CAMERA_CAPTURE_TIMEOUT_MS,
+            )
+        ).getOrThrow()
+        return SimulatorJpegFrame(
+            bytes = image.jpegBytes,
+            width = image.width,
+            height = image.height,
+            rotationDegrees = image.rotationDegrees,
+            positionMs = null,
+        )
+    }
+
+    private suspend fun captureJpegFrameFromVideo(jpegQuality: Int): SimulatorJpegFrame {
+        val retriever = videoRetriever
+            ?: throw GlassesError.Transport("Video source not initialised")
+
+        val elapsed = System.currentTimeMillis() - videoStartTimeMs
+        val positionMs = if (videoDurationMs > 0) elapsed % videoDurationMs else 0L
+        val positionUs = positionMs * 1000L
+
+        val bitmap: Bitmap = videoRetrieverMutex.withLock {
+            withContext(Dispatchers.IO) {
+                retriever.getFrameAtTime(
+                    positionUs,
+                    MediaMetadataRetriever.OPTION_CLOSEST,
+                ) ?: throw GlassesError.Transport("Failed to extract frame at ${positionMs}ms")
+            }
+        }
+
+        val baos = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, jpegQuality.coerceIn(1, 100), baos)
+        val jpegBytes = baos.toByteArray()
+        val w = bitmap.width
+        val h = bitmap.height
+        bitmap.recycle()
+
+        return SimulatorJpegFrame(
+            bytes = jpegBytes,
+            width = w,
+            height = h,
+            rotationDegrees = videoRotationDegrees,
+            positionMs = positionMs,
+        )
+    }
+
+    private fun clearActiveVideoStream(session: PushVideoStreamSession?, cancelJob: Boolean) {
+        if (session != null && activeVideoSession !== session) return
+        if (cancelJob) {
+            activeVideoJob?.cancel()
+        }
+        activeVideoJob = null
+        activeVideoSession = null
+        videoStreamGate.release()
     }
 
     // ── Camera helpers ─────────────────────────────────────────────────
@@ -641,3 +844,18 @@ private fun PhotoQuality.toSimulatorJpegQuality(): Int = when (this) {
     PhotoQuality.HIGH -> 90
     PhotoQuality.HIGHEST -> 100
 }
+
+private fun Int.normalizeRotationDegrees(): Int {
+    val normalized = this % 360
+    return if (normalized >= 0) normalized else normalized + 360
+}
+
+private const val SIMULATOR_STREAM_CAMERA_CAPTURE_TIMEOUT_MS = 30_000L
+
+private data class SimulatorJpegFrame(
+    val bytes: ByteArray,
+    val width: Int?,
+    val height: Int?,
+    val rotationDegrees: Int?,
+    val positionMs: Long?,
+)

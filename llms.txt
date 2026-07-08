@@ -21,6 +21,7 @@ Full inlined docs live in [llms-full.txt](llms-full.txt).
 - [Omi Android Device Module](devices/device-omi/README.md) - Android BLE adapter for Omi audio/photo and button events, including service-discovery gating and legacy firmware quirks.
 - [Omi iOS Device Module](devices/device-omi-ios/README.md) - CoreBluetooth Omi adapter notes for BLE audio/photo and button events with the same long-press firmware caveats.
 - [RayNeo Runtime Adapter](devices/device-rayneo-runtime/README.md) - on-glasses Android runtime adapter using stock camera, microphone, display, playback, and battery events.
+- [Simulator Adapter](devices/device-simulator/README.md) - Android Emulator adapter with camera/video-backed photo capture, JPEG video streaming, display, audio, and synthetic events.
 
 ## Contributing
 

@@ -24,7 +24,7 @@ xg-glass install
 xg-glass run
 ```
 
-For generated simulator projects, `xg-glass run --sim` now performs the simulator one-shot flow: it applies simulator build settings, builds, starts an Android Emulator when the selected serial is not already online, installs the APK, and launches it. `--local_video /path/to/video.mp4` and `--video_url <url>` use the same simulator video path as quick mode.
+For generated simulator projects, `xg-glass run --sim` now performs the simulator one-shot flow: it applies simulator build settings, builds, starts an Android Emulator when the selected serial is not already online, installs the APK, and launches it. `--local_video /path/to/video.mp4` and `--video_url <url>` use the same simulator video path as quick mode for `capturePhoto()` and `startVideoStream()`.
 
 Set `XG_EMULATOR_ARGS` to append extra flags to the auto-started emulator command. For headless CI runners, use `XG_EMULATOR_ARGS="-no-window -gpu swiftshader_indirect -no-audio -no-boot-anim"`.
 
@@ -123,7 +123,7 @@ Optional:
 - `--keep-tmp`: keep the temporary directory for debugging
 - `--sim`: build a simulator-compatible APK (x86_64) and enable simulator backend
 - `--devices <list>`: quick mode only; include only selected device adapters in the generated project
-- `--local_video <mp4>` / `--video_url <url>`: in `--sim` mode, feed simulator `capturePhoto()` from a local/downloaded video
+- `--local_video <mp4>` / `--video_url <url>`: in `--sim` mode, feed simulator `capturePhoto()` and `startVideoStream()` from a local/downloaded video
 
 Example:
 

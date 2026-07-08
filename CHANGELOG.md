@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Added the Phase 1 video streaming API: `VideoFrame`, `VideoFormat`,
+  `VideoStreamOptions`, `VideoStreamSession`, `PushVideoStreamSession`,
+  `GlassesClient.startVideoStream`, `DeviceCapabilities.canStreamVideo`, and
+  JPEG stream support for the Android simulator, INMO runtime, and RayNeo
+  runtime adapters. Generated apps and `xg-glass validate` now include a
+  `video_stream_3s` smoke command, and `scripts/sim-e2e.sh` checks the
+  simulator video marker.
 - Added `DisplayImage`, `DisplayImageOptions`, `ImageEncoding`, `ImageScaleMode`,
   `DeviceCapabilities.canDisplayImages`, and default `GlassesClient.displayImage`
   support, with Android simulator, INMO Air3 runtime, and RayNeo runtime

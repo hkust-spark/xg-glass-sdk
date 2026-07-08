@@ -393,7 +393,7 @@ run_quick_mode_stage() {
   fi
 
   wait_for_log "${adb}" "quick_run_launch" 'connect\(SIMULATOR\) => true' 60 || return 1
-  save_screenshot "${adb}" "08-quick-run-launched"
+  save_screenshot "${adb}" "10-quick-run-launched"
 }
 
 main() {
@@ -477,17 +477,21 @@ main() {
   wait_for_log "${adb}" "mic_record_3s" 'mic_record: [1-9][0-9]* chunks, [0-9]+ bytes' 30 || return
   save_screenshot "${adb}" "05-mic-record"
 
+  tap_text "${adb}" "video_stream_3s" "Video stream 3s" || return
+  wait_for_log "${adb}" "video_stream_3s" 'video_stream: [1-9][0-9]* frames, [1-9][0-9]* bytes' 45 || return
+  save_screenshot "${adb}" "06-video-stream"
+
   tap_text "${adb}" "simulate_tap" "Simulate Tap" || return
   wait_for_log "${adb}" "simulate_tap" 'TAP: 1' 15 || return
-  save_screenshot "${adb}" "06-simulate-tap"
+  save_screenshot "${adb}" "07-simulate-tap"
 
   tap_text "${adb}" "simulate_long_press" "Simulate Long-press" || return
   wait_for_log "${adb}" "simulate_long_press" 'LONG_PRESS' 15 || return
-  save_screenshot "${adb}" "07-simulate-long-press"
+  save_screenshot "${adb}" "08-simulate-long-press"
 
   tap_text "${adb}" "disconnect" "Disconnect" || return
   wait_for_log "${adb}" "disconnect" 'disconnect\(\) => true' 15 || return
-  save_screenshot "${adb}" "08-disconnect"
+  save_screenshot "${adb}" "09-disconnect"
 
   run_quick_mode_stage "${adb}" || return
 }

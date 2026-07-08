@@ -8,13 +8,13 @@ from xg_glass_cli.doctor import DoctorRow
 
 def test_step_table_derivation_per_device() -> None:
     assert _step_ids("rokid") == ["connect", "capture", "display", "mic"]
-    assert _step_ids("rayneo") == ["connect", "capture", "display", "mic"]
+    assert _step_ids("rayneo") == ["connect", "capture", "display", "mic", "video"]
     assert _step_ids("meta") == ["connect", "capture", "mic"]
     assert _step_ids("frame") == ["connect", "capture", "display", "mic", "tap"]
     assert _step_ids("omi") == ["connect", "capture", "mic", "tap"]
     assert _step_ids("even") == ["connect", "display", "mic", "tap", "long_press"]
-    assert _step_ids("inmo") == ["connect", "capture", "display", "mic", "tap", "long_press"]
-    assert _step_ids("simulator") == ["connect", "capture", "display", "mic", "tap", "long_press"]
+    assert _step_ids("inmo") == ["connect", "capture", "display", "mic", "video", "tap", "long_press"]
+    assert _step_ids("simulator") == ["connect", "capture", "display", "mic", "video", "tap", "long_press"]
 
 
 def test_logcat_marker_parsing_returns_matching_line() -> None:
