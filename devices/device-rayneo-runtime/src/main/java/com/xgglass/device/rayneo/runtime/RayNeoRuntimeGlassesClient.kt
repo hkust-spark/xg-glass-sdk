@@ -100,6 +100,7 @@ class RayNeoRuntimeGlassesClient(
 
     @Volatile private var activeMic: MicrophoneSession? = null
     @Volatile private var activeVideoSession: PushVideoStreamSession? = null
+    @Volatile private var activeVideoFrameCache: RayNeoVideoFrameCaptureCache? = null
     @Volatile private var activeVideoStream: RayNeoVideoStreamHandle? = null
     @Volatile private var activePlayer: MediaPlayer? = null
     @Volatile private var batteryReceiver: BroadcastReceiver? = null
@@ -166,8 +167,10 @@ class RayNeoRuntimeGlassesClient(
 
     override suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage> {
         if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
+        activeVideoFrameCache?.let { cache ->
+            return cache.capture(timeoutMs = options.timeoutMs, sourceModel = GlassesModel.RAYNEO)
+        }
         if (!hasCameraPermission()) return Result.failure(GlassesError.PermissionDenied)
-        if (activeVideoSession != null) return Result.failure(GlassesError.Busy)
 
         return try {
             val timeoutMs = options.timeoutMs
@@ -217,6 +220,7 @@ class RayNeoRuntimeGlassesClient(
             val intervalMs = RayNeoVideoStreamPolicy.frameIntervalMs(options.frameRateTier)
 
             lateinit var session: PushVideoStreamSession
+            val frameCache = RayNeoVideoFrameCaptureCache()
             session = PushVideoStreamSession(
                 format = VideoFormat(
                     encoding = VideoFrameEncoding.JPEG,
@@ -226,6 +230,7 @@ class RayNeoRuntimeGlassesClient(
                 ),
                 onStop = { clearActiveVideoStream(session = session) },
             )
+            activeVideoFrameCache = frameCache
             activeVideoSession = session
             startRepeatingJpegVideoStream(
                 cameraManager = cameraManager,
@@ -235,6 +240,7 @@ class RayNeoRuntimeGlassesClient(
                 framesPerSecond = fps,
                 frameIntervalMs = intervalMs,
                 session = session,
+                frameCache = frameCache,
             )
             Result.success(session)
         } catch (e: CancellationException) {
@@ -519,6 +525,7 @@ class RayNeoRuntimeGlassesClient(
         framesPerSecond: Int,
         frameIntervalMs: Long,
         session: PushVideoStreamSession,
+        frameCache: RayNeoVideoFrameCaptureCache,
     ): RayNeoVideoStreamHandle {
         val thread = HandlerThread("rayneo-video-stream").apply { start() }
         val handler = Handler(thread.looper)
@@ -579,20 +586,21 @@ class RayNeoRuntimeGlassesClient(
                     val bytes = ByteArray(buf.remaining())
                     buf.get(bytes)
                     val frameSequence = sequence.getAndIncrement()
-                    session.emit(
-                        VideoFrame(
-                            bytes = bytes,
-                            format = VideoFormat(
-                                encoding = VideoFrameEncoding.JPEG,
-                                width = width,
-                                height = height,
-                                framesPerSecond = framesPerSecond,
-                            ),
-                            sequence = frameSequence,
-                            timestampMs = now,
-                            rotationDegrees = null,
-                        )
+                    val frame = VideoFrame(
+                        bytes = bytes,
+                        format = VideoFormat(
+                            encoding = VideoFrameEncoding.JPEG,
+                            width = width,
+                            height = height,
+                            framesPerSecond = framesPerSecond,
+                        ),
+                        sequence = frameSequence,
+                        timestampMs = now,
+                        rotationDegrees = null,
                     )
+                    if (session.emit(frame)) {
+                        frameCache.update(frame)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -658,6 +666,7 @@ class RayNeoRuntimeGlassesClient(
         val stream = activeVideoStream
         activeVideoStream = null
         activeVideoSession = null
+        activeVideoFrameCache = null
         try {
             stream?.stop()
         } catch (_: Exception) {}

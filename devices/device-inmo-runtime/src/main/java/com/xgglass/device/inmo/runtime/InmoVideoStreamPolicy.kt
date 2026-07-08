@@ -1,6 +1,12 @@
 package com.xgglass.device.inmo.runtime
 
+import com.xgglass.core.CapturedImage
+import com.xgglass.core.GlassesError
+import com.xgglass.core.GlassesModel
+import com.xgglass.core.VideoFrame
 import com.xgglass.core.VideoFrameRateTier
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal object InmoVideoStreamPolicy {
@@ -29,4 +35,48 @@ internal class InmoSingleVideoStreamGate {
     }
 
     fun isActive(): Boolean = active.get()
+}
+
+internal class InmoVideoFrameCaptureCache {
+    private val lock = Any()
+    private var latestFrame: VideoFrame? = null
+    private var nextFrame: CompletableDeferred<VideoFrame>? = null
+
+    fun update(frame: VideoFrame) {
+        if (frame.endOfStream) return
+        val waiter = synchronized(lock) {
+            latestFrame = frame
+            nextFrame.also { nextFrame = null }
+        }
+        waiter?.complete(frame)
+    }
+
+    suspend fun capture(timeoutMs: Long, sourceModel: GlassesModel): Result<CapturedImage> {
+        val frame = awaitLatestOrNext(timeoutMs)
+            ?: return Result.failure(GlassesError.Timeout("capturePhoto"))
+        return Result.success(frame.toCapturedImage(sourceModel))
+    }
+
+    private suspend fun awaitLatestOrNext(timeoutMs: Long): VideoFrame? {
+        var waiter: CompletableDeferred<VideoFrame>? = null
+        val cached = synchronized(lock) {
+            latestFrame ?: run {
+                val next = nextFrame?.takeIf { it.isActive }
+                    ?: CompletableDeferred<VideoFrame>().also { nextFrame = it }
+                waiter = next
+                null
+            }
+        }
+        if (cached != null) return cached
+        return withTimeoutOrNull(timeoutMs) { waiter?.await() }
+    }
+
+    private fun VideoFrame.toCapturedImage(sourceModel: GlassesModel): CapturedImage =
+        CapturedImage(
+            jpegBytes = bytes,
+            width = format.width,
+            height = format.height,
+            rotationDegrees = rotationDegrees,
+            sourceModel = sourceModel,
+        )
 }

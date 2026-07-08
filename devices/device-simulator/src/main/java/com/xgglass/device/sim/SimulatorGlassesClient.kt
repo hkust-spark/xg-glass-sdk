@@ -126,6 +126,7 @@ class SimulatorGlassesClient(
 
     @Volatile private var activeMic: MicrophoneSession? = null
     @Volatile private var activeVideoSession: PushVideoStreamSession? = null
+    @Volatile private var activeVideoFrameCache: SimulatorVideoFrameCaptureCache? = null
     @Volatile private var activeVideoJob: Job? = null
     @Volatile private var tts: TextToSpeech? = null
     @Volatile private var activePlayer: MediaPlayer? = null
@@ -196,12 +197,22 @@ class SimulatorGlassesClient(
     }
 
     override suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage> {
+        activeVideoFrameCache?.let { cache ->
+            val result = cache.capture(timeoutMs = options.timeoutMs, sourceModel = model)
+            emitLog("Simulator: capturePhoto (active stream frame) => ${result.isSuccess}")
+            return result
+        }
+
         // ── Video-file mode: extract the frame at the current virtual playback position ──
         if (useVideoSource) {
             return capturePhotoFromVideo(options)
         }
 
         // ── Camera mode (original behavior) ──
+        return capturePhotoFromCamera(options)
+    }
+
+    private suspend fun capturePhotoFromCamera(options: CaptureOptions): Result<CapturedImage> {
         if (!hasCameraPermission()) {
             emitWarn("Simulator: CAMERA permission missing")
             return Result.failure(GlassesError.PermissionDenied)
@@ -297,6 +308,7 @@ class SimulatorGlassesClient(
                 nativeFramesPerSecond = videoNativeFramesPerSecond,
             )
             lateinit var session: PushVideoStreamSession
+            val frameCache = SimulatorVideoFrameCaptureCache()
             session = PushVideoStreamSession(
                 format = VideoFormat(
                     encoding = VideoFrameEncoding.JPEG,
@@ -306,10 +318,12 @@ class SimulatorGlassesClient(
                 ),
                 onStop = { clearActiveVideoStream(session = session, cancelJob = true) },
             )
+            activeVideoFrameCache = frameCache
             activeVideoSession = session
             activeVideoJob = videoScope.launch {
                 streamSimulatorFrames(
                     session = session,
+                    frameCache = frameCache,
                     options = options,
                     framesPerSecond = fps,
                     intervalMs = intervalMs,
@@ -654,6 +668,7 @@ class SimulatorGlassesClient(
 
     private suspend fun streamSimulatorFrames(
         session: PushVideoStreamSession,
+        frameCache: SimulatorVideoFrameCaptureCache,
         options: VideoStreamOptions,
         framesPerSecond: Int,
         intervalMs: Long,
@@ -667,20 +682,21 @@ class SimulatorGlassesClient(
                 } else {
                     captureJpegFrameFromCamera(options)
                 }
-                session.emit(
-                    VideoFrame(
-                        bytes = frame.bytes,
-                        format = VideoFormat(
-                            encoding = VideoFrameEncoding.JPEG,
-                            width = frame.width,
-                            height = frame.height,
-                            framesPerSecond = framesPerSecond,
-                        ),
-                        sequence = sequence,
-                        timestampMs = System.currentTimeMillis(),
-                        rotationDegrees = frame.rotationDegrees,
-                    )
+                val videoFrame = VideoFrame(
+                    bytes = frame.bytes,
+                    format = VideoFormat(
+                        encoding = VideoFrameEncoding.JPEG,
+                        width = frame.width,
+                        height = frame.height,
+                        framesPerSecond = framesPerSecond,
+                    ),
+                    sequence = sequence,
+                    timestampMs = System.currentTimeMillis(),
+                    rotationDegrees = frame.rotationDegrees,
                 )
+                if (session.emit(videoFrame)) {
+                    frameCache.update(videoFrame)
+                }
                 sequence += 1
 
                 val remaining = intervalMs - (System.currentTimeMillis() - started)
@@ -699,7 +715,7 @@ class SimulatorGlassesClient(
     }
 
     private suspend fun captureJpegFrameFromCamera(options: VideoStreamOptions): SimulatorJpegFrame {
-        val image = capturePhoto(
+        val image = capturePhotoFromCamera(
             CaptureOptions(
                 photoQuality = PhotoQuality.HIGH,
                 targetWidth = options.preferredWidth,
@@ -756,6 +772,7 @@ class SimulatorGlassesClient(
         }
         activeVideoJob = null
         activeVideoSession = null
+        activeVideoFrameCache = null
         videoStreamGate.release()
     }
 

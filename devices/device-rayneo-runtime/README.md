@@ -31,8 +31,10 @@ Only one video stream may be active per client. A second `startVideoStream()`
 returns `GlassesError.Busy`. `stop()` and `disconnect()` end the stream with an
 end-of-stream frame.
 
-`capturePhoto()` returns `GlassesError.Busy` while a video stream is active
-because the Camera2 repeating session owns the camera. The stream uses the same
+During an active stream, `capturePhoto()` does not touch the camera or return
+`GlassesError.Busy`. It returns the latest JPEG frame already produced by the
+stream, or waits up to `CaptureOptions.timeoutMs` for the first frame and then
+returns `GlassesError.Timeout("capturePhoto")`. The stream uses the same
 supported-JPEG-size negotiation as still capture and reports the selected
 resolution, JPEG encoding, fps tier, sequence, and timestamp in stream/frame
 metadata. Rotation remains `null`, matching RayNeo still capture behavior.

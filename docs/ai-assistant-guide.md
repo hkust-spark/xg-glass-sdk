@@ -219,7 +219,7 @@ override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
 }
 ```
 
-The current SDK maps `KEYCODE_ENTER` to `GlassesEvent.Tap(1)` and the documented long-press keycodes `289/290` to `GlassesEvent.LongPress`. Battery changes are emitted as `GlassesEvent.BatteryLevel` from Android's sticky `ACTION_BATTERY_CHANGED` broadcast, with `BatteryManager.BATTERY_PROPERTY_CAPACITY` as the initial fallback. Camera captures include `CapturedImage.rotationDegrees` when Android reports `CameraCharacteristics.SENSOR_ORIENTATION`. `startVideoStream()` emits JPEG frames through a Camera2 repeating request; `capturePhoto()` returns `GlassesError.Busy` while a stream is active. Microphone capture is PCM through the shared Android microphone helper; `AudioEncoding.LC3` and `AudioEncoding.OPUS` are rejected for INMO microphone capture. Hardware validation is pending.
+The current SDK maps `KEYCODE_ENTER` to `GlassesEvent.Tap(1)` and the documented long-press keycodes `289/290` to `GlassesEvent.LongPress`. Battery changes are emitted as `GlassesEvent.BatteryLevel` from Android's sticky `ACTION_BATTERY_CHANGED` broadcast, with `BatteryManager.BATTERY_PROPERTY_CAPACITY` as the initial fallback. Camera captures include `CapturedImage.rotationDegrees` when Android reports `CameraCharacteristics.SENSOR_ORIENTATION`. `startVideoStream()` emits JPEG frames through a Camera2 repeating request; while a stream is active, `capturePhoto()` returns the latest stream frame, or waits up to `CaptureOptions.timeoutMs` for the first frame. Microphone capture is PCM through the shared Android microphone helper; `AudioEncoding.LC3` and `AudioEncoding.OPUS` are rejected for INMO microphone capture. Hardware validation is pending.
 
 ### Meta iOS microphone setup
 
@@ -502,7 +502,7 @@ if (ctx.client.capabilities.canStreamVideo) {
 }
 ```
 
-`capturePhoto()` behavior during an active stream is adapter-specific. The simulator allows it; INMO and RayNeo runtime adapters return `GlassesError.Busy` because the Camera2 repeating session owns the camera.
+During an active stream, Simulator, INMO runtime, and RayNeo runtime adapters serve `capturePhoto()` from the latest JPEG frame already produced by that stream. If the stream has not produced a frame yet, `capturePhoto()` waits up to `CaptureOptions.timeoutMs` for the next frame and then returns `GlassesError.Timeout("capturePhoto")`. When no stream is active, `capturePhoto()` keeps its normal still-capture behavior.
 
 **VideoStreamSession:**
 

@@ -25,9 +25,10 @@ Only one video stream may be active per client. A second `startVideoStream()`
 returns `GlassesError.Busy`. `stop()` and `disconnect()` end the stream with an
 end-of-stream frame.
 
-The simulator allows `capturePhoto()` during an active stream. In video-file
-mode both APIs extract from the same looping playback head. In camera mode the
-stream loop uses the same CameraX still-capture path at the requested tier.
+During an active stream, `capturePhoto()` does not touch the camera or video
+source directly. It returns the latest JPEG frame already produced by the
+stream, or waits up to `CaptureOptions.timeoutMs` for the first frame and then
+returns `GlassesError.Timeout("capturePhoto")`.
 
 `VideoFrameRateTier` maps to tiered frame intervals: `SLOW` 1 fps, `LOW` 3 fps,
 `MEDIUM` 8 fps, `HIGH` 15 fps, and `NATIVE` the video metadata fps when
