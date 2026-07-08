@@ -1,4 +1,13 @@
 version: 2
+registries:
+  meta-github-packages:
+    # Meta DAT SDK lives on GitHub Packages; Dependabot needs its own
+    # credential (Dependabot secret, separate from the Actions secret of
+    # the same name) to resolve com.meta.wearable:* metadata.
+    type: maven-repository
+    url: https://maven.pkg.github.com/facebook/meta-wearables-dat-android
+    username: Chikati
+    password: ${{ secrets.META_PACKAGES_TOKEN }}
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -8,6 +17,8 @@ updates:
 
   - package-ecosystem: "gradle"
     directory: "/"
+    registries:
+      - meta-github-packages
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
