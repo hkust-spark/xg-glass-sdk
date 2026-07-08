@@ -35,6 +35,7 @@ import com.xgglass.core.ExternalActivityResult
 import com.xgglass.core.GlassesEvent
 import com.xgglass.core.GlassesClient
 import com.xgglass.core.GlassesModel
+import com.xgglass.core.ImageScaleMode
 import com.xgglass.core.android.SecureStore
 // xg:device:even:begin
 import com.xgglass.device.even.EvenGlassesClient
@@ -84,6 +85,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnDisconnect: Button
     private lateinit var ivPreview: ImageView
     private lateinit var tvDisplay: TextView
+    private lateinit var ivDisplayImage: ImageView
     private lateinit var tvDisplayTitle: TextView
     private lateinit var etRayNeoIp: EditText
     private lateinit var llCommands: LinearLayout
@@ -178,6 +180,7 @@ class MainActivity : AppCompatActivity() {
         btnDisconnect = findViewById(R.id.btnDisconnect)
         ivPreview = findViewById(R.id.ivPreview)
         tvDisplay = findViewById(R.id.tvDisplay)
+        ivDisplayImage = findViewById(R.id.ivDisplayImage)
         tvDisplayTitle = findViewById(R.id.tvDisplayTitle)
         etRayNeoIp = findViewById(R.id.etRayNeoIp)
         llCommands = findViewById(R.id.llCommands)
@@ -333,7 +336,15 @@ class MainActivity : AppCompatActivity() {
                     // xg:device:simulator:begin
                     GlassesModel.SIMULATOR -> SimulatorGlassesClient(
                         activity = this@MainActivity,
-                        displaySink = { text -> tvDisplay.text = text },
+                        displaySink = { text ->
+                            tvDisplay.text = text
+                            ivDisplayImage.setImageDrawable(null)
+                        },
+                        imageDisplaySink = { bitmap, options ->
+                            tvDisplay.text = "Image displayed (${bitmap.width}x${bitmap.height})"
+                            ivDisplayImage.scaleType = options.scaleMode.toAndroidScaleType()
+                            ivDisplayImage.setImageBitmap(bitmap)
+                        },
                         videoPath = BuildConfig.XG_SIM_VIDEO_PATH.takeIf { it.isNotEmpty() },
                     )
                     // xg:device:simulator:end
@@ -733,6 +744,14 @@ class MainActivity : AppCompatActivity() {
             if (showDisplay) android.view.View.VISIBLE else android.view.View.GONE
         tvDisplay.visibility =
             if (showDisplay) android.view.View.VISIBLE else android.view.View.GONE
+        ivDisplayImage.visibility =
+            if (showDisplay) android.view.View.VISIBLE else android.view.View.GONE
+    }
+
+    private fun ImageScaleMode.toAndroidScaleType(): ImageView.ScaleType = when (this) {
+        ImageScaleMode.FIT -> ImageView.ScaleType.FIT_CENTER
+        ImageScaleMode.FILL -> ImageView.ScaleType.CENTER_CROP
+        ImageScaleMode.CENTER -> ImageView.ScaleType.CENTER
     }
 
     /** Toggle the collapsible settings panel. */

@@ -37,6 +37,9 @@ data class DeviceCapabilities(
     /** True when apps may call [GlassesClient.display]. */
     val canDisplayText: Boolean = true,
 
+    /** True when apps may call [GlassesClient.displayImage]. */
+    val canDisplayImages: Boolean = false,
+
     /** True when apps may call [GlassesClient.startMicrophone]. */
     val canRecordAudio: Boolean = false,
 
@@ -96,6 +99,41 @@ data class DisplayOptions(
     val mode: DisplayMode = DisplayMode.REPLACE,
     /** If true, bypass any throttling/dedup logic in the adapter. */
     val force: Boolean = false,
+)
+
+enum class ImageEncoding {
+    PNG,
+    JPEG,
+}
+
+enum class ImageScaleMode {
+    FIT,
+    FILL,
+    CENTER,
+}
+
+data class DisplayImage(
+    /** PNG- or JPEG-encoded bytes. Adapters decode into native image objects. */
+    val bytes: ByteArray,
+    val encoding: ImageEncoding,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is DisplayImage) return false
+
+        return bytes.contentEquals(other.bytes) &&
+            encoding == other.encoding
+    }
+
+    override fun hashCode(): Int {
+        var result = bytes.contentHashCode()
+        result = 31 * result + encoding.hashCode()
+        return result
+    }
+}
+
+data class DisplayImageOptions(
+    val scaleMode: ImageScaleMode = ImageScaleMode.FIT,
 )
 
 data class CapturedImage(

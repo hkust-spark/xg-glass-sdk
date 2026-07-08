@@ -34,6 +34,19 @@ interface GlassesClient {
     suspend fun display(text: String, options: DisplayOptions = DisplayOptions()): Result<Unit>
 
     /**
+     * Display an encoded PNG/JPEG image on the glasses.
+     *
+     * The default implementation keeps third-party clients source-compatible:
+     * devices that do not implement image display report [GlassesError.Unsupported].
+     */
+    suspend fun displayImage(
+        image: DisplayImage,
+        options: DisplayImageOptions = DisplayImageOptions(),
+    ): Result<Unit> = Result.failure(
+        GlassesError.Unsupported("${model.name} does not support displayImage; check DeviceCapabilities.canDisplayImages")
+    )
+
+    /**
      * Play audio on the glasses.
      *
      * - [AudioSource.Tts]: text → on-device TTS. Requires [DeviceCapabilities.canPlayTts].

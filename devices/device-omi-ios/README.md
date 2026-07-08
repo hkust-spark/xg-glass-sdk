@@ -10,6 +10,7 @@ This module integrates Omi over CoreBluetooth into the unified `xg-glass` API su
   - Tap events when the connected device exposes the Omi DevKit button service.
   - Battery-level events when the connected device exposes the standard BLE Battery Service.
   - No display or audio playback primitives are exposed by the Omi BLE services.
+    `displayImage` therefore uses the core default `GlassesError.Unsupported`.
 
 ### Notes
 

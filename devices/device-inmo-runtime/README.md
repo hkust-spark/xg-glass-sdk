@@ -9,6 +9,8 @@ glasses.
 - Camera capture through Camera2.
 - Text display through a pluggable `InmoDisplaySink`; the default sink shows a
   Toast.
+- PNG/JPEG image display through `displayImage`; the default sink decodes the
+  encoded bytes and shows them in an Android `ImageView`-backed Toast.
 - Microphone capture through the shared Android `AudioRecord` helper.
 - Raw/encoded audio playback through the shared Android audio helpers.
 - Single-tap and long-press events when the host Activity forwards key events.
@@ -55,6 +57,8 @@ percentage changes by at least 1%. Percent values are clamped to `0..100`.
   receives it.
 - Confirm Camera2 support level, supported JPEG sizes, and reported
   `SENSOR_ORIENTATION` on production Air3 hardware.
+- Confirm `displayImage` renders PNG and JPEG payloads legibly on production
+  Air3 display hardware for `FIT`, `FILL`, and `CENTER` scale modes.
 - Confirm whether a usable on-device TTS engine is present; until then
   `AudioSource.Tts` is reported unsupported.
 - Confirm battery changes emit `GlassesEvent.BatteryLevel(percent)` and duplicate

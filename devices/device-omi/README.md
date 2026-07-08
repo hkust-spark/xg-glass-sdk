@@ -11,6 +11,7 @@ This module integrates **Omi Glass** into the unified `xg-glass` API surface.
   - Battery-level events when the connected device exposes the standard BLE Battery Service.
   - No display or audio playback primitives are exposed in the public BLE docs, so:
     - `display` returns `GlassesError.Unsupported`.
+    - `displayImage` uses the core default `GlassesError.Unsupported`.
     - `playAudio` returns `GlassesError.Unsupported`.
 
 ### Usage

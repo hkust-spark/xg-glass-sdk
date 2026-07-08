@@ -469,21 +469,25 @@ main() {
   wait_for_log "${adb}" "display_hello" 'display_hello: ok' 30 || return
   save_screenshot "${adb}" "03-display-hello"
 
+  tap_text "${adb}" "display_image" "Display image" || return
+  wait_for_log "${adb}" "display_image" 'display_image: ok' 30 || return
+  save_screenshot "${adb}" "04-display-image"
+
   tap_text "${adb}" "mic_record_3s" "Mic record 3s" || return
   wait_for_log "${adb}" "mic_record_3s" 'mic_record: [1-9][0-9]* chunks, [0-9]+ bytes' 30 || return
-  save_screenshot "${adb}" "04-mic-record"
+  save_screenshot "${adb}" "05-mic-record"
 
   tap_text "${adb}" "simulate_tap" "Simulate Tap" || return
   wait_for_log "${adb}" "simulate_tap" 'TAP: 1' 15 || return
-  save_screenshot "${adb}" "05-simulate-tap"
+  save_screenshot "${adb}" "06-simulate-tap"
 
   tap_text "${adb}" "simulate_long_press" "Simulate Long-press" || return
   wait_for_log "${adb}" "simulate_long_press" 'LONG_PRESS' 15 || return
-  save_screenshot "${adb}" "06-simulate-long-press"
+  save_screenshot "${adb}" "07-simulate-long-press"
 
   tap_text "${adb}" "disconnect" "Disconnect" || return
   wait_for_log "${adb}" "disconnect" 'disconnect\(\) => true' 15 || return
-  save_screenshot "${adb}" "07-disconnect"
+  save_screenshot "${adb}" "08-disconnect"
 
   run_quick_mode_stage "${adb}" || return
 }

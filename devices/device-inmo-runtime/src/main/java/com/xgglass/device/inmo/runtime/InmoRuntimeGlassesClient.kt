@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
@@ -20,6 +22,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.widget.ImageView
 import android.widget.Toast
 import com.xgglass.core.AudioEncoding
 import com.xgglass.core.AudioSource
@@ -28,10 +31,13 @@ import com.xgglass.core.CaptureOptions
 import com.xgglass.core.CapturedImage
 import com.xgglass.core.ConnectionState
 import com.xgglass.core.DeviceCapabilities
+import com.xgglass.core.DisplayImage
+import com.xgglass.core.DisplayImageOptions
 import com.xgglass.core.DisplayOptions
 import com.xgglass.core.GlassesError
 import com.xgglass.core.GlassesEvent
 import com.xgglass.core.GlassesModel
+import com.xgglass.core.ImageScaleMode
 import com.xgglass.core.MicrophoneOptions
 import com.xgglass.core.MicrophoneSession
 import com.xgglass.core.PcmFormat
@@ -63,6 +69,7 @@ class InmoRuntimeGlassesClient(
     initialCapabilities = DeviceCapabilities(
         canCapturePhoto = true,
         canDisplayText = true,
+        canDisplayImages = true,
         canRecordAudio = true,
         // Keep RayNeo's honest policy: built-in TTS-engine presence is hardware-unverified.
         canPlayTts = false,
@@ -194,6 +201,19 @@ class InmoRuntimeGlassesClient(
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(GlassesError.Transport("INMO display failed: ${e.message ?: e::class.java.simpleName}", e))
+        }
+    }
+
+    override suspend fun displayImage(image: DisplayImage, options: DisplayImageOptions): Result<Unit> {
+        if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
+        return try {
+            displaySink.displayImage(context, image, options)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(
+                (e as? GlassesError)
+                    ?: GlassesError.Transport("INMO displayImage failed: ${e.message ?: e::class.java.simpleName}", e)
+            )
         }
     }
 
@@ -480,6 +500,10 @@ class InmoRuntimeGlassesClient(
 
 fun interface InmoDisplaySink {
     suspend fun display(context: Context, text: String, options: DisplayOptions)
+
+    suspend fun displayImage(context: Context, image: DisplayImage, options: DisplayImageOptions) {
+        showImageToast(context, image, options, "INMO")
+    }
 }
 
 internal class ToastDisplaySink : InmoDisplaySink {
@@ -492,4 +516,44 @@ internal class ToastDisplaySink : InmoDisplaySink {
 
 private fun inmoPcmBufferSize(minBuffer: Int): Int {
     return max(minBuffer.coerceAtLeast(0), 8 * 1024)
+}
+
+private suspend fun showImageToast(
+    context: Context,
+    image: DisplayImage,
+    options: DisplayImageOptions,
+    label: String,
+) {
+    val bitmap = withContext(Dispatchers.Default) {
+        decodeAndroidDisplayBitmap(label, image)
+    }
+    withContext(Dispatchers.Main) {
+        val imageView = ImageView(context).apply {
+            setImageBitmap(bitmap)
+            adjustViewBounds = true
+            maxWidth = 720
+            maxHeight = 720
+            scaleType = options.scaleMode.toImageViewScaleType()
+        }
+        @Suppress("DEPRECATION")
+        Toast(context).apply {
+            duration = Toast.LENGTH_LONG
+            view = imageView
+            show()
+        }
+    }
+}
+
+private fun decodeAndroidDisplayBitmap(label: String, image: DisplayImage): Bitmap {
+    if (image.bytes.isEmpty()) {
+        throw GlassesError.Transport("$label displayImage failed: empty ${image.encoding} payload")
+    }
+    return BitmapFactory.decodeByteArray(image.bytes, 0, image.bytes.size)
+        ?: throw GlassesError.Transport("$label displayImage failed: invalid ${image.encoding} bytes")
+}
+
+private fun ImageScaleMode.toImageViewScaleType(): ImageView.ScaleType = when (this) {
+    ImageScaleMode.FIT -> ImageView.ScaleType.FIT_CENTER
+    ImageScaleMode.FILL -> ImageView.ScaleType.CENTER_CROP
+    ImageScaleMode.CENTER -> ImageView.ScaleType.CENTER
 }

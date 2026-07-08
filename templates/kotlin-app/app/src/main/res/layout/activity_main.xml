@@ -174,6 +174,16 @@
         android:textSize="16sp"
         android:visibility="gone" />
 
+    <ImageView
+        android:id="@+id/ivDisplayImage"
+        android:layout_width="match_parent"
+        android:layout_height="160dp"
+        android:layout_marginTop="4dp"
+        android:background="#EEEEEE"
+        android:contentDescription="Displayed image"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/tvLog"
         android:layout_width="match_parent"

@@ -1,11 +1,20 @@
 package com.example.xgglassapp.logic
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import com.xgglass.appcontract.UniversalAppContext
 import com.xgglass.appcontract.UniversalAppEntrySimple
 import com.xgglass.appcontract.UniversalCommand
 import com.xgglass.core.CaptureOptions
+import com.xgglass.core.DisplayImage
+import com.xgglass.core.DisplayImageOptions
 import com.xgglass.core.DisplayOptions
+import com.xgglass.core.ImageEncoding
+import com.xgglass.core.ImageScaleMode
 import com.xgglass.core.MicrophoneOptions
+import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -28,6 +37,7 @@ class ExampleAppEntry : UniversalAppEntrySimple {
         return listOf(
             capturePhotoCommand(),
             displayHelloCommand(),
+            displayImageCommand(),
             micRecordCommand(seconds = 3),
         )
     }
@@ -68,6 +78,26 @@ class ExampleAppEntry : UniversalAppEntrySimple {
             ctx.log("display_hello: sending \"$text\"")
             return ctx.client.display(text, DisplayOptions()).also { result ->
                 if (result.isSuccess) ctx.log("display_hello: ok")
+            }
+        }
+    }
+
+    private fun displayImageCommand(): UniversalCommand = object : UniversalCommand {
+        override val id: String = "display_image"
+        override val title: String = "Display image"
+
+        override suspend fun run(ctx: UniversalAppContext): Result<Unit> {
+            if (!ctx.client.capabilities.canDisplayImages) {
+                return Result.failure(IllegalStateException("display_image: selected device cannot display images"))
+            }
+
+            val bytes = createSmokePng()
+            ctx.log("display_image: sending PNG (${bytes.size} bytes)")
+            return ctx.client.displayImage(
+                DisplayImage(bytes = bytes, encoding = ImageEncoding.PNG),
+                DisplayImageOptions(scaleMode = ImageScaleMode.FIT),
+            ).also { result ->
+                if (result.isSuccess) ctx.log("display_image: ok")
             }
         }
     }
@@ -114,6 +144,27 @@ class ExampleAppEntry : UniversalAppEntrySimple {
             } catch (error: Throwable) {
                 Result.failure(error)
             }
+        }
+    }
+
+    private fun createSmokePng(): ByteArray {
+        val bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        canvas.drawColor(Color.rgb(24, 36, 48))
+        paint.color = Color.rgb(0, 184, 148)
+        canvas.drawRect(0f, 0f, 48f, 64f, paint)
+        paint.color = Color.rgb(255, 214, 10)
+        canvas.drawCircle(70f, 32f, 18f, paint)
+        paint.color = Color.WHITE
+        paint.textSize = 16f
+        canvas.drawText("xg", 8f, 38f, paint)
+
+        return ByteArrayOutputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            bitmap.recycle()
+            out.toByteArray()
         }
     }
 }

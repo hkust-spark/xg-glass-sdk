@@ -50,6 +50,46 @@ class CoreValueEqualityTest {
     }
 
     @Test
+    fun `display images with identical encoded content are equal and share hash code`() {
+        // Arrange
+        val first = DisplayImage(
+            bytes = byteArrayOf(1, 2, 3),
+            encoding = ImageEncoding.PNG,
+        )
+        val second = DisplayImage(
+            bytes = byteArrayOf(1, 2, 3),
+            encoding = ImageEncoding.PNG,
+        )
+
+        // Act / Assert
+        assertNotSame(first.bytes, second.bytes)
+        assertEquals(first, second)
+        assertEquals(first.hashCode(), second.hashCode())
+    }
+
+    @Test
+    fun `display images compare both bytes and encoding`() {
+        // Arrange
+        val first = DisplayImage(
+            bytes = byteArrayOf(1, 2, 3),
+            encoding = ImageEncoding.PNG,
+        )
+        val differentBytes = first.copy(bytes = byteArrayOf(1, 2, 4))
+        val differentEncoding = first.copy(encoding = ImageEncoding.JPEG)
+
+        // Act / Assert
+        assertNotEquals(first, differentBytes)
+        assertNotEquals(first, differentEncoding)
+    }
+
+    @Test
+    fun `display image options default to fit and preserve explicit scale mode`() {
+        assertEquals(ImageScaleMode.FIT, DisplayImageOptions().scaleMode)
+        assertEquals(ImageScaleMode.FILL, DisplayImageOptions(scaleMode = ImageScaleMode.FILL).scaleMode)
+        assertEquals(ImageScaleMode.CENTER, DisplayImageOptions(scaleMode = ImageScaleMode.CENTER).scaleMode)
+    }
+
+    @Test
     fun `audio chunks with identical byte content are equal and share hash code`() {
         // Arrange
         val format = AudioFormat(

@@ -11,6 +11,9 @@ Android-first adapter for Even Realities G1 glasses.
 - Maps simple TouchBar events to `GlassesEvent.Tap` and the Even AI begin packet (`0x17`) to `GlassesEvent.LongPress`.
 - Battery events are not surfaced yet. The local community protocol notes mention `Get Battery State (0x2C 01)` and case-battery `F5` events, but the response layout, per-arm meaning, and unified aggregation rule are not source-traced clearly enough to emit `GlassesEvent.BatteryLevel`.
 - Does not support camera capture. G1 has no camera path in this adapter.
+- Does not support `displayImage` today. The G1 1-bit BMP display protocol is
+  a future candidate, gated on hardware validation of the existing text display
+  path and a device-appropriate image conversion policy.
 - Does not support speaker playback, TTS, or raw audio playback.
 
 This is a no-hardware implementation and needs validation on a real G1 before marking the adapter fully hardware-verified.

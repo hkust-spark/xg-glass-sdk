@@ -23,6 +23,8 @@ import com.xgglass.core.CaptureOptions
 import com.xgglass.core.CapturedImage
 import com.xgglass.core.ConnectionState
 import com.xgglass.core.DeviceCapabilities
+import com.xgglass.core.DisplayImage
+import com.xgglass.core.DisplayImageOptions
 import com.xgglass.core.DisplayOptions
 import com.xgglass.core.GlassesEvent
 import com.xgglass.core.GlassesError
@@ -64,11 +66,13 @@ import kotlin.coroutines.resumeWithException
 class SimulatorGlassesClient(
     private val activity: AppCompatActivity,
     private val displaySink: ((String) -> Unit)? = null,
+    private val imageDisplaySink: ((Bitmap, DisplayImageOptions) -> Unit)? = null,
     private val videoPath: String? = null,
 ) : BaseGlassesClient(
     initialCapabilities = DeviceCapabilities(
         canCapturePhoto = true,
         canDisplayText = true,
+        canDisplayImages = true,
         canRecordAudio = true,
         canPlayTts = true,
         canPlayAudioBytes = true,
@@ -234,6 +238,29 @@ class SimulatorGlassesClient(
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    override suspend fun displayImage(image: DisplayImage, options: DisplayImageOptions): Result<Unit> {
+        return try {
+            val bitmap = withContext(Dispatchers.Default) {
+                decodeDisplayBitmap(image)
+            }
+            withContext(Dispatchers.Main) {
+                val sink = imageDisplaySink
+                if (sink != null) {
+                    sink.invoke(bitmap, options)
+                } else {
+                    emitWarn("Simulator: displayImage ignored (no imageDisplaySink provided)")
+                }
+            }
+            emitLog("Simulator: displayImage => ok (${bitmap.width}x${bitmap.height}, ${image.encoding})")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(
+                (e as? GlassesError)
+                    ?: GlassesError.Transport("Simulator displayImage failed: ${e.message}", e)
+            )
         }
     }
 
@@ -567,6 +594,14 @@ class SimulatorGlassesClient(
     private fun hasRecordAudioPermission(): Boolean {
         return ContextCompat.checkSelfPermission(activity, Manifest.permission.RECORD_AUDIO) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun decodeDisplayBitmap(image: DisplayImage): Bitmap {
+        if (image.bytes.isEmpty()) {
+            throw GlassesError.Transport("Simulator displayImage failed: empty ${image.encoding} payload")
+        }
+        return BitmapFactory.decodeByteArray(image.bytes, 0, image.bytes.size)
+            ?: throw GlassesError.Transport("Simulator displayImage failed: invalid ${image.encoding} bytes")
     }
 
     private suspend fun awaitCameraProvider(): ProcessCameraProvider {
