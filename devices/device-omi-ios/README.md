@@ -8,6 +8,7 @@ This module integrates Omi over CoreBluetooth into the unified `xg-glass` API su
   - Audio input over BLE via `startMicrophone`.
   - Photo capture over BLE via `capturePhoto`.
   - Tap events when the connected device exposes the Omi DevKit button service.
+  - Battery-level events when the connected device exposes the standard BLE Battery Service.
   - No display or audio playback primitives are exposed by the Omi BLE services.
 
 ### Notes
@@ -16,6 +17,12 @@ This module integrates Omi over CoreBluetooth into the unified `xg-glass` API su
   flips to `true` only when the connected peripheral exposes service
   `23BA7924-0000-1000-7450-346EAC492E92` and characteristic
   `23BA7925-0000-1000-7450-346EAC492E92`.
+- Battery events are gated on service discovery, not model/name matching. `supportsBatteryEvents`
+  flips to `true` only when the connected peripheral exposes the standard BLE Battery Service
+  `0000180F-0000-1000-8000-00805F9B34FB` and Battery Level characteristic
+  `00002A19-0000-1000-8000-00805F9B34FB`. The CoreBluetooth adapter rolls capability back if
+  notification enablement fails, reads the initial level after notifications are enabled, and emits
+  later updates as `GlassesEvent.BatteryLevel(percent)` with percent clamped to `0..100`.
 - `supportsLongPressEvents` intentionally remains `false`: only legacy Omi firmware emits
   button code `3`, while post-2026-01 firmware powers off silently on a hold of at least
   three seconds. The adapter still maps code `3` to `GlassesEvent.LongPress` for field
@@ -31,3 +38,6 @@ This module integrates Omi over CoreBluetooth into the unified `xg-glass` API su
 - On legacy firmware only, confirm button code `3` emits `GlassesEvent.LongPress` while
   `client.capabilities.supportsLongPressEvents` remains `false`.
 - Confirm button release code `5` is ignored except for rate-limited diagnostic logs.
+- Confirm `client.capabilities.supportsBatteryEvents == true` only after the standard BLE Battery Service is discovered.
+- Confirm `client.capabilities.supportsBatteryEvents` returns to `false` if Battery Level notification enablement fails.
+- Confirm the initial Battery Level read and later notifications emit `GlassesEvent.BatteryLevel(percent)`.

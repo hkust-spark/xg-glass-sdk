@@ -406,6 +406,7 @@ class MainActivity : AppCompatActivity() {
                             is GlassesEvent.Log -> appendLog(ev.message)
                             is GlassesEvent.Warning -> appendLog("WARN: ${ev.message}")
                             is GlassesEvent.Tap -> appendLog("TAP: ${ev.count}")
+                            is GlassesEvent.BatteryLevel -> appendLog("BATTERY: ${ev.percent}%")
                             GlassesEvent.LongPress -> appendLog("LONG_PRESS")
                         }
                     }
@@ -504,6 +505,7 @@ class MainActivity : AppCompatActivity() {
                             is GlassesEvent.Log -> appendLog(ev.message)
                             is GlassesEvent.Warning -> appendLog("WARN: ${ev.message}")
                             is GlassesEvent.Tap -> appendLog("TAP: ${ev.count}")
+                            is GlassesEvent.BatteryLevel -> appendLog("BATTERY: ${ev.percent}%")
                             GlassesEvent.LongPress -> appendLog("LONG_PRESS")
                         }
                     }
@@ -796,6 +798,10 @@ class MainActivity : AppCompatActivity() {
                 llCommands.addView(Button(this).apply {
                     text = "Simulate Long-press"
                     setOnClickListener { simulatorClient.simulateLongPress() }
+                })
+                llCommands.addView(Button(this).apply {
+                    text = "Simulate Battery 77%"
+                    setOnClickListener { simulatorClient.simulateBatteryLevel(77) }
                 })
             }
         }

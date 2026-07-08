@@ -18,6 +18,14 @@ internal object OmiBleUuids {
     /** Audio codec characteristic (read): reports the on-device codec. */
     const val AUDIO_CODEC = "19B10002-E8F2-537E-4F6C-D104768A1214"
 
+    // Source: Bluetooth SIG Battery Service 1.1, https://www.bluetooth.com/specifications/specs/battery-service/
+    /** Standard BLE Battery Service. */
+    const val BATTERY_SERVICE = "0000180F-0000-1000-8000-00805F9B34FB"
+
+    // Source: Bluetooth SIG Battery Service 1.1 Battery Level characteristic, same BAS spec.
+    /** Standard BLE Battery Level characteristic (read, notify). */
+    const val BATTERY_LEVEL = "00002A19-0000-1000-8000-00805F9B34FB"
+
     /** Photo data characteristic (notify): streams chunked JPEG. */
     const val PHOTO_DATA = "19B10005-E8F2-537E-4F6C-D104768A1214"
 
@@ -61,6 +69,11 @@ internal object OmiAudioFraming {
      */
     fun payload(packet: ByteArray): ByteArray? =
         if (packet.size > HEADER_SIZE) packet.copyOfRange(HEADER_SIZE, packet.size) else null
+}
+
+/** Standard BLE Battery Level parsing. */
+internal object OmiBatteryProtocol {
+    fun percent(packet: ByteArray): Int? = packet.firstOrNull()?.toInt()?.and(0xFF)?.coerceIn(0, 100)
 }
 
 /** Time-sync payload encoding. */

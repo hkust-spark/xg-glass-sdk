@@ -74,6 +74,7 @@ class SimulatorGlassesClient(
         canPlayAudioBytes = true,
         supportsTapEvents = true,
         supportsLongPressEvents = true,
+        supportsBatteryEvents = true,
         supportsStreamingTextUpdates = false,
     ),
 ) {
@@ -89,6 +90,12 @@ class SimulatorGlassesClient(
     /** Testing hook that emits a synthetic [GlassesEvent.LongPress] without glasses hardware. */
     fun simulateLongPress() {
         emitEvent(GlassesEvent.LongPress)
+    }
+
+    /** Testing hook that emits a synthetic [GlassesEvent.BatteryLevel] without glasses hardware. */
+    fun simulateBatteryLevel(percent: Int) {
+        require(percent in 0..100) { "Battery percent must be in 0..100." }
+        emitEvent(GlassesEvent.BatteryLevel(percent))
     }
 
     private var cameraProvider: ProcessCameraProvider? = null

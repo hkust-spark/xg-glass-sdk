@@ -83,6 +83,10 @@ internal class FakeOmiBlePeripheral {
         every { gatt.writeDescriptor(any<BluetoothGattDescriptor>(), any()) } answers {
             if (recordDescriptorWrite(firstArg())) BluetoothStatusCodes.SUCCESS else -1
         }
+        every { gatt.readCharacteristic(any()) } answers {
+            recordCharacteristicRead(firstArg())
+            true
+        }
         every { gatt.writeCharacteristic(any<BluetoothGattCharacteristic>()) } answers {
             val characteristic = firstArg<BluetoothGattCharacteristic>()
             recordCharacteristicWrite(characteristic, characteristic.value ?: ByteArray(0))
@@ -127,12 +131,14 @@ internal class FakeOmiBlePeripheral {
 
     fun servicesDiscovered(
         withButtonService: Boolean,
+        withBatteryService: Boolean = false,
         withPhotoService: Boolean = true,
         withTimeSyncService: Boolean = true,
         status: Int = BluetoothGatt.GATT_SUCCESS,
     ) {
         configureServices(
             withButtonService = withButtonService,
+            withBatteryService = withBatteryService,
             withPhotoService = withPhotoService,
             withTimeSyncService = withTimeSyncService,
         )
@@ -153,11 +159,29 @@ internal class FakeOmiBlePeripheral {
             }
         }
 
+    suspend fun awaitCharacteristicRead(characteristicUuid: UUID): CharacteristicRead =
+        eventually("characteristic read for $characteristicUuid") {
+            recordedOps().filterIsInstance<CharacteristicRead>().lastOrNull {
+                it.characteristicUuid == characteristicUuid
+            }
+        }
+
     fun ackDescriptorWrite(characteristicUuid: UUID, status: Int = BluetoothGatt.GATT_SUCCESS) {
         val op = recordedOps().filterIsInstance<DescriptorWrite>().lastOrNull {
             it.characteristicUuid == characteristicUuid
         } ?: error("No descriptor write recorded for $characteristicUuid")
         gattCallback().onDescriptorWrite(gatt, op.descriptor, status)
+    }
+
+    fun ackCharacteristicRead(
+        characteristicUuid: UUID,
+        value: ByteArray,
+        status: Int = BluetoothGatt.GATT_SUCCESS,
+    ) {
+        val characteristic = characteristics[characteristicUuid]
+            ?: error("No characteristic configured for $characteristicUuid")
+        characteristicValues[characteristicUuid] = value
+        gattCallback().onCharacteristicRead(gatt, characteristic, value, status)
     }
 
     fun notifyCharacteristic(characteristicUuid: UUID, value: ByteArray) {
@@ -181,6 +205,7 @@ internal class FakeOmiBlePeripheral {
 
     private fun configureServices(
         withButtonService: Boolean,
+        withBatteryService: Boolean,
         withPhotoService: Boolean,
         withTimeSyncService: Boolean,
     ) {
@@ -213,6 +238,15 @@ internal class FakeOmiBlePeripheral {
                 mapOf(
                     OmiGlassesClient.BUTTON_TRIGGER_UUID to
                         characteristic(OmiGlassesClient.BUTTON_TRIGGER_UUID, withCccd = true),
+                ),
+            )
+        }
+
+        if (withBatteryService) {
+            services[OmiGlassesClient.BATTERY_SERVICE_UUID] = service(
+                mapOf(
+                    OmiGlassesClient.BATTERY_LEVEL_UUID to
+                        characteristic(OmiGlassesClient.BATTERY_LEVEL_UUID, withCccd = true),
                 ),
             )
         }
@@ -278,6 +312,10 @@ internal class FakeOmiBlePeripheral {
         value: ByteArray,
     ) {
         ops.add(CharacteristicWrite(characteristic.uuid, value.copyOf()))
+    }
+
+    private fun recordCharacteristicRead(characteristic: BluetoothGattCharacteristic) {
+        ops.add(CharacteristicRead(characteristic.uuid))
     }
 
     private fun mockAndroidScanBuilders() {
@@ -348,6 +386,10 @@ internal class FakeOmiBlePeripheral {
     data class CharacteristicWrite(
         val characteristicUuid: UUID,
         val value: ByteArray,
+    ) : GattOp
+
+    data class CharacteristicRead(
+        val characteristicUuid: UUID,
     ) : GattOp
 
     private companion object {

@@ -24,6 +24,7 @@ Full inlined docs live in [llms-full.txt](llms-full.txt).
 - [INMO Air3 Runtime Adapter](devices/device-inmo-runtime/README.md) - on-glasses Android runtime adapter using stock camera, microphone, display, audio, and forwarded key events without a vendor SDK.
 - [Omi Android Device Module](devices/device-omi/README.md) - Android BLE adapter for Omi audio/photo and button events, including service-discovery gating and legacy firmware quirks.
 - [Omi iOS Device Module](devices/device-omi-ios/README.md) - CoreBluetooth Omi adapter notes for BLE audio/photo and button events with the same long-press firmware caveats.
+- [RayNeo Runtime Adapter](devices/device-rayneo-runtime/README.md) - on-glasses Android runtime adapter using stock camera, microphone, display, playback, and battery events.
 
 ## Contributing
 
@@ -74,16 +75,16 @@ Write your app logic once against these four APIs, and it runs on all supported 
 
 ## 2. Supported Devices
 
-| Device | Model Enum | Camera | Display | Mic | Speaker | Input Events | Notes |
-|--------|-----------|--------|---------|-----|---------|--------------|-------|
-| Rokid Glasses | `GlassesModel.ROKID` | Yes | Yes | Yes | Yes (TTS + raw) | No | Android phone-side adapter |
-| Meta AI Glasses | `GlassesModel.META` | Yes | No on iOS; Android display-capable models may enable it after connect | Yes (Android and iOS Bluetooth HFP) | Android raw; iOS no | No | iOS mic requires the glasses to be the active HFP input; hardware validation pending for iOS mic |
-| Brilliant Labs Frame | `GlassesModel.FRAME` | Yes | Yes | Yes | No | Tap | Working integration uses the source/CLI flow with the embedded Flutter module |
-| RayNeo x2 validated / x3 Pro untested | `GlassesModel.RAYNEO` | Yes | Yes | Yes | Yes (raw) | No | On-glasses Android runtime |
-| INMO Air3 | `GlassesModel.INMO` | Yes | Yes | Yes | Yes (raw/encoded bytes) | Tap + long press, when the host Activity forwards key events | On-glasses Android runtime; hardware validation pending |
-| Omi Glass | `GlassesModel.OMI` | No | No | Yes | No | Tap, when button service is discovered | Audio-focused BLE adapter; legacy firmware may emit long-press events without advertising long-press capability |
-| Even Realities G1 | `GlassesModel.EVEN` | No | Yes | Yes (LC3 passthrough) | No | Tap + long press | Dual-BLE Android + iOS adapter; hardware validation pending |
-| Simulator (Emulator) | `GlassesModel.SIMULATOR` | Yes (webcam/video) | Yes | Yes on Android simulator | Yes (TTS + raw) | Synthetic tap + long press | Local development without glasses hardware |
+| Device | Model Enum | Camera | Display | Mic | Speaker | Input Events | Battery Events | Notes |
+|--------|-----------|--------|---------|-----|---------|--------------|----------------|-------|
+| Rokid Glasses | `GlassesModel.ROKID` | Yes | Yes | Yes | Yes (TTS + raw) | No | No | Android phone-side adapter |
+| Meta AI Glasses | `GlassesModel.META` | Yes | No on iOS; Android display-capable models may enable it after connect | Yes (Android and iOS Bluetooth HFP) | Android raw; iOS no | No | No | iOS mic requires the glasses to be the active HFP input; hardware validation pending for iOS mic |
+| Brilliant Labs Frame | `GlassesModel.FRAME` | Yes | Yes | Yes | No | Tap | No | Working integration uses the source/CLI flow with the embedded Flutter module |
+| RayNeo x2 validated / x3 Pro untested | `GlassesModel.RAYNEO` | Yes | Yes | Yes | Yes (raw) | No | Yes, on-device Android battery | On-glasses Android runtime |
+| INMO Air3 | `GlassesModel.INMO` | Yes | Yes | Yes | Yes (raw/encoded bytes) | Tap + long press, when the host Activity forwards key events | Yes, on-device Android battery | On-glasses Android runtime; hardware validation pending |
+| Omi Glass | `GlassesModel.OMI` | No | No | Yes | No | Tap, when button service is discovered | Yes, when standard BLE Battery Service is discovered | Audio-focused BLE adapter; legacy firmware may emit long-press events without advertising long-press capability |
+| Even Realities G1 | `GlassesModel.EVEN` | No | Yes | Yes (LC3 passthrough) | No | Tap + long press | No | Dual-BLE Android + iOS adapter; hardware validation pending; battery packet evidence is not yet sufficient for a unified event |
+| Simulator (Emulator) | `GlassesModel.SIMULATOR` | Yes (webcam/video) | Yes | Yes on Android simulator | Yes (TTS + raw) | Synthetic tap + long press | Synthetic battery | Local development without glasses hardware |
 
 Check capabilities at runtime via `ctx.client.capabilities`:
 
@@ -93,6 +94,7 @@ if (caps.canRecordAudio) { /* safe to use startMicrophone() */ }
 if (caps.canPlayTts) { /* safe to use playAudio(AudioSource.Tts(...)) */ }
 if (caps.supportsTapEvents) { /* safe to expect GlassesEvent.Tap */ }
 if (caps.supportsLongPressEvents) { /* safe to expect GlassesEvent.LongPress */ }
+if (caps.supportsBatteryEvents) { /* safe to expect GlassesEvent.BatteryLevel */ }
 ```
 
 ---
@@ -248,7 +250,7 @@ override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
 }
 ```
 
-The current SDK maps `KEYCODE_ENTER` to `GlassesEvent.Tap(1)` and the documented long-press keycodes `289/290` to `GlassesEvent.LongPress`. Camera captures include `CapturedImage.rotationDegrees` when Android reports `CameraCharacteristics.SENSOR_ORIENTATION`. Microphone capture is PCM through the shared Android microphone helper; `AudioEncoding.LC3` and `AudioEncoding.OPUS` are rejected for INMO microphone capture. Hardware validation is pending.
+The current SDK maps `KEYCODE_ENTER` to `GlassesEvent.Tap(1)` and the documented long-press keycodes `289/290` to `GlassesEvent.LongPress`. Battery changes are emitted as `GlassesEvent.BatteryLevel` from Android's sticky `ACTION_BATTERY_CHANGED` broadcast, with `BatteryManager.BATTERY_PROPERTY_CAPACITY` as the initial fallback. Camera captures include `CapturedImage.rotationDegrees` when Android reports `CameraCharacteristics.SENSOR_ORIENTATION`. Microphone capture is PCM through the shared Android microphone helper; `AudioEncoding.LC3` and `AudioEncoding.OPUS` are rejected for INMO microphone capture. Hardware validation is pending.
 
 ### Meta iOS microphone setup
 
@@ -543,6 +545,7 @@ data class DeviceCapabilities(
     val canPlayAudioBytes: Boolean = false,
     val supportsTapEvents: Boolean = false,
     val supportsLongPressEvents: Boolean = false,
+    val supportsBatteryEvents: Boolean = false,
     val supportsStreamingTextUpdates: Boolean = false,
 )
 ```
@@ -554,13 +557,15 @@ if (caps.canPlayTts)     { /* safe to call playAudio(AudioSource.Tts(...)) */ }
 if (caps.canPlayAudioBytes) { /* safe to call playAudio(AudioSource.RawBytes(...)) */ }
 if (caps.supportsTapEvents) { /* safe to expect GlassesEvent.Tap from events */ }
 if (caps.supportsLongPressEvents) { /* safe to expect GlassesEvent.LongPress from events */ }
+if (caps.supportsBatteryEvents) { /* safe to expect GlassesEvent.BatteryLevel from events */ }
 ```
 
 Relevant new-device capability profiles:
 
-- Even G1: display, LC3 microphone, tap and long-press events, streaming display updates; no camera or speaker.
-- INMO Air3: camera, display, PCM microphone, raw/encoded audio playback, tap and long-press events through host key forwarding.
-- Omi: microphone plus tap events only when the connected device exposes the Omi button service; legacy firmware may emit long-press events, but `supportsLongPressEvents` stays false because current firmware consumes long holds for power-off.
+- Even G1: display, LC3 microphone, tap and long-press events, streaming display updates; no camera, speaker, or battery events until the battery/status packet is source-traced more precisely.
+- INMO Air3: camera, display, PCM microphone, raw/encoded audio playback, on-device Android battery events, and tap/long-press events through host key forwarding.
+- RayNeo runtime: camera, display, PCM microphone, raw/encoded audio playback, and on-device Android battery events; no input events.
+- Omi: microphone plus battery events when the connected device exposes the standard BLE Battery Service; tap events only when it exposes the Omi button service. Legacy firmware may emit long-press events, but `supportsLongPressEvents` stays false because current firmware consumes long holds for power-off.
 - Meta iOS: camera and Bluetooth HFP microphone; no display, speaker, or tap events.
 
 ### 5.7 Events
@@ -572,17 +577,20 @@ sealed class GlassesEvent {
     data class Log(val message: String) : GlassesEvent()
     data class Warning(val message: String) : GlassesEvent()
     data class Tap(val count: Int) : GlassesEvent()  // e.g. single tap, double tap
+    data class BatteryLevel(val percent: Int) : GlassesEvent()
     data object LongPress : GlassesEvent()
 }
 ```
 
 `GlassesEvent.Tap` is currently emitted by Frame, Even G1, INMO Air3, and Omi devices that expose the Omi button service. INMO only emits it when the host Activity forwards key events to `InmoRuntimeGlassesClient.onHostKeyEvent(keyCode)`.
 `GlassesEvent.LongPress` is typically the vendor's AI/action-button gesture; devices may also consume it for their own assistant UI. Even emits it on the `0x17` Even AI begin signal, INMO emits it for keycodes `289/290`, Omi maps legacy button code `3` when seen while leaving `supportsLongPressEvents` false, and Simulator clients can synthesize it for hardware-free tests.
+`GlassesEvent.BatteryLevel` reports a clamped `percent` in `0..100`. Omi emits it after the standard BLE Battery Service (`0x180F`) and Battery Level characteristic (`0x2A19`) are discovered and notification enablement succeeds; Android Omi reads the initial value and then listens for notifications. INMO and RayNeo runtime clients emit it from Android's on-device battery APIs. Simulator clients can synthesize it for hardware-free tests.
 
 ```kotlin
 ctx.client.events.collect { event ->
     when (event) {
         is GlassesEvent.Tap -> { /* user tapped ${event.count} times */ }
+        is GlassesEvent.BatteryLevel -> { /* battery is ${event.percent}% */ }
         GlassesEvent.LongPress -> { /* user long-pressed */ }
         is GlassesEvent.Log -> { /* informational: ${event.message} */ }
         is GlassesEvent.Warning -> { /* warning: ${event.message} */ }
@@ -1113,16 +1121,16 @@ This is what xg.glass has extracted for you from tens of smart glasses SDKs. We 
 
 Currently we support:
 
-| Category | Products |
-| --- | --- |
-| Rokid | Rokid Glasses |
-| Meta | Meta Wearables |
-| Brilliant Labs | Frame |
-| RayNeo | x2 Glasses (validated), x3 Pro Glasses (untested) |
-| INMO | Air3 (adapter shipped, hardware validation pending) |
-| Omi | Omi Glass |
-| Even Realities | G1 (adapter shipped, hardware validation pending) |
-| *Simulation* | — |
+| Category | Products | Battery events |
+| --- | --- | --- |
+| Rokid | Rokid Glasses | No |
+| Meta | Meta Wearables | No |
+| Brilliant Labs | Frame | No |
+| RayNeo | x2 Glasses (validated), x3 Pro Glasses (untested) | Yes, on-glasses runtime |
+| INMO | Air3 (adapter shipped, hardware validation pending) | Yes, on-glasses runtime |
+| Omi | Omi Glass | Yes, when standard BLE Battery Service is discovered |
+| Even Realities | G1 (adapter shipped, hardware validation pending) | No |
+| *Simulation* | — | Synthetic |
 
 We're working on and will support more glasses soon.
 
@@ -1863,6 +1871,7 @@ Android-first adapter for Even Realities G1 glasses.
 - Sends display text with the G1 text paging frame.
 - Starts microphone capture on the right arm and forwards raw LC3 frames through `PushMicrophoneSession`.
 - Maps simple TouchBar events to `GlassesEvent.Tap` and the Even AI begin packet (`0x17`) to `GlassesEvent.LongPress`.
+- Battery events are not surfaced yet. The local community protocol notes mention `Get Battery State (0x2C 01)` and case-battery `F5` events, but the response layout, per-arm meaning, and unified aggregation rule are not source-traced clearly enough to emit `GlassesEvent.BatteryLevel`.
 - Does not support camera capture. G1 has no camera path in this adapter.
 - Does not support speaker playback, TTS, or raw audio playback.
 
@@ -1927,6 +1936,7 @@ glasses.
 - Microphone capture through the shared Android `AudioRecord` helper.
 - Raw/encoded audio playback through the shared Android audio helpers.
 - Single-tap and long-press events when the host Activity forwards key events.
+- Battery-level events from Android's on-device battery APIs.
 
 ## No Vendor SDK
 
@@ -1953,6 +1963,14 @@ documentation maps DPAD `19/20/21/22` to swipes and `289/290` to long-press
 gestures; `289/290` are emitted as `GlassesEvent.LongPress` while swipes remain
 unhandled until the cross-device input API lands.
 
+## Battery Events
+
+`supportsBatteryEvents` is always `true` because the runtime runs on the glasses.
+On connect, the adapter registers `ACTION_BATTERY_CHANGED`, consumes the sticky
+initial broadcast, falls back to `BatteryManager.BATTERY_PROPERTY_CAPACITY` if
+needed, and emits `GlassesEvent.BatteryLevel(percent)` only when the integer
+percentage changes by at least 1%. Percent values are clamped to `0..100`.
+
 ## Hardware Verification Checklist
 
 - Confirm Air3 keycodes match the Air2 table: ENTER=66, DPAD=19/20/21/22,
@@ -1963,6 +1981,8 @@ unhandled until the cross-device input API lands.
   `SENSOR_ORIENTATION` on production Air3 hardware.
 - Confirm whether a usable on-device TTS engine is present; until then
   `AudioSource.Tts` is reported unsupported.
+- Confirm battery changes emit `GlassesEvent.BatteryLevel(percent)` and duplicate
+  unchanged percentages are ignored.
 
 ## Extract-vs-Clone Decision
 
@@ -1985,6 +2005,7 @@ This module integrates **Omi Glass** into the unified `xg-glass` API surface.
   - Audio input (microphone streaming) over BLE – surfaced via `startMicrophone`.
   - Photo capture over BLE – surfaced via `capturePhoto`.
   - Tap events when the connected device exposes the Omi DevKit button service.
+  - Battery-level events when the connected device exposes the standard BLE Battery Service.
   - No display or audio playback primitives are exposed in the public BLE docs, so:
     - `display` returns `GlassesError.Unsupported`.
     - `playAudio` returns `GlassesError.Unsupported`.
@@ -2005,6 +2026,13 @@ This module integrates **Omi Glass** into the unified `xg-glass` API surface.
   flips to `true` only when the connected peripheral exposes service
   `23BA7924-0000-1000-7450-346EAC492E92` and characteristic
   `23BA7925-0000-1000-7450-346EAC492E92`.
+- Battery events are gated on service discovery, not model/name matching. `supportsBatteryEvents`
+  flips to `true` only when the connected peripheral exposes the standard BLE Battery Service
+  `0000180F-0000-1000-8000-00805F9B34FB` and Battery Level characteristic
+  `00002A19-0000-1000-8000-00805F9B34FB`. The Android adapter enables notifications behind
+  its serialized GATT operation mutex, rolls capability back if CCCD enablement fails, reads the
+  initial level, and emits later notifications as `GlassesEvent.BatteryLevel(percent)` with
+  percent clamped to `0..100`.
 - `supportsLongPressEvents` intentionally remains `false`: only legacy Omi firmware emits
   button code `3`, while post-2026-01 firmware powers off silently on a hold of at least
   three seconds. The adapter still maps code `3` to `GlassesEvent.LongPress` for field
@@ -2024,6 +2052,9 @@ This module integrates **Omi Glass** into the unified `xg-glass` API surface.
 - On legacy firmware only, confirm button code `3` emits `GlassesEvent.LongPress` while
   `client.capabilities.supportsLongPressEvents` remains `false`.
 - Confirm button release code `5` is ignored except for rate-limited diagnostic logs.
+- Confirm `client.capabilities.supportsBatteryEvents == true` only after the standard BLE Battery Service is discovered.
+- Confirm `client.capabilities.supportsBatteryEvents` returns to `false` if Battery Level notification enablement fails.
+- Confirm the initial Battery Level read and later notifications emit `GlassesEvent.BatteryLevel(percent)`.
 
 ================================================================================
 Source: devices/device-omi-ios/README.md
@@ -2038,6 +2069,7 @@ This module integrates Omi over CoreBluetooth into the unified `xg-glass` API su
   - Audio input over BLE via `startMicrophone`.
   - Photo capture over BLE via `capturePhoto`.
   - Tap events when the connected device exposes the Omi DevKit button service.
+  - Battery-level events when the connected device exposes the standard BLE Battery Service.
   - No display or audio playback primitives are exposed by the Omi BLE services.
 
 ### Notes
@@ -2046,6 +2078,12 @@ This module integrates Omi over CoreBluetooth into the unified `xg-glass` API su
   flips to `true` only when the connected peripheral exposes service
   `23BA7924-0000-1000-7450-346EAC492E92` and characteristic
   `23BA7925-0000-1000-7450-346EAC492E92`.
+- Battery events are gated on service discovery, not model/name matching. `supportsBatteryEvents`
+  flips to `true` only when the connected peripheral exposes the standard BLE Battery Service
+  `0000180F-0000-1000-8000-00805F9B34FB` and Battery Level characteristic
+  `00002A19-0000-1000-8000-00805F9B34FB`. The CoreBluetooth adapter rolls capability back if
+  notification enablement fails, reads the initial level after notifications are enabled, and emits
+  later updates as `GlassesEvent.BatteryLevel(percent)` with percent clamped to `0..100`.
 - `supportsLongPressEvents` intentionally remains `false`: only legacy Omi firmware emits
   button code `3`, while post-2026-01 firmware powers off silently on a hold of at least
   three seconds. The adapter still maps code `3` to `GlassesEvent.LongPress` for field
@@ -2061,6 +2099,43 @@ This module integrates Omi over CoreBluetooth into the unified `xg-glass` API su
 - On legacy firmware only, confirm button code `3` emits `GlassesEvent.LongPress` while
   `client.capabilities.supportsLongPressEvents` remains `false`.
 - Confirm button release code `5` is ignored except for rate-limited diagnostic logs.
+- Confirm `client.capabilities.supportsBatteryEvents == true` only after the standard BLE Battery Service is discovered.
+- Confirm `client.capabilities.supportsBatteryEvents` returns to `false` if Battery Level notification enablement fails.
+- Confirm the initial Battery Level read and later notifications emit `GlassesEvent.BatteryLevel(percent)`.
+
+================================================================================
+Source: devices/device-rayneo-runtime/README.md
+================================================================================
+# RayNeo Runtime Adapter
+
+`device-rayneo-runtime` is the on-glasses Android runtime adapter for RayNeo
+glasses. It runs inside the glasses app process and uses stock Android APIs for
+camera, display, microphone, playback, and battery state.
+
+## What Works
+
+- Camera capture through Camera2.
+- Text display through a pluggable `RayNeoDisplaySink`; the default sink shows a
+  Toast.
+- Microphone capture through the shared Android `AudioRecord` helper.
+- Raw/encoded audio playback through the shared Android audio helpers.
+- Battery-level events from Android's on-device battery APIs.
+
+## Battery Events
+
+`supportsBatteryEvents` is always `true` because the runtime runs on the glasses.
+On connect, the adapter registers `ACTION_BATTERY_CHANGED`, consumes the sticky
+initial broadcast, falls back to `BatteryManager.BATTERY_PROPERTY_CAPACITY` if
+needed, and emits `GlassesEvent.BatteryLevel(percent)` only when the integer
+percentage changes by at least 1%. Percent values are clamped to `0..100`.
+
+## Hardware Verification Checklist
+
+- Confirm the runtime receives the sticky battery broadcast on the glasses.
+- Confirm battery changes emit `GlassesEvent.BatteryLevel(percent)` and duplicate
+  unchanged percentages are ignored.
+- Confirm Camera2 capture, microphone capture, and playback behavior on the
+  target RayNeo hardware.
 
 ================================================================================
 Source: docs/adding-a-device-adapter.md

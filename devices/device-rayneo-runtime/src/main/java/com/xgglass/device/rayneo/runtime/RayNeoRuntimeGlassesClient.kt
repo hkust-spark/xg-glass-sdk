@@ -1,7 +1,10 @@
 package com.xgglass.device.rayneo.runtime
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
@@ -13,6 +16,8 @@ import android.media.AudioManager
 import android.media.ImageReader
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.os.BatteryManager
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.widget.Toast
@@ -26,6 +31,7 @@ import com.xgglass.core.ConnectionState
 import com.xgglass.core.DeviceCapabilities
 import com.xgglass.core.DisplayOptions
 import com.xgglass.core.GlassesError
+import com.xgglass.core.GlassesEvent
 import com.xgglass.core.GlassesModel
 import com.xgglass.core.MicrophoneOptions
 import com.xgglass.core.MicrophoneSession
@@ -65,6 +71,7 @@ class RayNeoRuntimeGlassesClient(
         canPlayTts = false,
         canPlayAudioBytes = true,
         supportsTapEvents = false,
+        supportsBatteryEvents = true,
         supportsStreamingTextUpdates = false,
     ),
     eventBufferOverflow = BufferOverflow.SUSPEND,
@@ -74,17 +81,64 @@ class RayNeoRuntimeGlassesClient(
 
     @Volatile private var activeMic: MicrophoneSession? = null
     @Volatile private var activePlayer: MediaPlayer? = null
+    @Volatile private var batteryReceiver: BroadcastReceiver? = null
+    @Volatile private var lastBatteryPercent: Int? = null
 
     override val markConnectingOnConnect: Boolean = false
 
-    override suspend fun doConnect() = Unit
+    override suspend fun doConnect() {
+        registerBatteryEvents()
+    }
 
     override suspend fun disconnect() {
+        unregisterBatteryEvents()
         try { activeMic?.stop() } catch (_: Exception) {}
         activeMic = null
         try { activePlayer?.release() } catch (_: Exception) {}
         activePlayer = null
         _state.value = ConnectionState.Disconnected
+    }
+
+    private fun registerBatteryEvents() {
+        unregisterBatteryEvents()
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                handleBatteryIntent(intent)
+            }
+        }
+        batteryReceiver = receiver
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val sticky = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            context.registerReceiver(receiver, filter)
+        }
+        handleBatteryIntent(sticky)
+        if (lastBatteryPercent == null) {
+            handleBatteryManager(context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager)
+        }
+    }
+
+    private fun unregisterBatteryEvents() {
+        val receiver = batteryReceiver ?: return
+        batteryReceiver = null
+        runCatching { context.unregisterReceiver(receiver) }
+    }
+
+    private fun handleBatteryIntent(intent: Intent?) {
+        RayNeoRuntimeBatteryPolicy.percentFromIntent(intent)?.let(::emitBatteryIfChanged)
+    }
+
+    private fun handleBatteryManager(manager: BatteryManager?) {
+        RayNeoRuntimeBatteryPolicy.percentFromManager(manager)?.let(::emitBatteryIfChanged)
+    }
+
+    private fun emitBatteryIfChanged(percent: Int) {
+        val previous = lastBatteryPercent
+        if (!RayNeoRuntimeBatteryPolicy.shouldEmit(previous, percent)) return
+        lastBatteryPercent = percent
+        emitEvent(GlassesEvent.BatteryLevel(percent))
     }
 
     override suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage> {

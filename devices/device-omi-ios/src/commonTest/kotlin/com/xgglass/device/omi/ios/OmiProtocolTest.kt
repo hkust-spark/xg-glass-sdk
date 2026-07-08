@@ -48,6 +48,24 @@ class OmiTimeSyncTest {
     }
 }
 
+class OmiBatteryProtocolTest {
+
+    @Test
+    fun readsFirstByteAsPercent() {
+        assertEquals(73, OmiBatteryProtocol.percent(byteArrayOf(73)))
+    }
+
+    @Test
+    fun clampsOutOfRangePercent() {
+        assertEquals(100, OmiBatteryProtocol.percent(byteArrayOf(0xFF.toByte())))
+    }
+
+    @Test
+    fun ignoresEmptyPacket() {
+        assertNull(OmiBatteryProtocol.percent(ByteArray(0)))
+    }
+}
+
 class JpegStartTest {
 
     @Test

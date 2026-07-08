@@ -13,4 +13,5 @@ dependencies {
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit")
     testImplementation(libs.junit4)
+    testImplementation(libs.mockk)
 }

@@ -52,6 +52,9 @@ data class DeviceCapabilities(
     /** True when apps may observe physical long-press gestures in [GlassesClient.events]. */
     val supportsLongPressEvents: Boolean = false,
 
+    /** True when apps may observe glasses battery percentages in [GlassesClient.events]. */
+    val supportsBatteryEvents: Boolean = false,
+
     /** True when repeated [DisplayMode.APPEND] or forced updates are suitable for streamed text. */
     val supportsStreamingTextUpdates: Boolean = false,
 )

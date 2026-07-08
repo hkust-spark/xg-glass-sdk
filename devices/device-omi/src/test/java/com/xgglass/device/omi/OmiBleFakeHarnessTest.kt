@@ -67,6 +67,67 @@ class OmiBleFakeHarnessTest {
     }
 
     @Test(timeout = 10_000)
+    fun connectWithoutBatteryServiceLeavesBatteryCapabilityFalse() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+
+        val result = connectThroughServices(client, fake, withButtonService = false, withBatteryService = false)
+
+        assertTrue(result.isSuccess)
+        fake.awaitCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        assertFalse(client.capabilities.supportsBatteryEvents)
+        assertFalse(fake.hasDescriptorWrite(OmiGlassesClient.BATTERY_LEVEL_UUID))
+    }
+
+    @Test(timeout = 10_000)
+    fun batteryReadAndNotificationsEmitClampedBatteryEvents() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+
+        val events = mutableListOf<GlassesEvent>()
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            client.events.collect { event ->
+                if (event is GlassesEvent.BatteryLevel) {
+                    events.add(event)
+                }
+            }
+        }
+
+        val result = connectThroughServices(client, fake, withButtonService = false, withBatteryService = true)
+
+        assertTrue(result.isSuccess)
+        assertTrue(client.capabilities.supportsBatteryEvents)
+        fake.awaitDescriptorWrite(OmiGlassesClient.BATTERY_LEVEL_UUID)
+        fake.ackDescriptorWrite(OmiGlassesClient.BATTERY_LEVEL_UUID)
+        fake.awaitCharacteristicRead(OmiGlassesClient.BATTERY_LEVEL_UUID)
+        fake.ackCharacteristicRead(OmiGlassesClient.BATTERY_LEVEL_UUID, byteArrayOf(88.toByte()))
+        eventually { if (events.size >= 1) events else null }
+
+        fake.notifyCharacteristic(OmiGlassesClient.BATTERY_LEVEL_UUID, byteArrayOf(0xFF.toByte()))
+        eventually { if (events.size >= 2) events else null }
+
+        assertEquals(
+            listOf(GlassesEvent.BatteryLevel(88), GlassesEvent.BatteryLevel(100)),
+            events.take(2),
+        )
+        collector.cancelAndJoin()
+    }
+
+    @Test(timeout = 10_000)
+    fun rejectedBatteryCccdRollsBackBatteryCapability() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+        fake.rejectDescriptorWriteFor(OmiGlassesClient.BATTERY_LEVEL_UUID)
+
+        val result = connectThroughServices(client, fake, withButtonService = false, withBatteryService = true)
+
+        assertTrue(result.isSuccess)
+        fake.awaitDescriptorWrite(OmiGlassesClient.BATTERY_LEVEL_UUID)
+        fake.awaitCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        assertFalse(client.capabilities.supportsBatteryEvents)
+    }
+
+    @Test(timeout = 10_000)
     fun buttonNotificationsEmitTapAndLongPressButIgnoreCodeFive() = runBlocking {
         val fake = FakeOmiBlePeripheral()
         val client = OmiGlassesClient(fake.context)
@@ -188,6 +249,7 @@ class OmiBleFakeHarnessTest {
         client: OmiGlassesClient,
         fake: FakeOmiBlePeripheral,
         withButtonService: Boolean,
+        withBatteryService: Boolean = false,
     ): Result<Unit> = coroutineScope {
         val connected = async { client.connect() }
         fake.awaitScanStarted()
@@ -195,7 +257,7 @@ class OmiBleFakeHarnessTest {
         fake.awaitGattCallback()
         fake.connectionStateChange()
         fake.mtuChanged()
-        fake.servicesDiscovered(withButtonService = withButtonService)
+        fake.servicesDiscovered(withButtonService = withButtonService, withBatteryService = withBatteryService)
         val result = withTimeout(5_000) { connected.await() }
         result
     }

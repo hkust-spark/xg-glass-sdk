@@ -25,6 +25,9 @@ sealed class GlassesEvent {
     /** A physical tap gesture, such as a single tap or double tap. */
     data class Tap(val count: Int) : GlassesEvent()
 
+    /** Remaining battery level reported by the glasses, as a percentage in 0..100. */
+    data class BatteryLevel(val percent: Int) : GlassesEvent()
+
     /**
      * A physical long-press gesture.
      *

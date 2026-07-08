@@ -75,6 +75,7 @@ class OmiIosGlassesClient(
         supportsTapEvents = false,
         // Only legacy firmware may emit code 3; advertising long-press would over-claim support.
         supportsLongPressEvents = false,
+        supportsBatteryEvents = false,
         supportsStreamingTextUpdates = false,
     ),
     eventBufferOverflow = BufferOverflow.SUSPEND,
@@ -92,12 +93,15 @@ class OmiIosGlassesClient(
     private var photoDataCharacteristic: CBCharacteristic? = null
     private var timeSyncCharacteristic: CBCharacteristic? = null
     private var buttonCharacteristic: CBCharacteristic? = null
+    private var batteryCharacteristic: CBCharacteristic? = null
 
     private var connectContinuation: CancellableContinuation<Unit>? = null
     private var captureContinuation: CancellableContinuation<Result<CapturedImage>>? = null
     private var audioSession: OmiMicrophoneSession? = null
     private var ignoredButtonReleaseEvents = 0
     private var droppedButtonEvents = 0
+    private var droppedBatteryEvents = 0
+    private var batteryReadPending = false
 
     override suspend fun doConnect() {
         withContext(Dispatchers.Main) {
@@ -331,14 +335,18 @@ class OmiIosGlassesClient(
         photoDataCharacteristic = null
         timeSyncCharacteristic = null
         buttonCharacteristic = null
+        batteryCharacteristic = null
         ignoredButtonReleaseEvents = 0
         droppedButtonEvents = 0
+        droppedBatteryEvents = 0
+        batteryReadPending = false
         photoAssembler.reset()
         updateCapabilities {
             it.copy(
                 canCapturePhoto = false,
                 supportsTapEvents = false,
                 supportsLongPressEvents = false,
+                supportsBatteryEvents = false,
             )
         }
     }
@@ -398,6 +406,16 @@ class OmiIosGlassesClient(
             droppedButtonEvents += 1
             if (shouldRateLimitLog(droppedButtonEvents)) {
                 emitWarn("Omi iOS: button event dropped because event buffer is full; count=$droppedButtonEvents")
+            }
+        }
+    }
+
+    private fun handleBatteryPacket(packet: ByteArray) {
+        val percent = OmiBatteryProtocol.percent(packet) ?: return
+        if (!emitEvent(GlassesEvent.BatteryLevel(percent))) {
+            droppedBatteryEvents += 1
+            if (shouldRateLimitLog(droppedBatteryEvents)) {
+                emitWarn("Omi iOS: battery event dropped because event buffer is full; count=$droppedBatteryEvents")
             }
         }
     }
@@ -497,6 +515,7 @@ class OmiIosGlassesClient(
                     cbUuid(OmiBleUuids.AUDIO_SERVICE),
                     cbUuid(OmiBleUuids.TIME_SYNC_SERVICE),
                     cbUuid(OmiBleUuids.BUTTON_SERVICE),
+                    cbUuid(OmiBleUuids.BATTERY_SERVICE),
                 )
             )
         }
@@ -548,6 +567,9 @@ class OmiIosGlassesClient(
                         service.matches(OmiBleUuids.BUTTON_SERVICE) -> listOf(
                             cbUuid(OmiBleUuids.BUTTON_TRIGGER),
                         )
+                        service.matches(OmiBleUuids.BATTERY_SERVICE) -> listOf(
+                            cbUuid(OmiBleUuids.BATTERY_LEVEL),
+                        )
                         else -> emptyList()
                     },
                     service,
@@ -572,6 +594,7 @@ class OmiIosGlassesClient(
                     characteristic.matches(OmiBleUuids.PHOTO_CONTROL) -> photoControlCharacteristic = characteristic
                     characteristic.matches(OmiBleUuids.TIME_SYNC_WRITE) -> timeSyncCharacteristic = characteristic
                     characteristic.matches(OmiBleUuids.BUTTON_TRIGGER) -> buttonCharacteristic = characteristic
+                    characteristic.matches(OmiBleUuids.BATTERY_LEVEL) -> batteryCharacteristic = characteristic
                 }
             }
 
@@ -598,6 +621,14 @@ class OmiIosGlassesClient(
                 peripheral.setNotifyValue(true, button)
                 emitLog("Omi iOS: button service ready")
             }
+
+            if (didDiscoverCharacteristicsForService.matches(OmiBleUuids.BATTERY_SERVICE)) {
+                val battery = batteryCharacteristic ?: return
+                // Capability is gated on standard Battery Service discovery, never name/model.
+                updateCapabilities { it.copy(supportsBatteryEvents = true) }
+                peripheral.setNotifyValue(true, battery)
+                emitLog("Omi iOS: battery service ready")
+            }
         }
 
         @ObjCSignatureOverride
@@ -617,6 +648,14 @@ class OmiIosGlassesClient(
                     didUpdateValueForCharacteristic.matches(OmiBleUuids.BUTTON_TRIGGER) -> {
                         emitWarn("Omi button notification failed: ${error.localizedDescription}")
                     }
+                    didUpdateValueForCharacteristic.matches(OmiBleUuids.BATTERY_LEVEL) -> {
+                        if (batteryReadPending) {
+                            batteryReadPending = false
+                            emitWarn("Omi battery initial read failed: ${error.localizedDescription}")
+                        } else {
+                            emitWarn("Omi battery notification failed: ${error.localizedDescription}")
+                        }
+                    }
                 }
                 return
             }
@@ -626,6 +665,10 @@ class OmiIosGlassesClient(
                 didUpdateValueForCharacteristic.matches(OmiBleUuids.AUDIO_DATA) -> emitAudio(packet)
                 didUpdateValueForCharacteristic.matches(OmiBleUuids.PHOTO_DATA) -> handlePhotoPacket(packet)
                 didUpdateValueForCharacteristic.matches(OmiBleUuids.BUTTON_TRIGGER) -> handleButtonPacket(packet)
+                didUpdateValueForCharacteristic.matches(OmiBleUuids.BATTERY_LEVEL) -> {
+                    batteryReadPending = false
+                    handleBatteryPacket(packet)
+                }
             }
         }
 
@@ -652,6 +695,17 @@ class OmiIosGlassesClient(
                         )
                     }
                 }
+                return
+            }
+            if (didUpdateNotificationStateForCharacteristic.matches(OmiBleUuids.BATTERY_LEVEL)) {
+                if (error != null || !didUpdateNotificationStateForCharacteristic.isNotifying) {
+                    emitWarn("Omi battery notification enable failed: ${error?.localizedDescription ?: "not notifying"}")
+                    updateCapabilities { it.copy(supportsBatteryEvents = false) }
+                    return
+                }
+                batteryReadPending = true
+                peripheral.readValueForCharacteristic(didUpdateNotificationStateForCharacteristic)
+                emitLog("Omi iOS: battery notifications enabled; reading initial level")
                 return
             }
             if (!didUpdateNotificationStateForCharacteristic.matches(OmiBleUuids.PHOTO_DATA)) {

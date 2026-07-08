@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Added `xg-glass validate` for guided hardware-validation runs with paste-ready issue reports.
+- Added `GlassesEvent.BatteryLevel` and `DeviceCapabilities.supportsBatteryEvents`, with Omi BLE Battery Service events, on-device INMO/RayNeo runtime battery events, and Simulator battery hooks.
 
 ### Changed
 

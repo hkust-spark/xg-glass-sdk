@@ -84,6 +84,7 @@ class OmiGlassesClient(
         supportsTapEvents = false,
         // Only legacy firmware may emit code 3; advertising long-press would over-claim support.
         supportsLongPressEvents = false,
+        supportsBatteryEvents = false,
         supportsStreamingTextUpdates = false,
     ),
     eventBufferOverflow = BufferOverflow.SUSPEND,
@@ -105,6 +106,7 @@ class OmiGlassesClient(
     private var photoDataCharacteristic: BluetoothGattCharacteristic? = null
     private var timeSyncCharacteristic: BluetoothGattCharacteristic? = null
     private var buttonCharacteristic: BluetoothGattCharacteristic? = null
+    private var batteryCharacteristic: BluetoothGattCharacteristic? = null
 
     // Photo retrieval state
     private val photoLock = Any()
@@ -117,6 +119,11 @@ class OmiGlassesClient(
     private var buttonDescriptorContinuation: kotlinx.coroutines.CancellableContinuation<Boolean>? = null
     private val ignoredButtonReleaseEvents = AtomicLong(0)
     private val droppedButtonEvents = AtomicLong(0)
+
+    private val batteryLock = Any()
+    private var batteryDescriptorContinuation: kotlinx.coroutines.CancellableContinuation<Boolean>? = null
+    private var batteryReadContinuation: kotlinx.coroutines.CancellableContinuation<Boolean>? = null
+    private val droppedBatteryEvents = AtomicLong(0)
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -319,12 +326,14 @@ class OmiGlassesClient(
                             emitLog("Omi: GATT disconnected")
                             updatePhotoCapability(false)
                             updateButtonCapability(false)
+                            updateBatteryCapability(false)
                             _state.value = ConnectionState.Disconnected
                         }
                     } else {
                         emitLog("Omi: GATT error status=$status")
                         updatePhotoCapability(false)
                         updateButtonCapability(false)
+                        updateBatteryCapability(false)
                         _state.value = ConnectionState.Disconnected
                         if (cont.isActive) cont.resumeWithException(GlassesError.Transport("GATT error $status"))
                     }
@@ -355,10 +364,16 @@ class OmiGlassesClient(
                         // Capability is gated on service/characteristic discovery, never name/model.
                         updateButtonCapability(buttonCharacteristic != null)
 
+                        val batteryService = gatt.getService(BATTERY_SERVICE_UUID)
+                        batteryCharacteristic = batteryService?.getCharacteristic(BATTERY_LEVEL_UUID)
+                        // Source: Bluetooth SIG Battery Service 1.1 defines Battery Service 0x180F
+                        // and Battery Level 0x2A19; read is mandatory and notify is optional.
+                        updateBatteryCapability(batteryCharacteristic != null)
+
                         // If we have services, we are effectively connected
                         _state.value = ConnectionState.Connected
                         
-                        // Serialize connect-time GATT writes: button CCCD first, then time sync.
+                        // Serialize connect-time GATT writes: button CCCD, battery CCCD/read, then time sync.
                         scope.launch {
                             gattWriteMutex.withLock {
                                 buttonCharacteristic?.let { characteristic ->
@@ -372,6 +387,23 @@ class OmiGlassesClient(
                                         emitWarn("Omi: button notification descriptor write failed")
                                     }
                                 }
+                                batteryCharacteristic?.let { characteristic ->
+                                    val subscribed = withTimeoutOrNull(BATTERY_NOTIFY_TIMEOUT_MS) {
+                                        enableBatteryNotifications(gatt, characteristic)
+                                    } == true
+                                    if (subscribed) {
+                                        emitLog("Omi: battery notifications enabled")
+                                        val read = withTimeoutOrNull(BATTERY_READ_TIMEOUT_MS) {
+                                            readBatteryLevel(gatt, characteristic)
+                                        } == true
+                                        if (!read) {
+                                            emitWarn("Omi: initial battery read failed")
+                                        }
+                                    } else {
+                                        updateBatteryCapability(false)
+                                        emitWarn("Omi: battery notification descriptor write failed")
+                                    }
+                                }
                                 performTimeSync(gatt)
                             }
                         }
@@ -380,6 +412,7 @@ class OmiGlassesClient(
                     } else {
                         updatePhotoCapability(false)
                         updateButtonCapability(false)
+                        updateBatteryCapability(false)
                         if (cont.isActive) cont.resumeWithException(GlassesError.Transport("Service discovery failed $status"))
                     }
                 }
@@ -451,6 +484,40 @@ class OmiGlassesClient(
                     } else if (characteristic.uuid == BUTTON_TRIGGER_UUID) {
                         val data = characteristic.value ?: return
                         handleButtonPacket(data)
+                    } else if (characteristic.uuid == BATTERY_LEVEL_UUID) {
+                        val data = characteristic.value ?: return
+                        handleBatteryPacket(data)
+                    }
+                }
+
+                override fun onCharacteristicChanged(
+                    gatt: BluetoothGatt,
+                    characteristic: BluetoothGattCharacteristic,
+                    value: ByteArray,
+                ) {
+                    characteristic.value = value
+                    onCharacteristicChanged(gatt, characteristic)
+                }
+
+                @Deprecated("Deprecated by Android API 33, kept for pre-33 callbacks")
+                override fun onCharacteristicRead(
+                    gatt: BluetoothGatt,
+                    characteristic: BluetoothGattCharacteristic,
+                    status: Int,
+                ) {
+                    if (characteristic.uuid == BATTERY_LEVEL_UUID) {
+                        handleBatteryRead(characteristic.value, status)
+                    }
+                }
+
+                override fun onCharacteristicRead(
+                    gatt: BluetoothGatt,
+                    characteristic: BluetoothGattCharacteristic,
+                    value: ByteArray,
+                    status: Int,
+                ) {
+                    if (characteristic.uuid == BATTERY_LEVEL_UUID) {
+                        handleBatteryRead(value, status)
                     }
                 }
 
@@ -470,6 +537,15 @@ class OmiGlassesClient(
                         val pending = synchronized(buttonLock) {
                             val cont = buttonDescriptorContinuation
                             buttonDescriptorContinuation = null
+                            cont
+                        }
+                        pending?.resumeWith(Result.success(status == BluetoothGatt.GATT_SUCCESS))
+                    } else if (descriptor.uuid == CLIENT_CHARACTERISTIC_CONFIG_UUID &&
+                        descriptor.characteristic?.uuid == BATTERY_LEVEL_UUID
+                    ) {
+                        val pending = synchronized(batteryLock) {
+                            val cont = batteryDescriptorContinuation
+                            batteryDescriptorContinuation = null
                             cont
                         }
                         pending?.resumeWith(Result.success(status == BluetoothGatt.GATT_SUCCESS))
@@ -500,6 +576,10 @@ class OmiGlassesClient(
         }
     }
 
+    private fun updateBatteryCapability(supportsBatteryEvents: Boolean) {
+        updateCapabilities { it.copy(supportsBatteryEvents = supportsBatteryEvents) }
+    }
+
     private fun handleButtonPacket(packet: ByteArray) {
         when (val event = OmiButtonEvents.parse(packet)) {
             is OmiButtonEvent.Tap -> emitButtonEvent(GlassesEvent.Tap(event.count))
@@ -521,6 +601,33 @@ class OmiGlassesClient(
             val count = droppedButtonEvents.incrementAndGet()
             if (shouldRateLimitLog(count)) {
                 emitWarn("Omi: button event dropped because event buffer is full; count=$count")
+            }
+        }
+    }
+
+    private fun handleBatteryRead(value: ByteArray?, status: Int) {
+        val success = status == BluetoothGatt.GATT_SUCCESS && value != null && value.isNotEmpty()
+        if (success) {
+            handleBatteryPacket(value)
+        }
+        val pending = synchronized(batteryLock) {
+            val cont = batteryReadContinuation
+            batteryReadContinuation = null
+            cont
+        }
+        pending?.resumeWith(Result.success(success))
+    }
+
+    private fun handleBatteryPacket(packet: ByteArray) {
+        val raw = packet.firstOrNull()?.toInt()?.and(0xFF) ?: return
+        emitBatteryLevel(raw.coerceIn(0, 100))
+    }
+
+    private fun emitBatteryLevel(percent: Int) {
+        if (!emitEvent(GlassesEvent.BatteryLevel(percent))) {
+            val count = droppedBatteryEvents.incrementAndGet()
+            if (shouldRateLimitLog(count)) {
+                emitWarn("Omi: battery event dropped because event buffer is full; count=$count")
             }
         }
     }
@@ -557,6 +664,68 @@ class OmiGlassesClient(
                 synchronized(buttonLock) {
                     if (buttonDescriptorContinuation === cont) {
                         buttonDescriptorContinuation = null
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun enableBatteryNotifications(
+        gatt: BluetoothGatt,
+        dataChar: BluetoothGattCharacteristic,
+    ): Boolean {
+        if (!gatt.setCharacteristicNotification(dataChar, true)) {
+            return false
+        }
+        val descriptor = dataChar.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID) ?: return false
+
+        return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+            synchronized(batteryLock) {
+                batteryDescriptorContinuation = cont
+            }
+            val started = writeDescriptorCompat(
+                gatt = gatt,
+                descriptor = descriptor,
+                value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE,
+            )
+            if (!started) {
+                synchronized(batteryLock) {
+                    if (batteryDescriptorContinuation === cont) {
+                        batteryDescriptorContinuation = null
+                    }
+                }
+                cont.resumeWith(Result.success(false))
+            }
+            cont.invokeOnCancellation {
+                synchronized(batteryLock) {
+                    if (batteryDescriptorContinuation === cont) {
+                        batteryDescriptorContinuation = null
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun readBatteryLevel(
+        gatt: BluetoothGatt,
+        dataChar: BluetoothGattCharacteristic,
+    ): Boolean {
+        return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+            synchronized(batteryLock) {
+                batteryReadContinuation = cont
+            }
+            if (!gatt.readCharacteristic(dataChar)) {
+                synchronized(batteryLock) {
+                    if (batteryReadContinuation === cont) {
+                        batteryReadContinuation = null
+                    }
+                }
+                cont.resumeWith(Result.success(false))
+            }
+            cont.invokeOnCancellation {
+                synchronized(batteryLock) {
+                    if (batteryReadContinuation === cont) {
+                        batteryReadContinuation = null
                     }
                 }
             }
@@ -630,6 +799,7 @@ class OmiGlassesClient(
     private fun closeGatt() {
         updatePhotoCapability(false)
         updateButtonCapability(false)
+        updateBatteryCapability(false)
         synchronized(photoLock) {
             photoDescriptorContinuation = null
             photoContinuation = null
@@ -639,9 +809,15 @@ class OmiGlassesClient(
         synchronized(buttonLock) {
             buttonDescriptorContinuation = null
         }
+        synchronized(batteryLock) {
+            batteryDescriptorContinuation = null
+            batteryReadContinuation = null
+        }
         ignoredButtonReleaseEvents.set(0)
         droppedButtonEvents.set(0)
+        droppedBatteryEvents.set(0)
         buttonCharacteristic = null
+        batteryCharacteristic = null
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
@@ -792,8 +968,10 @@ class OmiGlassesClient(
         internal val AUDIO_CODEC_UUID: UUID =
             UUID.fromString("19B10002-E8F2-537E-4F6C-D104768A1214")
 
+        // Source: Bluetooth SIG Battery Service 1.1, https://www.bluetooth.com/specifications/specs/battery-service/
         internal val BATTERY_SERVICE_UUID: UUID =
             UUID.fromString("0000180F-0000-1000-8000-00805F9B34FB")
+        // Source: Bluetooth SIG Battery Service 1.1 Battery Level characteristic, same BAS spec.
         internal val BATTERY_LEVEL_UUID: UUID =
             UUID.fromString("00002A19-0000-1000-8000-00805F9B34FB")
 
@@ -821,6 +999,8 @@ class OmiGlassesClient(
         private val CLIENT_CHARACTERISTIC_CONFIG_UUID: UUID =
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         private const val BUTTON_NOTIFY_TIMEOUT_MS = 5_000L
+        private const val BATTERY_NOTIFY_TIMEOUT_MS = 5_000L
+        private const val BATTERY_READ_TIMEOUT_MS = 5_000L
         private const val RATE_LIMIT_EVERY = 50L
     }
 }

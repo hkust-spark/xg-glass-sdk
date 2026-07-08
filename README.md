@@ -37,16 +37,16 @@ This is what xg.glass has extracted for you from tens of smart glasses SDKs. We 
 
 Currently we support:
 
-| Category | Products |
-| --- | --- |
-| Rokid | Rokid Glasses |
-| Meta | Meta Wearables |
-| Brilliant Labs | Frame |
-| RayNeo | x2 Glasses (validated), x3 Pro Glasses (untested) |
-| INMO | Air3 (adapter shipped, hardware validation pending) |
-| Omi | Omi Glass |
-| Even Realities | G1 (adapter shipped, hardware validation pending) |
-| *Simulation* | — |
+| Category | Products | Battery events |
+| --- | --- | --- |
+| Rokid | Rokid Glasses | No |
+| Meta | Meta Wearables | No |
+| Brilliant Labs | Frame | No |
+| RayNeo | x2 Glasses (validated), x3 Pro Glasses (untested) | Yes, on-glasses runtime |
+| INMO | Air3 (adapter shipped, hardware validation pending) | Yes, on-glasses runtime |
+| Omi | Omi Glass | Yes, when standard BLE Battery Service is discovered |
+| Even Realities | G1 (adapter shipped, hardware validation pending) | No |
+| *Simulation* | — | Synthetic |
 
 We're working on and will support more glasses soon.
 

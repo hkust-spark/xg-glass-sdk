@@ -12,6 +12,7 @@ glasses.
 - Microphone capture through the shared Android `AudioRecord` helper.
 - Raw/encoded audio playback through the shared Android audio helpers.
 - Single-tap and long-press events when the host Activity forwards key events.
+- Battery-level events from Android's on-device battery APIs.
 
 ## No Vendor SDK
 
@@ -38,6 +39,14 @@ documentation maps DPAD `19/20/21/22` to swipes and `289/290` to long-press
 gestures; `289/290` are emitted as `GlassesEvent.LongPress` while swipes remain
 unhandled until the cross-device input API lands.
 
+## Battery Events
+
+`supportsBatteryEvents` is always `true` because the runtime runs on the glasses.
+On connect, the adapter registers `ACTION_BATTERY_CHANGED`, consumes the sticky
+initial broadcast, falls back to `BatteryManager.BATTERY_PROPERTY_CAPACITY` if
+needed, and emits `GlassesEvent.BatteryLevel(percent)` only when the integer
+percentage changes by at least 1%. Percent values are clamped to `0..100`.
+
 ## Hardware Verification Checklist
 
 - Confirm Air3 keycodes match the Air2 table: ENTER=66, DPAD=19/20/21/22,
@@ -48,6 +57,8 @@ unhandled until the cross-device input API lands.
   `SENSOR_ORIENTATION` on production Air3 hardware.
 - Confirm whether a usable on-device TTS engine is present; until then
   `AudioSource.Tts` is reported unsupported.
+- Confirm battery changes emit `GlassesEvent.BatteryLevel(percent)` and duplicate
+  unchanged percentages are ignored.
 
 ## Extract-vs-Clone Decision
 
