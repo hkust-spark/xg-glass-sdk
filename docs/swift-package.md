@@ -14,7 +14,7 @@ Frame iOS remains local to the sample because it is backed by the Flutter add-to
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.2.1")
+    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.3.0")
 ]
 ```
 

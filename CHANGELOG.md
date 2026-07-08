@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.3.0] - 2026-07-09
+
+### Added
+
 - Added the Phase 1 video streaming API: `VideoFrame`, `VideoFormat`,
   `VideoStreamOptions`, `VideoStreamSession`, `PushVideoStreamSession`,
   `GlassesClient.startVideoStream`, `DeviceCapabilities.canStreamVideo`, and

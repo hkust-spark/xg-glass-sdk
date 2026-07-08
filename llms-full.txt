@@ -1332,7 +1332,7 @@ dependencyResolutionManagement {
 
 // your app module's build.gradle.kts
 dependencies {
-    implementation("io.github.hkust-spark:xgglass-universal:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-universal:0.3.0")
 }
 ```
 
@@ -1371,7 +1371,7 @@ dependencyResolutionManagement {
 
 // your app module's build.gradle.kts
 dependencies {
-    implementation("io.github.hkust-spark:xgglass-device-meta:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-device-meta:0.3.0")
 }
 ```
 
@@ -1382,7 +1382,7 @@ The Swift Package is hosted from this repository and requires iOS 16+. It publis
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.2.1")
+    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.3.0")
 ],
 targets: [
     .target(
@@ -1607,7 +1607,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("io.github.hkust-spark:xgglass-universal:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-universal:0.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
@@ -1942,7 +1942,7 @@ Frame iOS remains local to the sample because it is backed by the Flutter add-to
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.2.1")
+    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.3.0")
 ]
 ```
 

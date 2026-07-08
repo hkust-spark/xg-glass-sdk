@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xg-glass"
-version = "0.2.1"
+version = "0.3.0"
 description = "xg-glass CLI: init/build/install/run xg.glass smart-glasses Android host apps."
 readme = "xg_glass_cli/README.md"
 requires-python = ">=3.9"

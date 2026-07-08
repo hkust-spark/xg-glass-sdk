@@ -18,7 +18,7 @@ android {
 
 dependencies {
     // Only depends on the entry contracts + core API surface (keeps this module device-agnostic).
-    implementation("io.github.hkust-spark:xgglass-app-contract:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-app-contract:0.3.0")
     // OpenAI Kotlin client (Maven Central)
     implementation(platform("com.aallam.openai:openai-client-bom:4.0.1"))
     implementation("com.aallam.openai:openai-client")

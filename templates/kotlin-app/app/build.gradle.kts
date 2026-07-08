@@ -111,37 +111,37 @@ dependencies {
     // xg:device:all:begin
     // xg.glass SDK (single entry-point dependency)
     // Resolved via the composite build (xg-glass init); xgglass-universal-full is not published to Maven Central.
-    implementation("io.github.hkust-spark:xgglass-universal-full:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-universal-full:0.3.0")
     // xg:device:all:end
     // xg:device:partial:begin
     // xg.glass SDK (explicit artifacts for production-sized generated apps)
-    implementation("io.github.hkust-spark:xgglass-core:0.2.1")
-    implementation("io.github.hkust-spark:xgglass-core-android:0.2.1")
-    implementation("io.github.hkust-spark:xgglass-app-contract:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-core:0.3.0")
+    implementation("io.github.hkust-spark:xgglass-core-android:0.3.0")
+    implementation("io.github.hkust-spark:xgglass-app-contract:0.3.0")
     // xg:device:rokid:begin
-    implementation("io.github.hkust-spark:xgglass-device-rokid:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-device-rokid:0.3.0")
     // xg:device:rokid:end
     // xg:device:rayneo:begin
-    implementation("io.github.hkust-spark:xgglass-device-rayneo-installer:0.2.1")
-    implementation("io.github.hkust-spark:xgglass-device-rayneo-runtime:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-device-rayneo-installer:0.3.0")
+    implementation("io.github.hkust-spark:xgglass-device-rayneo-runtime:0.3.0")
     // xg:device:rayneo:end
     // xg:device:meta:begin
-    implementation("io.github.hkust-spark:xgglass-device-meta:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-device-meta:0.3.0")
     // xg:device:meta:end
     // xg:device:frame:begin
-    implementation("io.github.hkust-spark:xgglass-device-frame-embedded:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-device-frame-embedded:0.3.0")
     // xg:device:frame:end
     // xg:device:omi:begin
-    implementation("io.github.hkust-spark:xgglass-device-omi:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-device-omi:0.3.0")
     // xg:device:omi:end
     // xg:device:even:begin
-    implementation("io.github.hkust-spark:xgglass-device-even:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-device-even:0.3.0")
     // xg:device:even:end
     // xg:device:inmo:begin
-    implementation("io.github.hkust-spark:xgglass-device-inmo-runtime:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-device-inmo-runtime:0.3.0")
     // xg:device:inmo:end
     // xg:device:simulator:begin
-    implementation("io.github.hkust-spark:xgglass-device-simulator:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-device-simulator:0.3.0")
     // xg:device:simulator:end
     // xg:device:partial:end
 

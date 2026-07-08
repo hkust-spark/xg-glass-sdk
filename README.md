@@ -89,7 +89,7 @@ dependencyResolutionManagement {
 
 // your app module's build.gradle.kts
 dependencies {
-    implementation("io.github.hkust-spark:xgglass-universal:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-universal:0.3.0")
 }
 ```
 
@@ -128,7 +128,7 @@ dependencyResolutionManagement {
 
 // your app module's build.gradle.kts
 dependencies {
-    implementation("io.github.hkust-spark:xgglass-device-meta:0.2.1")
+    implementation("io.github.hkust-spark:xgglass-device-meta:0.3.0")
 }
 ```
 
@@ -139,7 +139,7 @@ The Swift Package is hosted from this repository and requires iOS 16+. It publis
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.2.1")
+    .package(url: "https://github.com/hkust-spark/xg-glass-sdk", from: "0.3.0")
 ],
 targets: [
     .target(
