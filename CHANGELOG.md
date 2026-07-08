@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Added `xg-glass validate` for guided hardware-validation runs with paste-ready issue reports.
+
 ### Changed
 
 - Shared the Omi button protocol parser between the Android and iOS Omi modules through a common source directory.

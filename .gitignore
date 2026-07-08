@@ -64,3 +64,4 @@ third_party/frame/frame_module/pubspec.lock
 
 # User-supplied RayNeo vendor SDK archives
 third_party/rayneo/aar/*.aar
+validate-report-*.md

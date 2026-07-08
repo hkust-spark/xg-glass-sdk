@@ -1242,6 +1242,8 @@ xg-glass --help
 
 Run `xg-glass doctor` to diagnose the Java, Android SDK, adb, emulator, Flutter, SDK cache, and network setup that the CLI will actually use.
 
+Run `xg-glass validate --devices <device>` to generate a filtered validation app, install and launch it, guide a tester through the supported hardware checks, and write a paste-ready Markdown report for [issue #63](https://github.com/hkust-spark/xg-glass-sdk/issues/63). The runner does not automate BLE pairing or glasses gestures; it uses generated-app logcat markers when available and prompts for manual PASS/FAIL/SKIP otherwise.
+
 Out of the box, the PyPI CLI can build, install, and run inside an already-generated project that contains `xg-glass.yaml`. Commands that create a project from this SDK, such as `xg-glass init` and `xg-glass run <file.kt>`, need an SDK checkout passed with `--sdk` and, where needed, `--template`.
 
 ```bash

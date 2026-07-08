@@ -8,6 +8,7 @@ import sys
 from . import commands as _commands
 from .constants import DEFAULT_CONFIG_FILE, CliUsageError
 from .doctor import run_doctor
+from .validate import cmd_validate as _cmd_validate
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -87,6 +88,25 @@ def main(argv: list[str] | None = None) -> int:
     p_doctor = sub.add_parser("doctor", help="Diagnose the local xg-glass CLI environment.")
     p_doctor.add_argument("--offline", action="store_true", help="Skip best-effort network checks.")
 
+    p_validate = sub.add_parser(
+        "validate",
+        help="Run guided hardware validation and write a paste-ready issue report.",
+        description=(
+            "Run a guided hardware-validation pass for one device. This does not automate BLE pairing "
+            "or glasses gestures; auto-checks depend on generated-app logcat markers and all other "
+            "steps use manual PASS/FAIL/SKIP prompts."
+        ),
+    )
+    p_validate.add_argument(
+        "--devices",
+        required=True,
+        help="Exactly one device to validate: rokid, rayneo, meta, frame, omi, even, inmo, or simulator.",
+    )
+    p_validate.add_argument("--serial", help="adb device serial (optional).")
+    p_validate.add_argument("--sdk", help="Path to the SDK repo root (default: this checkout or cached SDK).")
+    p_validate.add_argument("--report", help="Markdown report path (default: validate-report-<device>-<YYYYMMDD>.md).")
+    p_validate.add_argument("--keep-project", action="store_true", help="Keep the generated validation project.")
+
     args = parser.parse_args(argv)
 
     # Validate: --local_video and --video_url require --sim.
@@ -109,6 +129,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_run(args)
         if args.cmd == "doctor":
             return cmd_doctor(args)
+        if args.cmd == "validate":
+            return cmd_validate(args)
         raise RuntimeError(f"Unknown command: {args.cmd}")
     except subprocess.CalledProcessError as e:
         print(e, file=sys.stderr)
@@ -149,6 +171,10 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     return run_doctor(offline=getattr(args, "offline", False))
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    return _cmd_validate(args)
 
 
 if __name__ == "__main__":

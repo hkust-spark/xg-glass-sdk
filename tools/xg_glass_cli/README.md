@@ -7,6 +7,7 @@ This is a minimal command-line tool for driving an Android host project based on
 - `xg-glass install`: install onto the phone via `adb install`
 - `xg-glass run`: launch the app via `adb shell monkey`
 - `xg-glass doctor`: diagnose Java, Android SDK, adb, emulator, Flutter, SDK cache, and network setup
+- `xg-glass validate`: run guided hardware validation and write a paste-ready report
 
 ## Install from PyPI
 
@@ -47,6 +48,29 @@ Summary: 0 FAIL, 1 WARN, 10 checks
 ```
 
 Use `xg-glass doctor --offline` to skip the best-effort download-host checks.
+
+## Hardware validation
+
+Use `xg-glass validate` to lower the cost of contributing hardware results to issue #63:
+
+```sh
+xg-glass validate --devices simulator
+xg-glass validate --devices even --serial emulator-or-phone-serial --sdk /path/to/xg-glass-sdk
+```
+
+The command accepts exactly one device: `rokid`, `rayneo`, `meta`, `frame`, `omi`, `even`, `inmo`, or `simulator`.
+It creates a device-filtered generated project, builds it, installs it through adb, launches it, then walks through the capability checks that the adapter claims: connect, capture, display, microphone, tap, and long-press where applicable. Auto-checks watch the generated app's `XgGlassApp` logcat markers such as `connect(SIMULATOR) => true`, `capture_photo: N bytes`, `display_hello: ok`, `mic_record: N chunks`, `TAP: 1`, and `LONG_PRESS`.
+
+Options:
+
+- `--serial S`: target a specific adb device or emulator.
+- `--sdk PATH`: use an existing SDK checkout instead of the cached SDK.
+- `--report PATH`: write the Markdown report to a specific path.
+- `--keep-project`: keep the generated validation project for debugging.
+
+By default the report is `validate-report-<device>-<YYYYMMDD>.md` in the current directory. Paste it into https://github.com/hkust-spark/xg-glass-sdk/issues/63.
+
+Non-goals: `validate` does not automate BLE pairing, vendor account setup, physical button presses, or glasses gestures. Auto-checks depend on generated-app logcat markers; every other observation is guided manual PASS/FAIL/SKIP input.
 
 `xg-glass init` defaults to all supported Android devices for demos and zero-config exploration. For production-sized generated apps, pass `--devices` with a comma-separated list:
 
