@@ -214,6 +214,10 @@ minutes. After sync, verify:
 
 ```bash
 python -m pip install --upgrade xg-glass
+# On hosts where Python is externally managed (PEP 668, e.g. Homebrew),
+# use a throwaway venv instead:
+#   python3 -m venv /tmp/xg-pypi-check && /tmp/xg-pypi-check/bin/pip install xg-glass==<version> \
+#     && /tmp/xg-pypi-check/bin/xg-glass --help
 xg-glass --help
 ```
 
