@@ -12,13 +12,12 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     ignore:
-      # Gradle 9.3.1 is the exact intersection of AGP 9.1's minimum and
-      # Flutter 3.44's supported maximum -- 9.4+ minors are blocked until
-      # Flutter/KGP raise their ceilings (next #36 round). Patches allowed.
+      # Gradle 9.6.1 is the current stable wrapper verified with AGP 9.2.1
+      # and Flutter 3.44's flutter-build-aar seam. Keep future minors/majors
+      # deliberate until the generated-app and Frame paths are rechecked.
       - dependency-name: "gradle-wrapper"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
-      # AGP 9.1.1 pairs with Gradle 9.3.1 and Flutter 3.44; 9.2+ requires
-      # Gradle 9.4.1+ (outside the Flutter envelope). Wildcard covers the
+      # AGP 9.2.1 pairs with Gradle 9.6.1 in the verified frontier. Wildcard covers the
       # artifact and the com.android.library/application plugin ids that the
       # version catalog's "agp" key resolves to. Patches allowed.
       - dependency-name: "com.android.*"
@@ -32,14 +31,16 @@ updates:
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "org.jetbrains.kotlin:*"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
-      # CameraX 1.7+ is beyond the Step 1 compileSdk 36 boundary; revisit in
-      # later #36 rounds after the Android minor-API/toolchain frontier moves.
+      # CameraX 1.6.1 is the stable frontier for published SDK transitives.
+      # 1.7.0-alpha02 compile-verified on compileSdk 36, so a future stable
+      # 1.7.x should land cleanly; Dependabot won't offer prereleases here.
       - dependency-name: "androidx.camera:*"
-        versions: [">= 1.7.0"]
-      # AndroidX Core 1.18+ needs compileSdk 36.1 minor-API DSL; keep Step 1
-      # on the compileSdk 36-compatible frontier until later #36 rounds.
+        versions: [">= 1.8.0"]
+      # AndroidX Core 1.18.0 is the verified compileSdk 36 frontier. Core
+      # 1.19.0 declares minCompileSdk 37, and the stable SDK repository does
+      # not yet publish platforms;android-37.
       - dependency-name: "androidx.core:*"
-        versions: [">= 1.18.0"]
+        versions: [">= 1.19.0"]
       # 0.31+ releases progressively require newer Kotlin; keep Maven Publish
       # upgrades deliberate under #36. Both the plugin id and the build-logic
       # artifact form.

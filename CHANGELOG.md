@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Shared the Omi button protocol parser between the Android and iOS Omi modules through a common source directory.
+- Refreshed the Android toolchain to Gradle 9.6.1, Android Gradle Plugin 9.2.1, and AndroidX Core 1.18.0, and aligned the generated-app template including its stale coroutines 1.8.1 to 1.11.0 fix.
 
 ### Fixed
 
