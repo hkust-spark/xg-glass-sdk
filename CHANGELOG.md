@@ -65,6 +65,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Patch-style release: all changes since 0.2.0 are additive or fixes, with no breaking API changes.
 
+### Changed
+
+- Rokid Android support now targets CXR-M 1.2.2, including the updated audio, Bluetooth, and Wi-Fi callback surfaces and the SDK's 16 KB-aligned native libraries.
+
 ## [0.2.0] - 2026-07-07
 
 ### Added
