@@ -29,7 +29,7 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v6.2.0
 
       - name: Disable generated Flutter Android module
         run: |
@@ -79,7 +79,7 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v6.2.0
 
       - name: Disable generated Flutter Android module
         run: |
@@ -170,7 +170,7 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v6.2.0
 
       - name: Disable generated Flutter Android module
         run: |
@@ -219,7 +219,7 @@ jobs:
 
       - name: Set up Gradle
         if: steps.meta-token.outputs.available == 'true'
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v6.2.0
 
       - name: Disable generated Flutter Android module
         if: steps.meta-token.outputs.available == 'true'
