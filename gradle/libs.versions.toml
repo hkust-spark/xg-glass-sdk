@@ -14,7 +14,7 @@ mockk = "1.14.6"
 androidxTestExtJunit = "1.3.0"
 androidxTestCoreKtx = "1.7.0"
 androidxTestRunner = "1.7.0"
-mwdat = "0.8.0"
+mwdat = "0.9.0"
 mavenPublish = "0.37.0"
 dokka = "2.2.0"
 
