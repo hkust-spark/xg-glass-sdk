@@ -62,7 +62,7 @@ jobs:
 
       - name: Set up Gradle
         if: matrix.build-mode == 'manual'
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v6.2.0
 
       - name: Disable generated Flutter Android module
         if: matrix.build-mode == 'manual'
