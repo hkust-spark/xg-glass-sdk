@@ -77,6 +77,18 @@ def _verify_sha256(path: Path, expected: str) -> None:
         )
 
 
+class _PortableTarFile(tarfile.TarFile):
+    def makelink(self, tarinfo: tarfile.TarInfo, targetpath: str) -> None:
+        # Older tarfile versions pass POSIX link targets straight to Windows,
+        # which can create a link that exists but cannot be opened (EINVAL).
+        # Convert separators only after extraction validation; do not collapse
+        # '..' components or mutate the archive member used for fallback lookup.
+        if os.sep != "/" and tarinfo.issym():
+            tarinfo = copy.copy(tarinfo)
+            tarinfo.linkname = tarinfo.linkname.replace("/", os.sep)
+        super().makelink(tarinfo, targetpath)
+
+
 def _extract_archive(archive: Path, dest: Path) -> None:
     """Extract a zip / tar.gz / tar.xz archive into *dest*."""
     name = archive.name.lower()
@@ -89,7 +101,7 @@ def _extract_archive(archive: Path, dest: Path) -> None:
                     raise RuntimeError(f"Unsafe path in archive (zip-slip): {m.filename}")
             zf.extractall(str(dest))
     elif name.endswith((".tar.gz", ".tgz", ".tar.xz", ".tar")):
-        with tarfile.open(str(archive), "r:*") as tf:
+        with _PortableTarFile.open(str(archive), "r:*") as tf:
             # Extraction filters were backported to maintained Python 3.9–3.11
             # releases. Detect the feature instead of assuming a minor version.
             if hasattr(tarfile, "data_filter"):

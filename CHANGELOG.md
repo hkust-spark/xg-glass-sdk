@@ -45,6 +45,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   upgrade and ordered synchronization before the host build.
 - Rejected escaping tar paths/links and special files on older supported Python
   versions, including versions without the backported extraction filter.
+- Normalized tar symlink separators on Windows so valid internal links remain
+  readable with older Python tar extractors.
 
 ## [0.3.0] - 2026-07-09
 
