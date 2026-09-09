@@ -74,8 +74,12 @@ abstract class BaseGlassesClient(
 
         return try {
             doConnect()
-            _state.value = ConnectionState.Connected
-            Result.success(Unit)
+            if (publishConnectedState()) {
+                Result.success(Unit)
+            } else {
+                _state.value = ConnectionState.Disconnected
+                Result.failure(GlassesError.NotConnected)
+            }
         } catch (ce: CancellationException) {
             _state.value = ConnectionState.Disconnected
             if (rethrowConnectCancellation) {
@@ -94,6 +98,16 @@ abstract class BaseGlassesClient(
     }
 
     protected open suspend fun beforeConnect(): Result<Unit>? = null
+
+    /**
+     * Publish successful setup. Adapters with asynchronous disconnect callbacks can
+     * override this to check transport liveness and publish under their lifecycle lock.
+     * Return false if the transport closed before success could be published.
+     */
+    protected open fun publishConnectedState(): Boolean {
+        _state.value = ConnectionState.Connected
+        return true
+    }
 
     protected open fun mapConnectError(error: Exception): GlassesError {
         return (error as? GlassesError)

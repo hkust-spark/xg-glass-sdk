@@ -7,7 +7,6 @@ import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
-import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothStatusCodes
@@ -19,7 +18,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.ParcelUuid
-import android.util.Log
 import androidx.core.content.ContextCompat
 import com.xgglass.core.AudioChunk
 import com.xgglass.core.AudioEncoding
@@ -37,14 +35,15 @@ import com.xgglass.core.GlassesModel
 import com.xgglass.core.MicrophoneOptions
 import com.xgglass.core.MicrophoneSession
 import com.xgglass.core.PlayAudioOptions
+import com.xgglass.device.omi.protocol.OmiAudioCodec
 import com.xgglass.device.omi.protocol.OmiButtonEvent
 import com.xgglass.device.omi.protocol.OmiButtonEvents
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -66,8 +65,8 @@ import kotlin.coroutines.resumeWithException
  * - Subscribes to the Omi Audio Service to receive audio packets.
  *
  * Notes:
- * - Current public docs expose audio-focused capabilities only; camera/display/audio playback
- *   are not available over the documented BLE services, so those APIs return [GlassesError.Unsupported].
+ * - Photo capture is available when its control/data characteristics are discovered.
+ * - Display and speaker playback are not provided by these BLE services.
  * - Audio packets are surfaced as an [AudioEncoding.OPUS] or PCM stream depending on the codec
  *   reported by the device.
  */
@@ -94,14 +93,28 @@ class OmiGlassesClient(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // BluetoothGatt allows one outstanding operation; this serializes CCCD writes.
-    // The time-sync writeCharacteristic completion is not observed via onCharacteristicWrite;
-    // pre-existing limitation, out of scope.
+    // Android allows one outstanding GATT read/write. Hold this through its callback.
     private val gattWriteMutex = Mutex()
+    private val microphoneMutex = Mutex()
+    private val captureMutex = Mutex()
+    private val operationLock = Any()
+    private var pendingOperation: PendingOperation? = null
+    private val connectionLock = Any()
+    private var connectionReady = false
+
+    private enum class OperationKind { READ, WRITE, DESCRIPTOR }
+    private data class PendingOperation(
+        val gatt: BluetoothGatt,
+        val kind: OperationKind,
+        val uuid: UUID,
+        val continuation: CancellableContinuation<ByteArray>,
+    )
 
     // GATT plumbing
+    @Volatile
     private var bluetoothGatt: BluetoothGatt? = null
     private var audioCharacteristic: BluetoothGattCharacteristic? = null
+    private var audioCodecCharacteristic: BluetoothGattCharacteristic? = null
     private var photoControlCharacteristic: BluetoothGattCharacteristic? = null
     private var photoDataCharacteristic: BluetoothGattCharacteristic? = null
     private var timeSyncCharacteristic: BluetoothGattCharacteristic? = null
@@ -113,16 +126,10 @@ class OmiGlassesClient(
     private var photoBuffer = mutableListOf<Byte>()
     private var lastPhotoChunkId = -1
     private var photoContinuation: kotlinx.coroutines.CancellableContinuation<Result<CapturedImage>>? = null
-    private var photoDescriptorContinuation: kotlinx.coroutines.CancellableContinuation<Boolean>? = null
 
-    private val buttonLock = Any()
-    private var buttonDescriptorContinuation: kotlinx.coroutines.CancellableContinuation<Boolean>? = null
     private val ignoredButtonReleaseEvents = AtomicLong(0)
     private val droppedButtonEvents = AtomicLong(0)
 
-    private val batteryLock = Any()
-    private var batteryDescriptorContinuation: kotlinx.coroutines.CancellableContinuation<Boolean>? = null
-    private var batteryReadContinuation: kotlinx.coroutines.CancellableContinuation<Boolean>? = null
     private val droppedBatteryEvents = AtomicLong(0)
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
@@ -179,12 +186,14 @@ class OmiGlassesClient(
         return (error as? GlassesError) ?: GlassesError.Transport("Omi connect failed: ${error.message}", error)
     }
 
+    override fun publishConnectedState(): Boolean = synchronized(connectionLock) {
+        // doConnect resumes on its caller's dispatcher. A disconnect can run before that
+        // continuation reaches BaseGlassesClient's final state publication.
+        if (!connectionReady || bluetoothGatt == null) false else super.publishConnectedState()
+    }
+
     override suspend fun disconnect() {
-        try {
-            audioSession?.stop()
-        } catch (_: Exception) {
-        }
-        audioSession = null
+        // Closing the link cancels all subscriptions without waiting for a remote CCCD reply.
         closeGatt()
         resetCapabilities()
         _state.value = ConnectionState.Disconnected
@@ -195,59 +204,60 @@ class OmiGlassesClient(
         val dataChar = photoDataCharacteristic ?: return Result.failure(GlassesError.Unsupported("Photo data characteristic not found"))
         val gatt = bluetoothGatt ?: return Result.failure(GlassesError.NotConnected)
 
-        return withTimeoutOrNull(options.timeoutMs) {
-            val notificationsEnabled = gattWriteMutex.withLock {
-                enablePhotoDataNotifications(gatt, dataChar)
-            }
-            if (!notificationsEnabled) {
-                return@withTimeoutOrNull Result.failure(
-                    GlassesError.Transport("Photo notification descriptor write failed")
-                )
-            }
-
-            kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-                synchronized(photoLock) {
-                    photoContinuation = cont
-                    photoBuffer.clear()
-                    lastPhotoChunkId = -1
+        if (!captureMutex.tryLock()) return Result.failure(GlassesError.Busy)
+        return try {
+            withTimeoutOrNull(options.timeoutMs) {
+                val notificationsEnabled = gattWriteMutex.withLock {
+                    enablePhotoDataNotifications(gatt, dataChar)
                 }
-
-                // Write 0x05 to trigger single photo (like React Native SDK) only after CCCD is enabled.
-                val commandSent = writeCharacteristicCompat(
-                    gatt = gatt,
-                    characteristic = ctrlChar,
-                    value = byteArrayOf(0x05.toByte()),
-                )
-                if (commandSent) {
-                    emitLog("Omi: capture photo command sent [0x05]")
-                } else {
-                    synchronized(photoLock) {
-                        if (photoContinuation === cont) {
-                            photoContinuation = null
-                        }
-                        photoBuffer.clear()
-                        lastPhotoChunkId = -1
-                    }
-                    cont.resumeWith(
-                        Result.success(
-                            Result.failure(
-                                GlassesError.Transport("Photo capture command write failed")
-                            )
-                        )
+                if (!notificationsEnabled) {
+                    return@withTimeoutOrNull Result.failure(
+                        GlassesError.Transport("Photo notification descriptor write failed")
                     )
                 }
 
-                cont.invokeOnCancellation {
+                kotlinx.coroutines.suspendCancellableCoroutine { cont ->
                     synchronized(photoLock) {
-                        if (photoContinuation === cont) {
-                            photoContinuation = null
-                        }
+                        photoContinuation = cont
                         photoBuffer.clear()
                         lastPhotoChunkId = -1
                     }
+
+                    val commandJob = scope.launch {
+                        try {
+                            gattWriteMutex.withLock {
+                                awaitGattOperation(gatt, OperationKind.WRITE, ctrlChar.uuid) {
+                                    writeCharacteristicCompat(gatt, ctrlChar, byteArrayOf(0x05))
+                                }
+                            }
+                            emitLog("Omi: capture photo command confirmed [0x05]")
+                        } catch (error: Exception) {
+                            synchronized(photoLock) {
+                                if (photoContinuation === cont) photoContinuation = null
+                            }
+                            if (cont.isActive) cont.resumeWith(Result.success(Result.failure(error)))
+                        }
+                    }
+
+                    cont.invokeOnCancellation {
+                        commandJob.cancel()
+                        synchronized(photoLock) {
+                            if (photoContinuation === cont) {
+                                photoContinuation = null
+                            }
+                            photoBuffer.clear()
+                            lastPhotoChunkId = -1
+                        }
+                    }
                 }
-            }
-        } ?: Result.failure(GlassesError.Timeout("capturePhoto"))
+            } ?: Result.failure(GlassesError.Timeout("capturePhoto"))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure((error as? GlassesError) ?: GlassesError.Transport("Omi capture failed", error))
+        } finally {
+            captureMutex.unlock()
+        }
     }
 
     override suspend fun display(text: String, options: DisplayOptions): Result<Unit> {
@@ -265,40 +275,43 @@ class OmiGlassesClient(
         )
     }
 
-    override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> {
-        if (_state.value !is ConnectionState.Connected) {
-            return Result.failure(GlassesError.NotConnected)
-        }
-        if (!hasBlePermission()) {
-            return Result.failure(GlassesError.PermissionDenied)
-        }
-        // Defensive: clear stale session that was already stopped but not cleaned up
-        val existing = audioSession
-        if (existing != null) {
-            try {
-                existing.stop()
-            } catch (_: Exception) {}
-            audioSession = null
-        }
-
-        return try {
-            val session = createAudioSession(options)
-            audioSession = session
-            
-            // Ensure notifications are enabled for the audio characteristic
-            audioCharacteristic?.let { char ->
-                bluetoothGatt?.setCharacteristicNotification(char, true)
-                char.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))?.let { desc ->
-                    desc.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-                    bluetoothGatt?.writeDescriptor(desc)
-                }
+    override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> =
+        microphoneMutex.withLock {
+            if (_state.value !is ConnectionState.Connected) {
+                return@withLock Result.failure(GlassesError.NotConnected)
             }
-            
-            Result.success(session)
-        } catch (e: Exception) {
-            Result.failure((e as? GlassesError) ?: GlassesError.Transport("Omi startMicrophone failed: ${e.message}", e))
+            if (!hasBlePermission()) return@withLock Result.failure(GlassesError.PermissionDenied)
+            if (audioSession != null) return@withLock Result.failure(GlassesError.Busy)
+            val gatt = bluetoothGatt ?: return@withLock Result.failure(GlassesError.NotConnected)
+            val audio = audioCharacteristic
+                ?: return@withLock Result.failure(GlassesError.Unsupported("Omi audio characteristic not found"))
+            val codec = audioCodecCharacteristic
+                ?: return@withLock Result.failure(GlassesError.Unsupported("Omi audio codec characteristic not found"))
+            try {
+                val session = gattWriteMutex.withLock {
+                    val format = OmiAudioCodec.format(awaitGattOperation(gatt, OperationKind.READ, codec.uuid) {
+                        gatt.readCharacteristic(codec)
+                    })
+                    enableNotifications(gatt, audio)
+                    val session = createAudioSession(format)
+                    // Publish before the final link check: disconnect either sees and finishes
+                    // this session, or the check below rolls back a session published too late.
+                    audioSession = session
+                    if (gatt !== bluetoothGatt || _state.value !is ConnectionState.Connected) {
+                        if (audioSession === session) audioSession = null
+                        (session as OmiMicrophoneSession).finish()
+                        throw GlassesError.NotConnected
+                    }
+                    session
+                }
+                Result.success(session)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Result.failure((error as? GlassesError)
+                    ?: GlassesError.Transport("Omi startMicrophone failed: ${error.message}", error))
+            }
         }
-    }
 
     private fun hasBlePermission(): Boolean {
         val sdk = android.os.Build.VERSION.SDK_INT
@@ -317,6 +330,7 @@ class OmiGlassesClient(
         kotlinx.coroutines.suspendCancellableCoroutine { cont ->
             bluetoothGatt = device.connectGatt(context, false, object : BluetoothGattCallback() {
                 override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                    if (gatt !== bluetoothGatt) return
                     if (status == BluetoothGatt.GATT_SUCCESS) {
                         if (newState == BluetoothProfile.STATE_CONNECTED) {
                             emitLog("Omi: GATT connected, requesting MTU 512...")
@@ -324,87 +338,95 @@ class OmiGlassesClient(
                             gatt.requestMtu(512)
                         } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                             emitLog("Omi: GATT disconnected")
-                            updatePhotoCapability(false)
-                            updateButtonCapability(false)
-                            updateBatteryCapability(false)
+                            closeGatt()
                             _state.value = ConnectionState.Disconnected
                         }
                     } else {
                         emitLog("Omi: GATT error status=$status")
-                        updatePhotoCapability(false)
-                        updateButtonCapability(false)
-                        updateBatteryCapability(false)
+                        closeGatt()
                         _state.value = ConnectionState.Disconnected
                         if (cont.isActive) cont.resumeWithException(GlassesError.Transport("GATT error $status"))
                     }
                 }
 
                 override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+                    if (gatt !== bluetoothGatt) return
                     emitLog("Omi: MTU updated to $mtu (status=$status), discovering services...")
                     gatt.discoverServices()
                 }
 
                 override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                    if (gatt !== bluetoothGatt) return
                     if (status == BluetoothGatt.GATT_SUCCESS) {
-                        emitLog("Omi: services discovered")
-                        val omiService = gatt.getService(AUDIO_SERVICE_UUID)
-                        audioCharacteristic = omiService?.getCharacteristic(AUDIO_DATA_UUID)
-                        photoControlCharacteristic = omiService?.getCharacteristic(PHOTO_CONTROL_UUID)
-                        photoDataCharacteristic = omiService?.getCharacteristic(PHOTO_DATA_UUID)
-                        updatePhotoCapability(
-                            photoControlCharacteristic != null &&
-                                photoDataCharacteristic != null
-                        )
+                        synchronized(connectionLock) {
+                            if (gatt !== bluetoothGatt) return
+                            emitLog("Omi: services discovered")
+                            val omiService = gatt.getService(AUDIO_SERVICE_UUID)
+                            audioCharacteristic = omiService?.getCharacteristic(AUDIO_DATA_UUID)
+                            audioCodecCharacteristic = omiService?.getCharacteristic(AUDIO_CODEC_UUID)
+                            updateCapabilities { it.copy(canRecordAudio = audioCharacteristic != null && audioCodecCharacteristic != null) }
+                            photoControlCharacteristic = omiService?.getCharacteristic(PHOTO_CONTROL_UUID)
+                            photoDataCharacteristic = omiService?.getCharacteristic(PHOTO_DATA_UUID)
+                            updatePhotoCapability(
+                                photoControlCharacteristic != null &&
+                                    photoDataCharacteristic != null
+                            )
                         
-                        val timeSyncService = gatt.getService(TIME_SYNC_SERVICE_UUID)
-                        timeSyncCharacteristic = timeSyncService?.getCharacteristic(TIME_SYNC_WRITE_UUID)
+                            val timeSyncService = gatt.getService(TIME_SYNC_SERVICE_UUID)
+                            timeSyncCharacteristic = timeSyncService?.getCharacteristic(TIME_SYNC_WRITE_UUID)
 
-                        val buttonService = gatt.getService(BUTTON_SERVICE_UUID)
-                        buttonCharacteristic = buttonService?.getCharacteristic(BUTTON_TRIGGER_UUID)
-                        // Capability is gated on service/characteristic discovery, never name/model.
-                        updateButtonCapability(buttonCharacteristic != null)
+                            val buttonService = gatt.getService(BUTTON_SERVICE_UUID)
+                            buttonCharacteristic = buttonService?.getCharacteristic(BUTTON_TRIGGER_UUID)
+                            // Capability is gated on service/characteristic discovery, never name/model.
+                            updateButtonCapability(buttonCharacteristic != null)
 
-                        val batteryService = gatt.getService(BATTERY_SERVICE_UUID)
-                        batteryCharacteristic = batteryService?.getCharacteristic(BATTERY_LEVEL_UUID)
-                        // Source: Bluetooth SIG Battery Service 1.1 defines Battery Service 0x180F
-                        // and Battery Level 0x2A19; read is mandatory and notify is optional.
-                        updateBatteryCapability(batteryCharacteristic != null)
+                            val batteryService = gatt.getService(BATTERY_SERVICE_UUID)
+                            batteryCharacteristic = batteryService?.getCharacteristic(BATTERY_LEVEL_UUID)
+                            // Source: Bluetooth SIG Battery Service 1.1 defines Battery Service 0x180F
+                            // and Battery Level 0x2A19; read is mandatory and notify is optional.
+                            updateBatteryCapability(batteryCharacteristic != null)
 
-                        // If we have services, we are effectively connected
-                        _state.value = ConnectionState.Connected
+                            connectionReady = true
+                        }
                         
                         // Serialize connect-time GATT writes: button CCCD, battery CCCD/read, then time sync.
                         scope.launch {
-                            gattWriteMutex.withLock {
-                                buttonCharacteristic?.let { characteristic ->
-                                    val subscribed = withTimeoutOrNull(BUTTON_NOTIFY_TIMEOUT_MS) {
-                                        enableButtonNotifications(gatt, characteristic)
-                                    } == true
-                                    if (subscribed) {
-                                        emitLog("Omi: button notifications enabled")
-                                    } else {
-                                        updateButtonCapability(false)
-                                        emitWarn("Omi: button notification descriptor write failed")
-                                    }
-                                }
-                                batteryCharacteristic?.let { characteristic ->
-                                    val subscribed = withTimeoutOrNull(BATTERY_NOTIFY_TIMEOUT_MS) {
-                                        enableBatteryNotifications(gatt, characteristic)
-                                    } == true
-                                    if (subscribed) {
-                                        emitLog("Omi: battery notifications enabled")
-                                        val read = withTimeoutOrNull(BATTERY_READ_TIMEOUT_MS) {
-                                            readBatteryLevel(gatt, characteristic)
+                            try {
+                                gattWriteMutex.withLock {
+                                    buttonCharacteristic?.let { characteristic ->
+                                        val subscribed = withTimeoutOrNull(BUTTON_NOTIFY_TIMEOUT_MS) {
+                                            enableButtonNotifications(gatt, characteristic)
                                         } == true
-                                        if (!read) {
-                                            emitWarn("Omi: initial battery read failed")
+                                        if (subscribed) {
+                                            emitLog("Omi: button notifications enabled")
+                                        } else {
+                                            updateButtonCapability(false)
+                                            emitWarn("Omi: button notification descriptor write failed")
                                         }
-                                    } else {
-                                        updateBatteryCapability(false)
-                                        emitWarn("Omi: battery notification descriptor write failed")
                                     }
+                                    batteryCharacteristic?.let { characteristic ->
+                                        val subscribed = withTimeoutOrNull(BATTERY_NOTIFY_TIMEOUT_MS) {
+                                            enableBatteryNotifications(gatt, characteristic)
+                                        } == true
+                                        if (subscribed) {
+                                            emitLog("Omi: battery notifications enabled")
+                                            val read = withTimeoutOrNull(BATTERY_READ_TIMEOUT_MS) {
+                                                readBatteryLevel(gatt, characteristic)
+                                            } == true
+                                            if (!read) {
+                                                emitWarn("Omi: initial battery read failed")
+                                            }
+                                        } else {
+                                            updateBatteryCapability(false)
+                                            emitWarn("Omi: battery notification descriptor write failed")
+                                        }
+                                    }
+                                    performTimeSync(gatt)
                                 }
-                                performTimeSync(gatt)
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: Exception) {
+                                emitWarn("Omi: connection setup failed: ${error.message}")
                             }
                         }
 
@@ -418,6 +440,7 @@ class OmiGlassesClient(
                 }
 
                 override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+                    if (gatt !== bluetoothGatt) return
                     if (characteristic.uuid == AUDIO_DATA_UUID) {
                         val data = characteristic.value
                         if (data != null && data.size > 3) {
@@ -500,55 +523,27 @@ class OmiGlassesClient(
                 }
 
                 @Deprecated("Deprecated by Android API 33, kept for pre-33 callbacks")
-                override fun onCharacteristicRead(
-                    gatt: BluetoothGatt,
-                    characteristic: BluetoothGattCharacteristic,
-                    status: Int,
-                ) {
-                    if (characteristic.uuid == BATTERY_LEVEL_UUID) {
-                        handleBatteryRead(characteristic.value, status)
-                    }
+                override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+                    onCharacteristicRead(gatt, characteristic, characteristic.value ?: ByteArray(0), status)
                 }
 
-                override fun onCharacteristicRead(
-                    gatt: BluetoothGatt,
-                    characteristic: BluetoothGattCharacteristic,
-                    value: ByteArray,
-                    status: Int,
-                ) {
-                    if (characteristic.uuid == BATTERY_LEVEL_UUID) {
-                        handleBatteryRead(value, status)
+                override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
+                    if (gatt !== bluetoothGatt) return
+                    if (characteristic.uuid == BATTERY_LEVEL_UUID && status == BluetoothGatt.GATT_SUCCESS) {
+                        handleBatteryPacket(value)
                     }
+                    completeOperation(gatt, OperationKind.READ, characteristic.uuid, status, value)
+                }
+
+                override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+                    completeOperation(gatt, OperationKind.WRITE, characteristic.uuid, status)
                 }
 
                 override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-                    if (descriptor.uuid == CLIENT_CHARACTERISTIC_CONFIG_UUID &&
-                        descriptor.characteristic?.uuid == PHOTO_DATA_UUID
-                    ) {
-                        val pending = synchronized(photoLock) {
-                            val cont = photoDescriptorContinuation
-                            photoDescriptorContinuation = null
-                            cont
+                    if (descriptor.uuid == CLIENT_CHARACTERISTIC_CONFIG_UUID) {
+                        descriptor.characteristic?.uuid?.let { uuid ->
+                            completeOperation(gatt, OperationKind.DESCRIPTOR, uuid, status)
                         }
-                        pending?.resumeWith(Result.success(status == BluetoothGatt.GATT_SUCCESS))
-                    } else if (descriptor.uuid == CLIENT_CHARACTERISTIC_CONFIG_UUID &&
-                        descriptor.characteristic?.uuid == BUTTON_TRIGGER_UUID
-                    ) {
-                        val pending = synchronized(buttonLock) {
-                            val cont = buttonDescriptorContinuation
-                            buttonDescriptorContinuation = null
-                            cont
-                        }
-                        pending?.resumeWith(Result.success(status == BluetoothGatt.GATT_SUCCESS))
-                    } else if (descriptor.uuid == CLIENT_CHARACTERISTIC_CONFIG_UUID &&
-                        descriptor.characteristic?.uuid == BATTERY_LEVEL_UUID
-                    ) {
-                        val pending = synchronized(batteryLock) {
-                            val cont = batteryDescriptorContinuation
-                            batteryDescriptorContinuation = null
-                            cont
-                        }
-                        pending?.resumeWith(Result.success(status == BluetoothGatt.GATT_SUCCESS))
                     }
                 }
             })
@@ -605,19 +600,6 @@ class OmiGlassesClient(
         }
     }
 
-    private fun handleBatteryRead(value: ByteArray?, status: Int) {
-        val success = status == BluetoothGatt.GATT_SUCCESS && value != null && value.isNotEmpty()
-        if (success) {
-            handleBatteryPacket(value)
-        }
-        val pending = synchronized(batteryLock) {
-            val cont = batteryReadContinuation
-            batteryReadContinuation = null
-            cont
-        }
-        pending?.resumeWith(Result.success(success))
-    }
-
     private fun handleBatteryPacket(packet: ByteArray) {
         val raw = packet.firstOrNull()?.toInt()?.and(0xFF) ?: return
         emitBatteryLevel(raw.coerceIn(0, 100))
@@ -634,137 +616,111 @@ class OmiGlassesClient(
 
     private fun shouldRateLimitLog(count: Long): Boolean = count == 1L || count % RATE_LIMIT_EVERY == 0L
 
-    private suspend fun enableButtonNotifications(
-        gatt: BluetoothGatt,
-        dataChar: BluetoothGattCharacteristic,
-    ): Boolean {
-        if (!gatt.setCharacteristicNotification(dataChar, true)) {
-            return false
-        }
-        val descriptor = dataChar.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID) ?: return false
+    private suspend fun enableButtonNotifications(gatt: BluetoothGatt, dataChar: BluetoothGattCharacteristic): Boolean =
+        optionalGattOperation { enableNotifications(gatt, dataChar) }
 
-        return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-            synchronized(buttonLock) {
-                buttonDescriptorContinuation = cont
+    private suspend fun enableBatteryNotifications(gatt: BluetoothGatt, dataChar: BluetoothGattCharacteristic): Boolean =
+        optionalGattOperation { enableNotifications(gatt, dataChar) }
+
+    private suspend fun enablePhotoDataNotifications(gatt: BluetoothGatt, dataChar: BluetoothGattCharacteristic): Boolean =
+        optionalGattOperation { enableNotifications(gatt, dataChar) }
+
+    private suspend fun readBatteryLevel(gatt: BluetoothGatt, dataChar: BluetoothGattCharacteristic): Boolean =
+        optionalGattOperation {
+            val value = awaitGattOperation(gatt, OperationKind.READ, dataChar.uuid) { gatt.readCharacteristic(dataChar) }
+            if (value.isEmpty()) throw GlassesError.Transport("Omi battery response is empty")
+        }
+
+    private suspend fun optionalGattOperation(operation: suspend () -> Unit): Boolean = try {
+        operation()
+        true
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        emitWarn("Omi: GATT operation failed: ${error.message}")
+        false
+    }
+
+    private suspend fun enableNotifications(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+        val descriptor = characteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID)
+            ?: throw GlassesError.Unsupported("Omi characteristic ${characteristic.uuid} has no CCCD")
+        if (!gatt.setCharacteristicNotification(characteristic, true)) {
+            throw GlassesError.Transport("Omi local notification registration failed")
+        }
+        try {
+            awaitGattOperation(gatt, OperationKind.DESCRIPTOR, characteristic.uuid) {
+                writeDescriptorCompat(gatt, descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
             }
-            val started = writeDescriptorCompat(
-                gatt = gatt,
-                descriptor = descriptor,
-                value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE,
-            )
-            if (!started) {
-                synchronized(buttonLock) {
-                    if (buttonDescriptorContinuation === cont) {
-                        buttonDescriptorContinuation = null
-                    }
-                }
-                cont.resumeWith(Result.success(false))
-            }
-            cont.invokeOnCancellation {
-                synchronized(buttonLock) {
-                    if (buttonDescriptorContinuation === cont) {
-                        buttonDescriptorContinuation = null
-                    }
-                }
-            }
+        } catch (error: Throwable) {
+            runCatching { gatt.setCharacteristicNotification(characteristic, false) }
+            throw error
         }
     }
 
-    private suspend fun enableBatteryNotifications(
+    /** Caller owns gattWriteMutex until the callback; enqueue success is not device success. */
+    private suspend fun awaitGattOperation(
         gatt: BluetoothGatt,
-        dataChar: BluetoothGattCharacteristic,
-    ): Boolean {
-        if (!gatt.setCharacteristicNotification(dataChar, true)) {
-            return false
-        }
-        val descriptor = dataChar.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID) ?: return false
-
-        return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-            synchronized(batteryLock) {
-                batteryDescriptorContinuation = cont
-            }
-            val started = writeDescriptorCompat(
-                gatt = gatt,
-                descriptor = descriptor,
-                value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE,
-            )
-            if (!started) {
-                synchronized(batteryLock) {
-                    if (batteryDescriptorContinuation === cont) {
-                        batteryDescriptorContinuation = null
+        kind: OperationKind,
+        uuid: UUID,
+        start: () -> Boolean,
+    ): ByteArray {
+        if (gatt !== bluetoothGatt) throw GlassesError.NotConnected
+        try {
+            return withTimeout(options.gattOperationTimeoutMs) {
+                kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+                    val operation = PendingOperation(gatt, kind, uuid, continuation)
+                    synchronized(operationLock) {
+                        check(pendingOperation == null) { "Concurrent Omi GATT operation" }
+                        pendingOperation = operation
+                    }
+                    continuation.invokeOnCancellation {
+                        val outstanding = synchronized(operationLock) {
+                            if (pendingOperation === operation) {
+                                pendingOperation = null
+                                true
+                            } else false
+                        }
+                        // A cancelled Android operation cannot be cancelled on the wire. Close the
+                        // link so a delayed callback cannot satisfy a later request for this UUID.
+                        if (outstanding && bluetoothGatt === gatt) {
+                            closeGatt()
+                            _state.value = ConnectionState.Disconnected
+                        }
+                    }
+                    try {
+                        if (continuation.isActive && !start()) {
+                            completeOperation(gatt, kind, uuid, BluetoothGatt.GATT_FAILURE)
+                        }
+                    } catch (error: Exception) {
+                        synchronized(operationLock) {
+                            if (pendingOperation === operation) pendingOperation = null
+                        }
+                        if (continuation.isActive) continuation.resumeWithException(error)
                     }
                 }
-                cont.resumeWith(Result.success(false))
             }
-            cont.invokeOnCancellation {
-                synchronized(batteryLock) {
-                    if (batteryDescriptorContinuation === cont) {
-                        batteryDescriptorContinuation = null
-                    }
-                }
-            }
+        } catch (error: TimeoutCancellationException) {
+            throw GlassesError.Timeout("Omi GATT $kind $uuid")
         }
     }
 
-    private suspend fun readBatteryLevel(
+    private fun completeOperation(
         gatt: BluetoothGatt,
-        dataChar: BluetoothGattCharacteristic,
-    ): Boolean {
-        return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-            synchronized(batteryLock) {
-                batteryReadContinuation = cont
+        kind: OperationKind,
+        uuid: UUID,
+        status: Int,
+        value: ByteArray = ByteArray(0),
+    ) {
+        val operation = synchronized(operationLock) {
+            pendingOperation?.takeIf { it.gatt === gatt && it.kind == kind && it.uuid == uuid }?.also {
+                pendingOperation = null
             }
-            if (!gatt.readCharacteristic(dataChar)) {
-                synchronized(batteryLock) {
-                    if (batteryReadContinuation === cont) {
-                        batteryReadContinuation = null
-                    }
-                }
-                cont.resumeWith(Result.success(false))
-            }
-            cont.invokeOnCancellation {
-                synchronized(batteryLock) {
-                    if (batteryReadContinuation === cont) {
-                        batteryReadContinuation = null
-                    }
-                }
-            }
-        }
-    }
-
-    private suspend fun enablePhotoDataNotifications(
-        gatt: BluetoothGatt,
-        dataChar: BluetoothGattCharacteristic,
-    ): Boolean {
-        if (!gatt.setCharacteristicNotification(dataChar, true)) {
-            return false
-        }
-        val descriptor = dataChar.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID) ?: return false
-
-        return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-            synchronized(photoLock) {
-                photoDescriptorContinuation = cont
-            }
-            val started = writeDescriptorCompat(
-                gatt = gatt,
-                descriptor = descriptor,
-                value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE,
-            )
-            if (!started) {
-                synchronized(photoLock) {
-                    if (photoDescriptorContinuation === cont) {
-                        photoDescriptorContinuation = null
-                    }
-                }
-                cont.resumeWith(Result.success(false))
-            }
-            cont.invokeOnCancellation {
-                synchronized(photoLock) {
-                    if (photoDescriptorContinuation === cont) {
-                        photoDescriptorContinuation = null
-                    }
-                }
-            }
+        } ?: return
+        if (!operation.continuation.isActive) return
+        if (status == BluetoothGatt.GATT_SUCCESS) {
+            operation.continuation.resumeWith(Result.success(value.copyOf()))
+        } else {
+            operation.continuation.resumeWithException(GlassesError.Transport("Omi GATT $kind $uuid failed: $status"))
         }
     }
 
@@ -797,43 +753,47 @@ class OmiGlassesClient(
     }
 
     private fun closeGatt() {
+        val gatt = synchronized(connectionLock) {
+            connectionReady = false
+            bluetoothGatt.also { bluetoothGatt = null }
+        }
+        val pending = synchronized(operationLock) { pendingOperation.also { pendingOperation = null } }
+        pending?.continuation?.let { if (it.isActive) it.resumeWithException(GlassesError.NotConnected) }
         updatePhotoCapability(false)
         updateButtonCapability(false)
         updateBatteryCapability(false)
-        synchronized(photoLock) {
-            photoDescriptorContinuation = null
-            photoContinuation = null
-            photoBuffer.clear()
-            lastPhotoChunkId = -1
+        val capture = synchronized(photoLock) {
+            photoContinuation.also {
+                photoContinuation = null
+                photoBuffer.clear()
+                lastPhotoChunkId = -1
+            }
         }
-        synchronized(buttonLock) {
-            buttonDescriptorContinuation = null
-        }
-        synchronized(batteryLock) {
-            batteryDescriptorContinuation = null
-            batteryReadContinuation = null
-        }
+        capture?.let { if (it.isActive) it.resumeWith(Result.success(Result.failure(GlassesError.NotConnected))) }
+        audioSession?.let { (it as? OmiMicrophoneSession)?.finish() }
+        audioSession = null
         ignoredButtonReleaseEvents.set(0)
         droppedButtonEvents.set(0)
         droppedBatteryEvents.set(0)
+        audioCharacteristic = null
+        audioCodecCharacteristic = null
+        photoControlCharacteristic = null
+        photoDataCharacteristic = null
+        timeSyncCharacteristic = null
         buttonCharacteristic = null
         batteryCharacteristic = null
-        bluetoothGatt?.disconnect()
-        bluetoothGatt?.close()
-        bluetoothGatt = null
+        gatt?.disconnect()
+        gatt?.close()
     }
 
     private suspend fun performTimeSync(gatt: BluetoothGatt) {
-        val char = timeSyncCharacteristic ?: return
-        try {
-            val epochSeconds = System.currentTimeMillis() / 1000
-            val bytes = java.nio.ByteBuffer.allocate(4).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(epochSeconds.toInt()).array()
-            char.setValue(bytes)
-            gatt.writeCharacteristic(char)
-            emitLog("Omi: time sync sent ($epochSeconds)")
-        } catch (e: Exception) {
-            emitLog("Omi: time sync failed: ${e.message}")
+        val characteristic = timeSyncCharacteristic ?: return
+        val epochSeconds = System.currentTimeMillis() / 1000
+        val bytes = java.nio.ByteBuffer.allocate(4).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(epochSeconds.toInt()).array()
+        awaitGattOperation(gatt, OperationKind.WRITE, characteristic.uuid) {
+            writeCharacteristicCompat(gatt, characteristic, bytes)
         }
+        emitLog("Omi: time sync confirmed ($epochSeconds)")
     }
 
     private suspend fun scanFirstOmiDevice(adapter: BluetoothAdapter): BluetoothDevice {
@@ -903,12 +863,7 @@ class OmiGlassesClient(
         }
     }
 
-    private fun createAudioSession(options: MicrophoneOptions): MicrophoneSession {
-        val fmt = AudioFormat(
-            encoding = AudioEncoding.OPUS, // Omi default is OPUS 32kbps
-            sampleRateHz = 16_000,
-            channelCount = 1,
-        )
+    private fun createAudioSession(fmt: AudioFormat): MicrophoneSession {
 
         val audioFlow = MutableSharedFlow<AudioChunk>(extraBufferCapacity = 128)
         val seq = AtomicLong(0)
@@ -917,32 +872,65 @@ class OmiGlassesClient(
             override val format: AudioFormat = fmt
             override val audio: Flow<AudioChunk> = audioFlow
 
+            private val emissionLock = Any()
+            private var stopped = false
+
             override fun emitAudio(data: ByteArray) {
-                audioFlow.tryEmit(
-                    AudioChunk(
-                        bytes = data,
-                        format = fmt,
-                        sequence = seq.incrementAndGet(),
+                synchronized(emissionLock) {
+                    if (stopped) return
+                    audioFlow.tryEmit(
+                        AudioChunk(
+                            bytes = data,
+                            format = fmt,
+                            sequence = seq.incrementAndGet(),
+                        )
                     )
-                )
+                }
             }
 
-            override suspend fun stop() {
-                audioSession = null
-                audioFlow.tryEmit(
-                    AudioChunk(
-                        bytes = ByteArray(0),
-                        format = fmt,
-                        sequence = seq.incrementAndGet(),
-                        endOfStream = true,
+            override suspend fun stop() = microphoneMutex.withLock {
+                try {
+                    if (audioSession === this) {
+                        audioSession = null
+                        val gatt = bluetoothGatt
+                        val characteristic = audioCharacteristic
+                        if (gatt != null && characteristic != null) {
+                            gattWriteMutex.withLock {
+                                val descriptor = characteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID)
+                                if (descriptor != null) {
+                                    awaitGattOperation(gatt, OperationKind.DESCRIPTOR, characteristic.uuid) {
+                                        writeDescriptorCompat(gatt, descriptor, BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE)
+                                    }
+                                }
+                                gatt.setCharacteristicNotification(characteristic, false)
+                            }
+                        }
+                    }
+                } finally {
+                    finish()
+                }
+            }
+
+            override fun finish() {
+                synchronized(emissionLock) {
+                    if (stopped) return
+                    stopped = true
+                    audioFlow.tryEmit(
+                        AudioChunk(
+                            bytes = ByteArray(0),
+                            format = fmt,
+                            sequence = seq.incrementAndGet(),
+                            endOfStream = true,
+                        )
                     )
-                )
+                }
             }
         }
     }
 
     private interface OmiMicrophoneSession : MicrophoneSession {
         fun emitAudio(data: ByteArray)
+        fun finish()
     }
 
     /** Find the index of the JPEG SOI marker (FFD8) in the byte array. Returns -1 if not found. */
@@ -957,6 +945,7 @@ class OmiGlassesClient(
 
     data class OmiOptions(
         val connectTimeoutMs: Long = 30_000,
+        val gattOperationTimeoutMs: Long = 5_000,
     )
 
     companion object {

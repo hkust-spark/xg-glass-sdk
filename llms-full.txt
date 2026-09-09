@@ -1253,7 +1253,7 @@ Easy, fast, glasses application development for everyone
 <a href="https://github.com/hkust-spark/xg-glass-sdk/actions/workflows/ci.yml"><img src="https://github.com/hkust-spark/xg-glass-sdk/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <a href="https://central.sonatype.com/artifact/io.github.hkust-spark/xgglass-universal"><img src="https://img.shields.io/maven-central/v/io.github.hkust-spark/xgglass-universal" alt="Maven Central"></a>
 <a href="https://pypi.org/project/xg-glass/"><img src="https://img.shields.io/pypi/v/xg-glass" alt="PyPI"></a>
-<a href="./docs/swift-package.md"><img src="https://img.shields.io/badge/Swift_Package-iOS_16%2B-F05138?logo=swift" alt="Swift Package"></a>
+<a href="./docs/swift-package.md"><img src="https://img.shields.io/badge/Swift_Package-iOS_17.2%2B-F05138?logo=swift" alt="Swift Package"></a>
 <a href="./LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
 </p>
 
@@ -1303,7 +1303,7 @@ Choose one installation channel depending on the platform you are targeting.
 
 #### Android (Maven Central)
 
-Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.2.1`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`. Note that the Maven group is only the distribution namespace — Kotlin packages in code are `com.xgglass.*` (for example `import com.xgglass.core.GlassesClient`).
+Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.3.0`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`. Note that the Maven group is only the distribution namespace — Kotlin packages in code are `com.xgglass.*` (for example `import com.xgglass.core.GlassesClient`).
 
 New to the SDK? Follow [Your First App (Android)](./docs/getting-started-android.md).
 
@@ -1375,9 +1375,15 @@ dependencies {
 }
 ```
 
+The published `0.3.0` adapter uses DAT `0.8.0`. The DAT `0.9.0` migration is in
+the unreleased source branch; see the [migration notes](./docs/sdk-maintenance-2026-09.md)
+before testing it from a local checkout.
+
 #### iOS (Swift Package)
 
-The Swift Package is hosted from this repository and requires iOS 16+. It publishes `XgGlass` for the core API plus Simulator/Omi adapters, and `XgGlassMeta` for the Meta adapter with Meta DAT 0.8.0.
+The Swift Package is hosted from this repository and requires iOS 17.2+. It publishes `XgGlass` for the core API plus Simulator/Omi adapters, and `XgGlassMeta` for the Meta adapter with Meta DAT 0.9.0.
+
+These requirements describe the unreleased source branch. Release `0.3.0` uses Meta DAT `0.8.0` and iOS 16; the DAT `0.9.0` migration and iOS 17.2 minimum will ship in the next minor release. See the [migration and validation notes](./docs/sdk-maintenance-2026-09.md).
 
 ```swift
 // Package.swift
@@ -1395,7 +1401,10 @@ targets: [
 ]
 ```
 
-The `XgGlassKit` binary is downloaded automatically from the GitHub Release for the version you depend on — no local build step is needed. See [Swift Package setup](./docs/swift-package.md) and [iOS device support](./docs/ios-device-support.md).
+The version-based dependency above consumes published releases and does not yet
+include the source fixes. The current source manifest also retains the `0.3.0`
+`XgGlassKit` binary URL; testing Kotlin changes requires a local XCFramework.
+See [Swift Package setup](./docs/swift-package.md) and [iOS device support](./docs/ios-device-support.md).
 Start with the [Swift Package quick start](./docs/swift-package.md#quick-start).
 
 #### CLI (PyPI)
@@ -1484,7 +1493,7 @@ Supported toolchains:
 - Android compileSdk 36.
 - JDK 17+.
 - Building from source needs Kotlin 2.4+ and Android Gradle Plugin 9.x.
-- iOS 16+ with Xcode 15.4+.
+- iOS 17.2+ with Xcode 26.4+.
 - CLI Python 3.9+ on macOS/Linux.
 
 Per-device hardware-validation status is listed in the device table above.
@@ -1527,7 +1536,7 @@ Source: docs/getting-started-android.md
 
 This quickstart builds a minimal Android app against the published Maven artifacts for xg.glass `0.2.1`. It uses the Android simulator client first, so you can test without physical glasses.
 
-Use Android Gradle Plugin `9.1.1`, Kotlin `2.4.0`, `compileSdk = 36`, and `minSdk = 28`.
+Use Android Gradle Plugin `9.2.1`, Kotlin `2.4.0`, `compileSdk = 36`, and `minSdk = 28`.
 
 `settings.gradle.kts`:
 
@@ -1571,7 +1580,7 @@ Top-level `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("com.android.application") version "9.1.1" apply false
+    id("com.android.application") version "9.2.1" apply false
 }
 ```
 
@@ -1928,7 +1937,15 @@ Source: docs/swift-package.md
 ================================================================================
 # XgGlass Swift Package
 
-The package supports iOS 16 and newer.
+The package supports iOS 17.2 and newer.
+
+The unreleased source branch uses Meta DAT 0.9.0 and raises the minimum from
+iOS 16 to 17.2. The published 0.3.0 release still uses DAT 0.8.0; these changes
+will ship in the next minor release. DAT 0.9 always enables the Device Access
+Toolkit App Model (DAM); `MWDAT.DAMEnabled` is ignored, so no opt-in key or
+additional registration call is needed for this migration. Existing application
+registration and permissions still apply. See the
+[vendor migration notes](https://github.com/facebook/meta-wearables-dat-ios/blob/0.9.0/CHANGELOG.md).
 
 The root `Package.swift` publishes these iOS products:
 
@@ -1946,7 +1963,14 @@ dependencies: [
 ]
 ```
 
-The `XgGlassKit` binary target points at the `XgGlassKit.xcframework.zip` asset of the matching GitHub Release and is downloaded and checksum-verified automatically by SwiftPM — no local build step is needed.
+This version-based dependency uses published releases; it does not include the
+unreleased Meta migration or adapter fixes. To try those changes before release,
+use this checkout as a local package dependency.
+
+The `XgGlassKit` binary target is downloaded and checksum-verified automatically
+by SwiftPM. The current source manifest still points at the `0.3.0` release asset,
+so using the local Swift sources alone does not include the Kotlin adapter fixes.
+Use the local binary instructions below when testing those fixes.
 
 ## Quick start
 
@@ -1988,6 +2012,15 @@ public final class XgQuickstart {
 ```
 
 ## Developing the SDK itself
+
+After building the current Kotlin binary, verify both callback lifecycle behavior
+and the complete Swift adapter product without editing the release manifest:
+
+```sh
+./gradlew :app-contract:assembleXgGlassKitXCFramework
+bash scripts/test-swift-operations.sh
+bash scripts/check-swift-package.sh
+```
 
 To test local Kotlin changes, build the XCFramework and temporarily point the binary target back at the local path (do not commit that change):
 
@@ -2206,6 +2239,17 @@ This module integrates **Omi Glass** into the unified `xg-glass` API surface.
 
 ### Notes
 
+- `startMicrophone` reads the device's audio-codec characteristic and waits for the
+  notification subscription to be confirmed before returning a session. Codec IDs
+  `0` / `1` report PCM16 / PCM8; `20` / `21` report Opus, without transcoding or
+  assuming a fixed Opus frame duration. Missing or unknown codec IDs return
+  `GlassesError.Unsupported`; failed reads or subscriptions return an error.
+- GATT audio operations use `OmiOptions.gattOperationTimeoutMs` (5 seconds by
+  default). A timed-out or cancelled in-flight audio operation closes the BLE
+  connection so a delayed callback cannot complete a later request. Reconnect
+  before retrying after such a timeout. Starting a second active microphone
+  returns `GlassesError.Busy`.
+
 - The current implementation focuses on **audio input** from Omi Glass using the documented
   BLE Audio Service and codec information from the Omi SDK report.
   Host-side apps are expected to decode Opus or PCM as needed and forward audio to their
@@ -2262,6 +2306,17 @@ This module integrates Omi over CoreBluetooth into the unified `xg-glass` API su
     `displayImage` therefore uses the core default `GlassesError.Unsupported`.
 
 ### Notes
+
+- `startMicrophone` reads the device's audio-codec characteristic and waits for the
+  notification subscription to be confirmed before returning a session. Codec IDs
+  `0` / `1` report PCM16 / PCM8; `20` / `21` report Opus, without transcoding or
+  assuming a fixed Opus frame duration. Missing or unknown codec IDs return
+  `GlassesError.Unsupported`; failed reads or subscriptions return an error.
+- GATT audio operations use `OmiOptions.gattOperationTimeoutMs` (5 seconds by
+  default). A timed-out or cancelled in-flight audio operation closes the BLE
+  connection so a delayed callback cannot complete a later request. Reconnect
+  before retrying after such a timeout. Starting a second active microphone
+  returns `GlassesError.Busy`.
 
 - Button events are gated on service discovery, not model/name matching. `supportsTapEvents`
   flips to `true` only when the connected peripheral exposes service
@@ -2563,13 +2618,13 @@ For the full simulator smoke path used by nightly CI, run `scripts/sim-e2e.sh`; 
 
 Use the current checked-in toolchain:
 
-- Gradle wrapper: `9.3.1`.
-- Android Gradle Plugin: `9.1.1`.
+- Gradle wrapper: `9.6.1`.
+- Android Gradle Plugin: `9.2.1`.
 - Kotlin Gradle plugin: `2.4.0`.
 - Android compileSdk: `36`; minSdk: `28`, except Meta and the RayNeo glasses host require minSdk `29`.
 - JDK 17 or newer. The Android Studio bundled JBR is known to work.
 - Python 3.9+ for the CLI.
-- macOS plus Xcode 15.4+ for iOS/Kotlin and Swift Package work.
+- macOS plus Xcode 26.4+ for iOS/Kotlin and Swift Package work.
 
 The Android Studio JBR path used by maintainers on this Mac is `/Applications/Android Studio.app/Contents/jbr/Contents/Home`.
 
@@ -2601,6 +2656,9 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     :device-android-xr:compileDebugKotlin \
     :device-frame-flutter:compileDebugKotlin \
     :device-inmo-runtime:testDebugUnitTest \
+    :device-rayneo-runtime:testDebugUnitTest \
+    :device-rokid:testDebugUnitTest \
+    :device-omi:testDebugUnitTest \
     :device-even:testAndroidHostTest \
     :app-contract:testAndroidHostTest \
     :core-android:testDebugUnitTest \
@@ -2617,6 +2675,11 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     :device-omi-ios:iosSimulatorArm64Test \
     :app-contract:assembleXgGlassKitXCFramework
 ```
+
+Then run `bash scripts/test-swift-operations.sh` and
+`bash scripts/check-swift-package.sh` to verify the Swift adapters against the
+current Kotlin binary. Kotlin-only compilation cannot detect Swift API drift.
+Run `./gradlew :build-logic:test` for RayNeo host SDK upgrade/checksum regressions.
 
 CLI install, tests, and smoke checks:
 

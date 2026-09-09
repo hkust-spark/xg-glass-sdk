@@ -67,11 +67,15 @@ final class FrameGlassesClient: BaseGlassesClient {
             initialCapabilities: DeviceCapabilities(
                 canCapturePhoto: true,
                 canDisplayText: true,
+                canDisplayImages: false,
                 canRecordAudio: true,
+                canStreamVideo: false,
+                supportedVideoFormats: [],
                 canPlayTts: false,
                 canPlayAudioBytes: false,
                 supportsTapEvents: true,
                 supportsLongPressEvents: false,
+                supportsBatteryEvents: false,
                 supportsStreamingTextUpdates: true
             ),
             eventBufferOverflow: .dropOldest

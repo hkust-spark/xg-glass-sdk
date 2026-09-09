@@ -11,11 +11,15 @@ final class StubSwiftGlassesClient: BaseGlassesClient {
             initialCapabilities: DeviceCapabilities(
                 canCapturePhoto: true,
                 canDisplayText: true,
+                canDisplayImages: false,
                 canRecordAudio: false,
+                canStreamVideo: false,
+                supportedVideoFormats: [],
                 canPlayTts: false,
                 canPlayAudioBytes: false,
                 supportsTapEvents: false,
                 supportsLongPressEvents: false,
+                supportsBatteryEvents: false,
                 supportsStreamingTextUpdates: false
             ),
             eventBufferOverflow: .dropOldest

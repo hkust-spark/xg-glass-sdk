@@ -26,7 +26,7 @@ dependencies = []
 dev = [
     "build>=1.2",
     "pytest>=8",
-    "ruff>=0.12",
+    "ruff==0.16.6",
     "twine>=5",
 ]
 
@@ -43,6 +43,10 @@ packages = ["xg_glass_cli"]
 [tool.ruff]
 line-length = 120
 target-version = "py39"
+
+[tool.ruff.lint]
+# Keep the established checks explicit when Ruff changes its default rule set.
+select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
 "xg_glass_cli/prereqs.py" = ["F401"]

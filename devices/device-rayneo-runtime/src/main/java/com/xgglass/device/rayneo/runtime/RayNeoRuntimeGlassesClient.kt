@@ -52,6 +52,7 @@ import com.xgglass.core.VideoStreamOptions
 import com.xgglass.core.VideoStreamSession
 import com.xgglass.core.android.openAndroidMicrophone
 import com.xgglass.core.android.playEncodedViaMediaPlayer
+import com.xgglass.core.android.stopEncodedPlayback
 import com.xgglass.core.android.playPcmViaAudioTrack
 import com.xgglass.core.android.rayNeoPcmBufferSize
 import kotlinx.coroutines.CancellationException
@@ -118,7 +119,7 @@ class RayNeoRuntimeGlassesClient(
         try { activeVideoSession?.stop() } catch (_: Exception) {}
         try { activeMic?.stop() } catch (_: Exception) {}
         activeMic = null
-        try { activePlayer?.release() } catch (_: Exception) {}
+        stopEncodedPlayback(activePlayer)
         activePlayer = null
         _state.value = ConnectionState.Disconnected
     }
@@ -298,7 +299,7 @@ class RayNeoRuntimeGlassesClient(
 
         return try {
             if (options.interrupt) {
-                try { activePlayer?.release() } catch (_: Exception) {}
+                stopEncodedPlayback(activePlayer)
                 activePlayer = null
             }
             ensureMusicVolumeNotZero()
@@ -310,6 +311,8 @@ class RayNeoRuntimeGlassesClient(
                 playEncoded(data)
             }
             Result.success(Unit)
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (e: Exception) {
             Result.failure(
                 (e as? GlassesError)

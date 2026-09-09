@@ -24,13 +24,13 @@ For the full simulator smoke path used by nightly CI, run `scripts/sim-e2e.sh`; 
 
 Use the current checked-in toolchain:
 
-- Gradle wrapper: `9.3.1`.
-- Android Gradle Plugin: `9.1.1`.
+- Gradle wrapper: `9.6.1`.
+- Android Gradle Plugin: `9.2.1`.
 - Kotlin Gradle plugin: `2.4.0`.
 - Android compileSdk: `36`; minSdk: `28`, except Meta and the RayNeo glasses host require minSdk `29`.
 - JDK 17 or newer. The Android Studio bundled JBR is known to work.
 - Python 3.9+ for the CLI.
-- macOS plus Xcode 15.4+ for iOS/Kotlin and Swift Package work.
+- macOS plus Xcode 26.4+ for iOS/Kotlin and Swift Package work.
 
 The Android Studio JBR path used by maintainers on this Mac is `/Applications/Android Studio.app/Contents/jbr/Contents/Home`.
 
@@ -62,6 +62,9 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     :device-android-xr:compileDebugKotlin \
     :device-frame-flutter:compileDebugKotlin \
     :device-inmo-runtime:testDebugUnitTest \
+    :device-rayneo-runtime:testDebugUnitTest \
+    :device-rokid:testDebugUnitTest \
+    :device-omi:testDebugUnitTest \
     :device-even:testAndroidHostTest \
     :app-contract:testAndroidHostTest \
     :core-android:testDebugUnitTest \
@@ -78,6 +81,11 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     :device-omi-ios:iosSimulatorArm64Test \
     :app-contract:assembleXgGlassKitXCFramework
 ```
+
+Then run `bash scripts/test-swift-operations.sh` and
+`bash scripts/check-swift-package.sh` to verify the Swift adapters against the
+current Kotlin binary. Kotlin-only compilation cannot detect Swift API drift.
+Run `./gradlew :build-logic:test` for RayNeo host SDK upgrade/checksum regressions.
 
 CLI install, tests, and smoke checks:
 

@@ -51,6 +51,7 @@ import com.xgglass.core.VideoStreamOptions
 import com.xgglass.core.VideoStreamSession
 import com.xgglass.core.android.openAndroidMicrophone
 import com.xgglass.core.android.playEncodedViaMediaPlayer
+import com.xgglass.core.android.stopEncodedPlayback
 import com.xgglass.core.android.playPcmViaAudioTrack
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -137,7 +138,7 @@ class InmoRuntimeGlassesClient(
         try { activeVideoSession?.stop() } catch (_: Exception) {}
         try { activeMic?.stop() } catch (_: Exception) {}
         activeMic = null
-        try { activePlayer?.release() } catch (_: Exception) {}
+        stopEncodedPlayback(activePlayer)
         activePlayer = null
         _state.value = ConnectionState.Disconnected
     }
@@ -319,7 +320,7 @@ class InmoRuntimeGlassesClient(
 
         return try {
             if (options.interrupt) {
-                try { activePlayer?.release() } catch (_: Exception) {}
+                stopEncodedPlayback(activePlayer)
                 activePlayer = null
             }
             ensureMusicVolumeNotZero()
@@ -331,6 +332,8 @@ class InmoRuntimeGlassesClient(
                 playEncoded(data)
             }
             Result.success(Unit)
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (e: Exception) {
             Result.failure(
                 (e as? GlassesError)

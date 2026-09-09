@@ -13,14 +13,12 @@ import android.os.Environment
 import android.os.ParcelUuid
 import androidx.appcompat.app.AppCompatActivity
 import com.rokid.cxr.client.extend.CxrApi
-import com.rokid.cxr.client.extend.listeners.AudioStreamListener
 import com.rokid.cxr.client.extend.callbacks.BluetoothStatusCallback
 import com.rokid.cxr.client.extend.callbacks.PhotoPathCallback
 import com.rokid.cxr.client.extend.callbacks.SyncStatusCallback
 import com.rokid.cxr.client.extend.callbacks.WifiP2PStatusCallback
 import com.rokid.cxr.client.utils.ValueUtil
 import android.media.AudioAttributes
-import com.xgglass.core.AudioChunk
 import com.xgglass.core.AudioEncoding
 import com.xgglass.core.AudioFormat
 import com.xgglass.core.AudioSource
@@ -40,21 +38,16 @@ import com.xgglass.core.PhotoQuality
 import com.xgglass.core.PlayAudioOptions
 import com.xgglass.core.android.playPcmViaAudioTrack
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 /**
  * Rokid implementation of [GlassesClient].
@@ -66,7 +59,7 @@ import kotlin.coroutines.resumeWithException
  *
  * Notes:
  * - This SDK does NOT request runtime permissions; the host app must handle permissions.
- * - CXR-M v1.0.4 requires an SN authorization file (`.lc`) + developer `clientSecret` to connect.
+ * - CXR-M v1.2.2 requires an SN authorization file (`.lc`) + developer `clientSecret` to connect.
  */
 class RokidGlassesClient(
     private val activity: AppCompatActivity,
@@ -85,60 +78,103 @@ class RokidGlassesClient(
 
     override val model: GlassesModel = GlassesModel.ROKID
 
-    private val display = RokidDisplayController()
+    private val display = RokidDisplayController(
+        isConnected = { connection?.bluetoothReady == true },
+        onAsyncFailure = { emitWarn("Rokid queued display failed: ${it.message}") },
+    )
 
     private val prefs by lazy { activity.getSharedPreferences(PREFS_BT, Context.MODE_PRIVATE) }
 
-    private val scanResultMap: ConcurrentHashMap<String, BluetoothDevice> = ConcurrentHashMap()
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         val mgr = activity.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         mgr.adapter
     }
 
-    @Volatile private var wifiReady: Boolean = false
-    @Volatile private var btReady: Boolean = false
-    @Volatile private var activeMic: MicrophoneSession? = null
+    private val transportMutex = Mutex()
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    @Volatile private var connection: RokidConnectionSession? = null
+    private val btReady: Boolean get() = connection?.bluetoothReady == true
+    private val microphoneLock = Any()
+    @Volatile private var activeMic: RokidMicrophoneStream? = null
 
-    override suspend fun doConnect() {
-        emitLog("Rokid: connecting (BT + Wi‑Fi P2P)...")
-
-        withTimeout(options.connectTimeoutMs) {
-            // 1) Bluetooth
-            ensureBluetoothConnected()
-            // 2) Wi‑Fi P2P
-            ensureWifiP2pConnected()
+    override suspend fun doConnect() = transportMutex.withLock {
+        // A previously lost connection may still have a queued cleanup job.
+        // Finish its teardown before creating another SDK connection.
+        connection?.let {
+            it.close(GlassesError.Transport("Rokid connection replaced"))
+            releaseTransport()
+        }
+        val session = RokidConnectionSession()
+        connection = session
+        emitLog("Rokid: connecting (BT + Wi-Fi P2P)...")
+        try {
+            withTimeout(options.connectTimeoutMs) {
+                ensureBluetoothConnected(session)
+                ensureWifiP2pConnected(session)
+            }
+            check(session.isReady) { "Rokid connection closed during setup" }
+        } catch (e: Exception) {
+            session.close(e)
+            // This must also run when the caller's coroutine has been cancelled.
+            withContext(kotlinx.coroutines.NonCancellable) { releaseTransport() }
+            if (connection === session) connection = null
+            throw e
         }
     }
+
+    override fun shouldShortCircuitConnect(state: ConnectionState): Boolean =
+        state is ConnectionState.Connected && connection?.isReady == true
+
+    override fun publishConnectedState(): Boolean =
+        connection?.publishIfReady { _state.value = ConnectionState.Connected } == true
 
     override fun mapConnectError(error: Exception): GlassesError {
         return (error as? GlassesError) ?: GlassesError.Transport("Rokid connect failed: ${error.message}", error)
     }
 
+    private fun transportLost(session: RokidConnectionSession, error: GlassesError) {
+        if (!session.close(error)) return
+        if (connection === session) _state.value = ConnectionState.Disconnected
+        emitWarn(error.message ?: "Rokid transport disconnected")
+        cleanupScope.launch {
+            transportMutex.withLock {
+                if (connection === session) {
+                    releaseTransport()
+                    connection = null
+                    _state.value = ConnectionState.Disconnected
+                }
+            }
+        }
+    }
+
     override suspend fun disconnect() {
         emitLog("Rokid: disconnecting...")
-        try {
-            activeMic?.stop()
-        } catch (_: Exception) {}
-        activeMic = null
-        try {
-            CxrApi.getInstance().deinitWifiP2P()
-        } catch (_: Exception) {}
-        try {
-            CxrApi.getInstance().deinitBluetooth()
-        } catch (_: Exception) {}
-        try {
-            stopScan()
-        } catch (_: Exception) {}
-        try {
-            display.close()
-        } catch (_: Exception) {}
-        wifiReady = false
-        btReady = false
-        _state.value = ConnectionState.Disconnected
+        // Unblock setup before waiting for its mutex.
+        connection?.close(CancellationException("Rokid disconnected by caller"))
+        withContext(kotlinx.coroutines.NonCancellable) {
+            transportMutex.withLock {
+                releaseTransport()
+                connection = null
+                _state.value = ConnectionState.Disconnected
+            }
+        }
+    }
+
+    private suspend fun releaseTransport() {
+        synchronized(microphoneLock) {
+            try { activeMic?.stopNow() } catch (_: Exception) {}
+            activeMic = null
+        }
+        // Cancel queued display work while the transport is still available.
+        try { display.close() } catch (_: Exception) {}
+        try { stopScan() } catch (_: Exception) {}
+        try { CxrApi.getInstance().deinitWifiP2P() } catch (_: Exception) {}
+        try { CxrApi.getInstance().deinitBluetooth() } catch (_: Exception) {}
     }
 
     override suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage> {
-        if (_state.value !is ConnectionState.Connected || !btReady || !wifiReady) {
+        val connectionSession = connection
+        if (_state.value !is ConnectionState.Connected || connectionSession?.isReady != true) {
             return Result.failure(GlassesError.NotConnected)
         }
 
@@ -147,11 +183,11 @@ class RokidGlassesClient(
         val height = options.targetHeight ?: this.options.defaultHeight
 
         return try {
-            val bytes = withTimeout(options.timeoutMs) {
-                val remotePath = takeGlassPhotoSuspend(width, height, quality)
-                val localPath = syncSingleFileSuspend(remotePath)
-                File(localPath).readBytes()
-            }
+            val bytes = withTimeoutOrNull(options.timeoutMs) {
+                val remotePath = takeGlassPhotoSuspend(connectionSession, width, height, quality)
+                val localPath = syncSingleFileSuspend(connectionSession, remotePath)
+                withContext(Dispatchers.IO) { File(localPath).readBytes() }
+            } ?: throw GlassesError.Transport("Rokid capture timed out after ${options.timeoutMs} ms")
             Result.success(
                 CapturedImage(
                     jpegBytes = bytes,
@@ -162,26 +198,26 @@ class RokidGlassesClient(
                 )
             )
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             val err = (e as? GlassesError) ?: GlassesError.Transport("Rokid capture failed: ${e.message}", e)
             Result.failure(err)
         }
     }
 
     override suspend fun display(text: String, options: DisplayOptions): Result<Unit> {
-        if (_state.value !is ConnectionState.Connected || !btReady) {
+        val session = connection
+        if (_state.value !is ConnectionState.Connected || session?.bluetoothReady != true) {
             return Result.failure(GlassesError.NotConnected)
-        }
-        val finalText = when (options.mode) {
-            DisplayMode.REPLACE -> text
-            DisplayMode.APPEND -> display.lastText + text
         }
         return try {
             withContext(Dispatchers.Main) {
-                display.showText(finalText, force = options.force)
+                if (connection !== session || !session.bluetoothReady) throw GlassesError.NotConnected
+                display.showText(text, force = options.force, append = options.mode == DisplayMode.APPEND)
             }
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(GlassesError.Transport("Rokid display failed: ${e.message}", e))
+            if (e is CancellationException) throw e
+            Result.failure((e as? GlassesError) ?: GlassesError.Transport("Rokid display failed: ${e.message}", e))
         }
     }
 
@@ -257,98 +293,56 @@ class RokidGlassesClient(
         }
     }
 
-    override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> {
-        if (_state.value !is ConnectionState.Connected || !btReady) return Result.failure(GlassesError.NotConnected)
-        if (activeMic != null) return Result.failure(GlassesError.Busy)
-
-        // Rokid supports PCM or OPUS streams. Sample rate/bit depth are not exposed here.
+    override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> = synchronized(microphoneLock) {
+        val connectionSession = connection
+        if (_state.value !is ConnectionState.Connected || connectionSession?.bluetoothReady != true) {
+            return@synchronized Result.failure(GlassesError.NotConnected)
+        }
+        if (activeMic != null) return@synchronized Result.failure(GlassesError.Busy)
         val encoding = when (options.preferredEncoding) {
             AudioEncoding.OPUS -> AudioEncoding.OPUS
-            AudioEncoding.LC3 -> return Result.failure(GlassesError.Unsupported("Rokid microphone: LC3 not supported"))
+            AudioEncoding.LC3 -> return@synchronized Result.failure(GlassesError.Unsupported("Rokid microphone: LC3 not supported"))
             AudioEncoding.PCM_S8, AudioEncoding.PCM_S16_LE -> AudioEncoding.PCM_S16_LE
         }
-        val codecType = when (encoding) {
-            AudioEncoding.OPUS -> 2
-            AudioEncoding.LC3 -> 2
-            else -> 1 // pcm
-        }
-
+        val codecType = if (encoding == AudioEncoding.OPUS) 2 else 1
         val streamType = "xgglass"
-        val fmt = AudioFormat(encoding = encoding, sampleRateHz = null, channelCount = null)
-
-        return try {
-            val shared = MutableSharedFlow<AudioChunk>(
-                extraBufferCapacity = 128,
-                onBufferOverflow = BufferOverflow.DROP_OLDEST,
-            )
-            val running = AtomicBoolean(true)
-            val seq = AtomicLong(0)
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-            val listener = object : AudioStreamListener {
-                override fun onStartAudioStream(codecType: Int, streamType: String?) {
-                    // no-op
-                }
-
-                override fun onAudioStream(data: ByteArray?, offset: Int, length: Int) {
-                    if (!running.get()) return
-                    if (data == null) return
-                    if (length <= 0) return
-                    val start = offset.coerceAtLeast(0)
-                    val end = (offset + length).coerceAtMost(data.size)
-                    if (end <= start) return
-                    val bytes = data.copyOfRange(start, end)
-                    shared.tryEmit(
-                        AudioChunk(
-                            bytes = bytes,
-                            format = fmt,
-                            sequence = seq.incrementAndGet(),
-                        )
-                    )
-                }
-            }
-
-            // Register listener first to avoid losing the first chunks.
-            CxrApi.getInstance().setAudioStreamListener(listener)
-
-            val st = CxrApi.getInstance().openAudioRecord(codecType, streamType)
-            if (st == ValueUtil.CxrStatus.REQUEST_FAILED) {
-                CxrApi.getInstance().setAudioStreamListener(null)
-                return Result.failure(GlassesError.Transport("Rokid openAudioRecord REQUEST_FAILED"))
-            }
-            if (st == ValueUtil.CxrStatus.REQUEST_WAITING) {
-                CxrApi.getInstance().setAudioStreamListener(null)
-                return Result.failure(GlassesError.Busy)
-            }
-
-            val session = object : MicrophoneSession {
-                override val format: AudioFormat = fmt
-                override val audio: Flow<AudioChunk> = shared
-
-                override suspend fun stop() {
-                    if (!running.compareAndSet(true, false)) return
-                    try {
-                        CxrApi.getInstance().closeAudioRecord(streamType)
-                    } catch (_: Exception) {}
-                    try {
-                        CxrApi.getInstance().setAudioStreamListener(null)
-                    } catch (_: Exception) {}
-                    scope.cancel()
+        val session = RokidMicrophoneStream(
+            format = AudioFormat(encoding = encoding, sampleRateHz = null, channelCount = null),
+            lock = microphoneLock,
+            isCurrentConnection = { connection === connectionSession && connectionSession.isOpen },
+            closeRecorder = { CxrApi.getInstance().closeAudioRecord(streamType) },
+            onFinished = { finished ->
+                if (activeMic === finished) {
                     activeMic = null
-                    shared.tryEmit(
-                        AudioChunk(
-                            bytes = ByteArray(0),
-                            format = fmt,
-                            sequence = seq.incrementAndGet(),
-                            endOfStream = true,
-                        )
-                    )
+                    runCatching { CxrApi.getInstance().setAudioStreamListener(null) }
+                }
+            },
+            warn = ::emitWarn,
+        )
+        activeMic = session
+        try {
+            CxrApi.getInstance().setAudioStreamListener(session)
+            // 1.2.2's three-argument overload delegates with denoiseMode=2.
+            // mode=1 preserves the migration's capture mode; validate this on hardware.
+            val status = CxrApi.getInstance().openAudioRecord(
+                codecType, ROKID_AUDIO_RECORD_MODE_COMPAT, streamType, ROKID_AUDIO_DENOISE_MODE_DEFAULT,
+            )
+            when (status) {
+                ValueUtil.CxrStatus.REQUEST_SUCCEED -> {
+                    if (session.isRunning) Result.success(session)
+                    else Result.failure(GlassesError.Transport("Rokid audio stream ended during startup"))
+                }
+                ValueUtil.CxrStatus.REQUEST_WAITING -> {
+                    session.cancelStart()
+                    Result.failure(GlassesError.Busy)
+                }
+                else -> {
+                    session.cancelStart()
+                    Result.failure(GlassesError.Transport("Rokid openAudioRecord failed: $status"))
                 }
             }
-
-            activeMic = session
-            Result.success(session)
         } catch (e: Exception) {
+            runCatching { session.stopNow() }
             Result.failure((e as? GlassesError) ?: GlassesError.Transport("Rokid startMicrophone failed: ${e.message}", e))
         }
     }
@@ -357,69 +351,59 @@ class RokidGlassesClient(
     // Bluetooth + Wi‑Fi P2P
     // -----------------------
 
-    private suspend fun ensureBluetoothConnected() {
-        // Prefer reconnect if we have cached info.
+    private suspend fun ensureBluetoothConnected(session: RokidConnectionSession) {
         val socketUuid = prefs.getString(PREF_KEY_SOCKET_UUID, null)?.trim().orEmpty()
         val macAddress = prefs.getString(PREF_KEY_MAC_ADDRESS, null)?.trim().orEmpty()
         if (socketUuid.isNotBlank() && macAddress.isNotBlank()) {
             emitLog("Rokid: trying BT reconnect...")
             try {
-                connectBluetoothSuspend(socketUuid, macAddress, useApplicationContext = true)
-                btReady = true
+                connectBluetoothSuspend(session, socketUuid, macAddress, useApplicationContext = true)
                 return
             } catch (e: Exception) {
-                // Common in practice: cached reconnect info becomes stale after re-pair/reset/firmware changes.
-                // Fall back to scan+init flow automatically.
+                if (e is CancellationException || !session.isOpen) throw e
                 emitWarn("Rokid: BT reconnect failed, falling back to scan/init: ${e.message}")
                 clearReconnectInfo()
+                runCatching { CxrApi.getInstance().deinitBluetooth() }
             }
         }
-
         emitLog("Rokid: scanning for device...")
-        val device = scanFirstDeviceSuspend()
-        emitLog("Rokid: initBluetooth for ${device.address}")
-        val (uuid, mac) = initBluetoothSuspend(device)
+        val device = scanFirstDeviceSuspend(session)
+        val (uuid, mac) = initBluetoothSuspend(session, device)
         saveReconnectInfo(uuid, mac)
-        emitLog("Rokid: connectBluetooth...")
-        connectBluetoothSuspend(uuid, mac, useApplicationContext = false)
-        btReady = true
+        connectBluetoothSuspend(session, uuid, mac, useApplicationContext = false)
     }
 
-    private suspend fun ensureWifiP2pConnected() {
-        if (wifiReady) return
-
+    private suspend fun ensureWifiP2pConnected(session: RokidConnectionSession) {
+        if (session.wifiReady) return
         emitLog("Rokid: initWifiP2P...")
-        suspendCancellableCoroutine<Unit> { cont ->
-            var completed = false
+        val ready = session.newWaiter<Unit>()
+        try {
             val status = CxrApi.getInstance().initWifiP2P(object : WifiP2PStatusCallback {
-                override fun onConnected() {
-                    wifiReady = true
-                    emitLog("Rokid: Wi‑Fi P2P connected")
-                    if (!completed) {
-                        completed = true
-                        cont.resume(Unit)
-                    }
+                override fun onConnected() = session.callback {
+                    session.markWifiReady()
+                    emitLog("Rokid: Wi-Fi P2P connected")
+                    ready.complete(Unit)
                 }
 
-                override fun onDisconnected() {
-                    wifiReady = false
-                    emitWarn("Rokid: Wi‑Fi P2P disconnected")
+                override fun onDisconnected() = session.callback {
+                    transportLost(session, GlassesError.Transport("Rokid Wi-Fi P2P disconnected"))
                 }
 
-                override fun onFailed(errorCode: ValueUtil.CxrWifiErrorCode?) {
-                    wifiReady = false
-                    emitWarn("Rokid: Wi‑Fi P2P init failed: $errorCode")
-                    if (!completed) {
-                        completed = true
-                        cont.resumeWithException(GlassesError.Transport("Rokid initWifiP2P failed: $errorCode"))
-                    }
+                override fun onFailed(errorCode: ValueUtil.CxrWifiErrorCode?) = session.callback {
+                    transportLost(session, GlassesError.Transport("Rokid Wi-Fi P2P failed: $errorCode"))
+                }
+
+                override fun onP2pDeviceAvailable(name: String?, address: String?, info: String?) = session.callback {
+                    emitLog("Rokid: Wi-Fi P2P device available name=$name")
                 }
             })
-
-            if (status == ValueUtil.CxrStatus.REQUEST_FAILED && !completed) {
-                completed = true
-                cont.resumeWithException(GlassesError.Transport("Rokid initWifiP2P REQUEST_FAILED"))
+            if (status == ValueUtil.CxrStatus.REQUEST_FAILED) {
+                ready.completeExceptionally(GlassesError.Transport("Rokid initWifiP2P REQUEST_FAILED"))
             }
+            ready.await()
+        } finally {
+            ready.cancel()
+            // doConnect tears down both transports on any setup failure or cancellation.
         }
     }
 
@@ -427,203 +411,184 @@ class RokidGlassesClient(
     // Photo capture + sync
     // -----------------------
 
-    private suspend fun takeGlassPhotoSuspend(width: Int, height: Int, quality: Int): String =
-        suspendCancellableCoroutine { cont ->
+    private suspend fun takeGlassPhotoSuspend(
+        session: RokidConnectionSession, width: Int, height: Int, quality: Int,
+    ): String {
+        val photo = session.newWaiter<String>()
+        try {
             val status = CxrApi.getInstance().takeGlassPhoto(width, height, quality, object : PhotoPathCallback {
-                override fun onPhotoPath(status: ValueUtil.CxrStatus?, path: String?) {
+                override fun onPhotoPath(status: ValueUtil.CxrStatus?, path: String?) = session.callback {
                     if (status == ValueUtil.CxrStatus.RESPONSE_SUCCEED && !path.isNullOrBlank()) {
-                        cont.resume(path)
+                        photo.complete(path)
                     } else {
-                        cont.resumeWithException(
-                            GlassesError.Transport("Rokid takeGlassPhoto failed: status=$status path=$path")
-                        )
+                        photo.completeExceptionally(GlassesError.Transport("Rokid takeGlassPhoto failed: $status"))
                     }
                 }
             })
-            if (status == ValueUtil.CxrStatus.REQUEST_FAILED) {
-                cont.resumeWithException(GlassesError.Transport("Rokid takeGlassPhoto REQUEST_FAILED"))
+            when (status) {
+                ValueUtil.CxrStatus.REQUEST_FAILED -> photo.completeExceptionally(GlassesError.Transport("Rokid takeGlassPhoto REQUEST_FAILED"))
+                else -> Unit
             }
-        }
+            return photo.await()
+        } finally { photo.cancel() }
+    }
 
-    private suspend fun syncSingleFileSuspend(remotePath: String): String =
-        suspendCancellableCoroutine { cont ->
-            val saveDir = activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
-                ?: run {
-                    cont.resumeWithException(GlassesError.Transport("No external pictures dir"))
-                    return@suspendCancellableCoroutine
-                }
-
-            // CXR-M concatenates with string addition internally; always include trailing "/"
-            val savePath = saveDir.absolutePath + File.separator
-
+    private suspend fun syncSingleFileSuspend(session: RokidConnectionSession, remotePath: String): String {
+        val saveDir = activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+            ?: throw GlassesError.Transport("No external pictures dir")
+        val synced = session.newWaiter<String>()
+        try {
+            // The vendor concatenates the directory and filename directly.
             val ok = CxrApi.getInstance().syncSingleFile(
-                savePath,
+                saveDir.absolutePath + File.separator,
                 ValueUtil.CxrMediaType.PICTURE,
                 remotePath,
                 object : SyncStatusCallback {
                     override fun onSyncStart() = Unit
-                    override fun onSingleFileSynced(fileName: String?) {
+                    override fun onSingleFileSynced(fileName: String?) = session.callback {
                         if (fileName.isNullOrBlank()) {
-                            cont.resumeWithException(GlassesError.Transport("syncSingleFile returned empty fileName"))
-                            return
+                            synced.completeExceptionally(GlassesError.Transport("syncSingleFile returned empty fileName"))
+                        } else {
+                            synced.complete(fileName)
                         }
-                        cont.resume(fileName)
                     }
-
-                    override fun onSyncFailed() {
-                        cont.resumeWithException(GlassesError.Transport("syncSingleFile failed"))
+                    override fun onSyncFailed() = session.callback {
+                        synced.completeExceptionally(GlassesError.Transport("syncSingleFile failed"))
                     }
-
                     override fun onSyncFinished() = Unit
-                }
+                },
             )
-
-            if (!ok) {
-                cont.resumeWithException(GlassesError.Transport("syncSingleFile request failed (returned false)"))
-            }
-        }
+            if (!ok) synced.completeExceptionally(GlassesError.Transport("syncSingleFile request failed"))
+            return synced.await()
+        } finally { synced.cancel() }
+    }
 
     // -----------------------
     // BLE scan + connect
     // -----------------------
 
+    @Volatile private var activeScan: ScanCallback? = null
+
     @SuppressLint("MissingPermission")
-    private suspend fun scanFirstDeviceSuspend(): BluetoothDevice = suspendCancellableCoroutine { cont ->
+    private suspend fun scanFirstDeviceSuspend(session: RokidConnectionSession): BluetoothDevice {
         val scanner = bluetoothAdapter?.bluetoothLeScanner
-        if (scanner == null) {
-            cont.resumeWithException(GlassesError.Transport("Bluetooth LE scanner not available"))
-            return@suspendCancellableCoroutine
-        }
-
-        scanResultMap.clear()
-
-        val filters = listOf(
-            ScanFilter.Builder()
-                .setServiceUuid(ParcelUuid.fromString(ROKID_SERVICE_UUID))
-                .build()
-        )
-        val settings = ScanSettings.Builder().build()
-
-        var completed = false
-        lateinit var cb: ScanCallback
-        cb = object : ScanCallback() {
-            override fun onScanResult(callbackType: Int, result: ScanResult?) {
-                val device = result?.device ?: return
-                if (!scanResultMap.containsKey(device.address)) {
-                    scanResultMap[device.address] = device
-                    stopScan(cb)
-                    if (!completed) {
-                        completed = true
-                        cont.resume(device)
-                    }
-                }
+            ?: throw GlassesError.Transport("Bluetooth LE scanner not available")
+        val result = session.newWaiter<BluetoothDevice>()
+        val filters = listOf(ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid.fromString(ROKID_SERVICE_UUID)).build())
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, scanResult: ScanResult?) = session.callback {
+                val device = scanResult?.device ?: return@callback
+                result.complete(device)
             }
-
-            override fun onScanFailed(errorCode: Int) {
-                stopScan(cb)
-                if (!completed) {
-                    completed = true
-                    cont.resumeWithException(GlassesError.Transport("BLE scan failed: $errorCode"))
-                }
+            override fun onScanFailed(errorCode: Int) = session.callback {
+                result.completeExceptionally(GlassesError.Transport("BLE scan failed: $errorCode"))
             }
         }
-
-        // Make the scan cancellable so connect()'s withTimeout(connectTimeoutMs) actually stops it
-        // when no Rokid device is present (otherwise the BLE scan runs forever and connect hangs).
-        cont.invokeOnCancellation { stopScan(cb) }
-
+        activeScan = callback
         try {
-            scanner.startScan(filters, settings, cb)
-        } catch (e: Exception) {
-            if (!completed) {
-                completed = true
-                cont.resumeWithException(GlassesError.Transport("startScan failed: ${e.message}", e))
-            }
+            scanner.startScan(filters, ScanSettings.Builder().build(), callback)
+            return result.await()
+        } finally {
+            result.cancel()
+            stopScan(callback)
         }
     }
 
     @SuppressLint("MissingPermission")
-    private fun stopScan(callback: ScanCallback? = null) {
-        val scanner = bluetoothAdapter?.bluetoothLeScanner ?: return
-        try {
-            if (callback != null) scanner.stopScan(callback)
-        } catch (_: Exception) {}
+    private fun stopScan(callback: ScanCallback? = activeScan) {
+        if (callback == null) return
+        if (activeScan === callback) activeScan = null
+        runCatching { bluetoothAdapter?.bluetoothLeScanner?.stopScan(callback) }
     }
 
-    private suspend fun initBluetoothSuspend(device: BluetoothDevice): Pair<String, String> =
-        suspendCancellableCoroutine { cont ->
-            val done = AtomicBoolean(false)
-            // Tear down the BT stack if connect() is cancelled/timed out mid-init.
-            cont.invokeOnCancellation { runCatching { CxrApi.getInstance().deinitBluetooth() } }
+    private suspend fun initBluetoothSuspend(
+        session: RokidConnectionSession,
+        device: BluetoothDevice,
+    ): Pair<String, String> {
+        val info = session.newWaiter<Pair<String, String>>()
+        val attempt = session.nextBluetoothAttempt()
+        try {
             CxrApi.getInstance().initBluetooth(activity, device, object : BluetoothStatusCallback {
                 override fun onConnectionInfo(
-                    socketUuid: String?,
-                    macAddress: String?,
-                    rokidAccount: String?,
-                    glassesType: Int
-                ) {
+                    socketUuid: String?, macAddress: String?, rokidAccount: String?, glassesType: Int,
+                ) = session.bluetoothCallback(attempt) {
                     if (!socketUuid.isNullOrBlank() && !macAddress.isNullOrBlank()) {
-                        if (done.compareAndSet(false, true)) {
-                        cont.resume(socketUuid to macAddress)
-                        }
+                        info.complete(socketUuid to macAddress)
                     } else {
-                        if (done.compareAndSet(false, true)) {
-                        cont.resumeWithException(GlassesError.Transport("onConnectionInfo missing uuid/mac"))
-                        }
+                        info.completeExceptionally(GlassesError.Transport("onConnectionInfo missing uuid/mac"))
                     }
                 }
-
                 override fun onConnected() = Unit
-                override fun onDisconnected() = Unit
-
-                override fun onFailed(errorCode: ValueUtil.CxrBluetoothErrorCode?) {
-                    if (done.compareAndSet(false, true)) {
-                    cont.resumeWithException(GlassesError.Transport("initBluetooth failed: $errorCode"))
-                    }
+                override fun onInActiveConnected(socketUuid: String?, macAddress: String?) = session.bluetoothCallback(attempt) {
+                    emitWarn("Rokid: inactive Bluetooth connection during init; awaiting authorized connection info")
+                }
+                override fun onDisconnected() = session.bluetoothCallback(attempt) {
+                    info.completeExceptionally(GlassesError.Transport("Rokid initBluetooth disconnected"))
+                }
+                override fun onFailed(errorCode: ValueUtil.CxrBluetoothErrorCode?) = session.bluetoothCallback(attempt) {
+                    info.completeExceptionally(GlassesError.Transport("Rokid initBluetooth failed: $errorCode"))
                 }
             })
+            return info.await()
+        } finally {
+            session.retireBluetoothAttempt(attempt)
+            info.cancel()
         }
+    }
 
-    private suspend fun connectBluetoothSuspend(socketUuid: String, macAddress: String, useApplicationContext: Boolean) {
-        suspendCancellableCoroutine<Unit> { cont ->
-            val (snLc, clientSecret) = requireAuthorization()
-            val ctx = if (useApplicationContext) activity.applicationContext else activity
-            val done = AtomicBoolean(false)
-            // Tear down the BT stack if connect() is cancelled/timed out mid-connect.
-            cont.invokeOnCancellation { runCatching { CxrApi.getInstance().deinitBluetooth() } }
+    private suspend fun connectBluetoothSuspend(
+        session: RokidConnectionSession,
+        socketUuid: String,
+        macAddress: String,
+        useApplicationContext: Boolean,
+    ) {
+        val (snLc, clientSecret) = requireAuthorization()
+        val ctx = if (useApplicationContext) activity.applicationContext else activity
+        val ready = session.newWaiter<Unit>()
+        val attempt = session.nextBluetoothAttempt()
+        var connected = false
+        try {
             CxrApi.getInstance().connectBluetooth(ctx, socketUuid, macAddress, object : BluetoothStatusCallback {
                 override fun onConnectionInfo(
-                    socketUuid: String?,
-                    macAddress: String?,
-                    rokidAccount: String?,
-                    glassesType: Int
+                    socketUuid: String?, macAddress: String?, rokidAccount: String?, glassesType: Int,
                 ) = Unit
-
-                override fun onConnected() {
-                    if (done.compareAndSet(false, true)) {
-                    cont.resume(Unit)
+                override fun onConnected() = session.bluetoothCallback(attempt) {
+                    session.markBluetoothReady()
+                    ready.complete(Unit)
+                }
+                override fun onInActiveConnected(socketUuid: String?, macAddress: String?) = session.bluetoothCallback(attempt) {
+                    emitWarn("Rokid: inactive Bluetooth connection; awaiting authorized onConnected callback")
+                }
+                override fun onDisconnected() = session.bluetoothCallback(attempt) {
+                    val error = GlassesError.Transport("Rokid Bluetooth disconnected")
+                    if (session.bluetoothReady) transportLost(session, error)
+                    else {
+                        session.retireBluetoothAttempt(attempt)
+                        ready.completeExceptionally(error)
                     }
                 }
-
-                override fun onDisconnected() {
-                    if (done.compareAndSet(false, true)) {
-                    cont.resumeWithException(GlassesError.Transport("connectBluetooth disconnected"))
+                override fun onFailed(errorCode: ValueUtil.CxrBluetoothErrorCode?) = session.bluetoothCallback(attempt) {
+                    val error = GlassesError.Transport("Rokid Bluetooth failed: $errorCode")
+                    if (session.bluetoothReady) transportLost(session, error)
+                    else {
+                        session.retireBluetoothAttempt(attempt)
+                        ready.completeExceptionally(error)
                     }
-                }
-
-                override fun onFailed(errorCode: ValueUtil.CxrBluetoothErrorCode?) {
-                    if (done.compareAndSet(false, true)) {
-                    cont.resumeWithException(GlassesError.Transport("connectBluetooth failed: $errorCode"))
-                }
                 }
             }, snLc, clientSecret)
+            ready.await()
+            connected = true
+        } finally {
+            if (!connected) session.retireBluetoothAttempt(attempt)
+            ready.cancel()
         }
     }
 
     private fun requireAuthorization(): Pair<ByteArray, String> {
         val auth = options.authorization
             ?: throw GlassesError.Transport(
-                "Rokid authorization missing. CXR-M v1.0.4 requires SN authorization file (.lc) bytes + clientSecret. " +
+                "Rokid authorization missing. CXR-M v1.2.2 requires SN authorization file (.lc) bytes + clientSecret. " +
                     "Provide them via RokidGlassesClient.RokidOptions(authorization = RokidAuthorization(...))."
             )
         if (auth.snLc.isEmpty()) {
@@ -659,7 +624,7 @@ class RokidGlassesClient(
     )
 
     /**
-     * CXR-M v1.0.4 Bluetooth connect requires:
+     * CXR-M v1.2.2 Bluetooth connect requires:
      * - `snLc`: SN authorization file (`.lc`) bound to the device SN (downloaded from Rokid console)
      * - `clientSecret`: developer credential (will be normalized by removing `-`)
      *
@@ -686,6 +651,8 @@ class RokidGlassesClient(
 
     private companion object {
         const val ROKID_SERVICE_UUID = "00009100-0000-1000-8000-00805f9b34fb"
+        const val ROKID_AUDIO_RECORD_MODE_COMPAT = 1
+        const val ROKID_AUDIO_DENOISE_MODE_DEFAULT = 2
 
         const val PREFS_BT = "xgglass_rokid_bt_reconnect"
         const val PREF_KEY_SOCKET_UUID = "socket_uuid"

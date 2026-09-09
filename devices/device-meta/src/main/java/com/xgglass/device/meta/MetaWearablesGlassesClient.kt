@@ -14,9 +14,9 @@ import android.media.MediaRecorder
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import androidx.exifinterface.media.ExifInterface
+import com.meta.wearable.dat.camera.Camera
 import com.meta.wearable.dat.camera.Stream
-import com.meta.wearable.dat.camera.addStream
-import com.meta.wearable.dat.camera.removeStream
+import com.meta.wearable.dat.camera.addCamera
 import com.meta.wearable.dat.camera.types.PhotoData
 import com.meta.wearable.dat.camera.types.StreamConfiguration
 import com.meta.wearable.dat.camera.types.StreamState
@@ -60,6 +60,7 @@ import com.xgglass.core.PlayAudioOptions
 import com.xgglass.core.android.openAndroidMicrophone
 import com.xgglass.core.android.playEncodedViaMediaPlayer
 import com.xgglass.core.android.playPcmViaAudioTrack
+import com.xgglass.core.android.stopEncodedPlayback
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -80,7 +81,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Meta AI glasses adapter for Android phone hosts.
  *
  * Notes:
- * - Camera/photo capture is routed through the DAT SDK.
+ * - Camera/photo capture uses the DAT 0.9 Camera capability and mandatory DAT App Model.
  * - Display text is enabled only when the connected DAT device is Meta Ray-Ban Display.
  *   Camera-only Meta devices keep canDisplayText=false and may reject display attach at runtime.
  * - Mic/speaker audio uses Android's Bluetooth communication stack, following DAT docs.
@@ -110,11 +111,13 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
 
     @Volatile private var activeSession: DeviceSession? = null
     @Volatile private var activeStream: Stream? = null
+    @Volatile private var activeCamera: Camera? = null
     @Volatile private var activeDisplay: Display? = null
     @Volatile private var activeMic: MicrophoneSession? = null
     @Volatile private var activePlayer: MediaPlayer? = null
 
     private val displayLock = Mutex()
+    private val captureLock = Mutex()
 
     private val audioRouteLock = Any()
     private var audioRouteRefCount = 0
@@ -149,7 +152,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
     override suspend fun disconnect() {
         val session = activeSession
         detachDisplayQuietly(session)
-        stopActiveStreamQuietly(session)
+        stopActiveStreamQuietly()
         activeSession = null
         try {
             session?.stop()
@@ -160,7 +163,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
         }
         try { activeMic?.stop() } catch (_: Exception) {}
         activeMic = null
-        try { activePlayer?.release() } catch (_: Exception) {}
+        stopEncodedPlayback(activePlayer)
         activePlayer = null
         forceClearAudioRoute()
         resetCapabilities()
@@ -170,6 +173,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
     override suspend fun capturePhoto(options: CaptureOptions): Result<CapturedImage> {
         if (_state.value !is ConnectionState.Connected) return Result.failure(GlassesError.NotConnected)
 
+        if (!captureLock.tryLock()) return Result.failure(GlassesError.Busy)
         return try {
             ensureCameraPermissionGranted()
 
@@ -194,7 +198,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
                         )
                     }
                 } finally {
-                    stopPhotoStream(session, stream)
+                    stopPhotoStream(stream)
                 }
             }
 
@@ -205,6 +209,8 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
             throw ce
         } catch (e: Exception) {
             Result.failure((e as? GlassesError) ?: GlassesError.Transport("Meta capture failed: ${e.message}", e))
+        } finally {
+            captureLock.unlock()
         }
     }
 
@@ -302,7 +308,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
 
         return try {
             if (options.interrupt) {
-                try { activePlayer?.release() } catch (_: Exception) {}
+                stopEncodedPlayback(activePlayer)
                 activePlayer = null
             }
 
@@ -341,7 +347,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
             data = data,
             usageAttributes = AudioAttributes.USAGE_MEDIA,
             interrupt = false,
-            tempFileFactory = { File(activity.cacheDir, "meta_audio_${System.currentTimeMillis()}.tmp") },
+            tempFileFactory = { File.createTempFile("meta_audio_", ".tmp", activity.cacheDir) },
             legacyStreamType = AudioManager.STREAM_MUSIC,
             preferredDevice = preferredOutput,
             currentPlayer = { activePlayer },
@@ -467,7 +473,7 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
             else -> VideoQuality.LOW
         }
 
-        val stream = session.addStream(
+        val camera = session.addCamera(
             StreamConfiguration(
                 videoQuality = videoQuality,
                 frameRate = 15,
@@ -475,17 +481,19 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
         ).fold(
             onSuccess = { it },
             onFailure = { error, cause ->
-                throw GlassesError.Transport("Meta addStream failed: ${error.description}", cause)
+                throw GlassesError.Transport("Meta addCamera failed: ${error.description}", cause)
             },
         )
+        activeCamera = camera
+        val stream = camera.stream
         activeStream = stream
         stream.start().fold(
             onSuccess = { },
             onFailure = { error, cause ->
                 // Clean up the just-added stream so it is not orphaned in the session.
                 activeStream = null
-                runCatching { stream.stop() }
-                runCatching { session.removeStream() }
+                activeCamera = null
+                runCatching { camera.close() }
                 throw GlassesError.Transport("Meta stream start failed: ${error.description}", cause)
             },
         )
@@ -510,46 +518,30 @@ class MetaWearablesGlassesClient @JvmOverloads constructor(
         }
     }
 
-    private fun stopPhotoStream(session: DeviceSession, stream: Stream) {
-        if (activeStream === stream) activeStream = null
-        try {
-            stream.stop()
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (_: Exception) {
-            // Best-effort cleanup.
-        }
-        try {
-            session.removeStream().onFailure { error, _ ->
-                emitWarn("Meta: removeStream failed: ${error.description}")
-            }
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (_: Exception) {
-            // Best-effort cleanup.
-        }
+    private fun stopPhotoStream(stream: Stream) {
+        if (activeStream !== stream) return
+        activeStream = null
+        val camera = activeCamera
+        activeCamera = null
+        closeCameraQuietly(camera)
     }
 
-    private fun stopActiveStreamQuietly(session: DeviceSession?) {
-        val stream = activeStream
+    private fun stopActiveStreamQuietly() {
         activeStream = null
+        val camera = activeCamera
+        activeCamera = null
+        closeCameraQuietly(camera)
+    }
+
+    // DAT 0.9 makes Camera the owned capability. Closing only its Stream child does
+    // not detach the camera; the next addCamera would fail with capability-already-active.
+    private fun closeCameraQuietly(camera: java.io.Closeable?) {
         try {
-            stream?.stop()
+            camera?.close()
         } catch (ce: CancellationException) {
             throw ce
-        } catch (_: Exception) {
-            // Best-effort disconnect.
-        }
-        if (session != null) {
-            try {
-                session.removeStream().onFailure { error, _ ->
-                    emitWarn("Meta: removeStream failed: ${error.description}")
-                }
-            } catch (ce: CancellationException) {
-                throw ce
-            } catch (_: Exception) {
-                // Best-effort disconnect.
-            }
+        } catch (error: Exception) {
+            emitWarn("Meta: camera cleanup failed: ${error.message}")
         }
     }
 

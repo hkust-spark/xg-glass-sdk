@@ -1,6 +1,14 @@
 # XgGlass Swift Package
 
-The package supports iOS 16 and newer.
+The package supports iOS 17.2 and newer.
+
+The unreleased source branch uses Meta DAT 0.9.0 and raises the minimum from
+iOS 16 to 17.2. The published 0.3.0 release still uses DAT 0.8.0; these changes
+will ship in the next minor release. DAT 0.9 always enables the Device Access
+Toolkit App Model (DAM); `MWDAT.DAMEnabled` is ignored, so no opt-in key or
+additional registration call is needed for this migration. Existing application
+registration and permissions still apply. See the
+[vendor migration notes](https://github.com/facebook/meta-wearables-dat-ios/blob/0.9.0/CHANGELOG.md).
 
 The root `Package.swift` publishes these iOS products:
 
@@ -18,7 +26,14 @@ dependencies: [
 ]
 ```
 
-The `XgGlassKit` binary target points at the `XgGlassKit.xcframework.zip` asset of the matching GitHub Release and is downloaded and checksum-verified automatically by SwiftPM — no local build step is needed.
+This version-based dependency uses published releases; it does not include the
+unreleased Meta migration or adapter fixes. To try those changes before release,
+use this checkout as a local package dependency.
+
+The `XgGlassKit` binary target is downloaded and checksum-verified automatically
+by SwiftPM. The current source manifest still points at the `0.3.0` release asset,
+so using the local Swift sources alone does not include the Kotlin adapter fixes.
+Use the local binary instructions below when testing those fixes.
 
 ## Quick start
 
@@ -60,6 +75,15 @@ public final class XgQuickstart {
 ```
 
 ## Developing the SDK itself
+
+After building the current Kotlin binary, verify both callback lifecycle behavior
+and the complete Swift adapter product without editing the release manifest:
+
+```sh
+./gradlew :app-contract:assembleXgGlassKitXCFramework
+bash scripts/test-swift-operations.sh
+bash scripts/check-swift-package.sh
+```
 
 To test local Kotlin changes, build the XCFramework and temporarily point the binary target back at the local path (do not commit that change):
 

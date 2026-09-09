@@ -22,6 +22,17 @@ This module integrates **Omi Glass** into the unified `xg-glass` API surface.
 
 ### Notes
 
+- `startMicrophone` reads the device's audio-codec characteristic and waits for the
+  notification subscription to be confirmed before returning a session. Codec IDs
+  `0` / `1` report PCM16 / PCM8; `20` / `21` report Opus, without transcoding or
+  assuming a fixed Opus frame duration. Missing or unknown codec IDs return
+  `GlassesError.Unsupported`; failed reads or subscriptions return an error.
+- GATT audio operations use `OmiOptions.gattOperationTimeoutMs` (5 seconds by
+  default). A timed-out or cancelled in-flight audio operation closes the BLE
+  connection so a delayed callback cannot complete a later request. Reconnect
+  before retrying after such a timeout. Starting a second active microphone
+  returns `GlassesError.Busy`.
+
 - The current implementation focuses on **audio input** from Omi Glass using the documented
   BLE Audio Service and codec information from the Omi SDK report.
   Host-side apps are expected to decode Opus or PCM as needed and forward audio to their

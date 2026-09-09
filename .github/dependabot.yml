@@ -42,7 +42,7 @@ updates:
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "org.jetbrains.kotlin:*"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
-      # CameraX 1.6.1 is the stable frontier for published SDK transitives.
+      # CameraX 1.6.2 is the stable frontier for published SDK transitives.
       # 1.7.0-alpha02 compile-verified on compileSdk 36, so a future stable
       # 1.7.x should land cleanly; Dependabot won't offer prereleases here.
       - dependency-name: "androidx.camera:*"
@@ -57,10 +57,6 @@ updates:
       # artifact form.
       - dependency-name: "com.vanniktech.maven.publish"
       - dependency-name: "com.vanniktech:gradle-maven-publish-plugin"
-      # CXR-M 1.2.2 breaks the device-rokid compile and buys nothing we need
-      # (see issue #9's SDK survey). The 1.0.4 adapter is hardware-validated;
-      # migrate deliberately alongside a Rokid hardware session (#29).
-      - dependency-name: "com.rokid.cxr:client-m"
 
   - package-ecosystem: "pip"
     directory: "/tools"

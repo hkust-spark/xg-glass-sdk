@@ -134,6 +134,8 @@ internal class FakeOmiBlePeripheral {
         withBatteryService: Boolean = false,
         withPhotoService: Boolean = true,
         withTimeSyncService: Boolean = true,
+        withAudioCodec: Boolean = true,
+        withAudioCccd: Boolean = true,
         status: Int = BluetoothGatt.GATT_SUCCESS,
     ) {
         configureServices(
@@ -141,6 +143,8 @@ internal class FakeOmiBlePeripheral {
             withBatteryService = withBatteryService,
             withPhotoService = withPhotoService,
             withTimeSyncService = withTimeSyncService,
+            withAudioCodec = withAudioCodec,
+            withAudioCccd = withAudioCccd,
         )
         gattCallback().onServicesDiscovered(gatt, status)
     }
@@ -171,6 +175,12 @@ internal class FakeOmiBlePeripheral {
             it.characteristicUuid == characteristicUuid
         } ?: error("No descriptor write recorded for $characteristicUuid")
         gattCallback().onDescriptorWrite(gatt, op.descriptor, status)
+    }
+
+    fun ackCharacteristicWrite(characteristicUuid: UUID, status: Int = BluetoothGatt.GATT_SUCCESS) {
+        val characteristic = characteristics[characteristicUuid]
+            ?: error("No characteristic configured for $characteristicUuid")
+        gattCallback().onCharacteristicWrite(gatt, characteristic, status)
     }
 
     fun ackCharacteristicRead(
@@ -208,14 +218,19 @@ internal class FakeOmiBlePeripheral {
         withBatteryService: Boolean,
         withPhotoService: Boolean,
         withTimeSyncService: Boolean,
+        withAudioCodec: Boolean,
+        withAudioCccd: Boolean,
     ) {
         services.clear()
         characteristics.clear()
         characteristicValues.clear()
 
         val audioCharacteristics = mutableMapOf(
-            OmiGlassesClient.AUDIO_DATA_UUID to characteristic(OmiGlassesClient.AUDIO_DATA_UUID),
+            OmiGlassesClient.AUDIO_DATA_UUID to characteristic(OmiGlassesClient.AUDIO_DATA_UUID, withCccd = withAudioCccd),
         )
+        if (withAudioCodec) {
+            audioCharacteristics[OmiGlassesClient.AUDIO_CODEC_UUID] = characteristic(OmiGlassesClient.AUDIO_CODEC_UUID)
+        }
         if (withPhotoService) {
             audioCharacteristics[OmiGlassesClient.PHOTO_CONTROL_UUID] =
                 characteristic(OmiGlassesClient.PHOTO_CONTROL_UUID)

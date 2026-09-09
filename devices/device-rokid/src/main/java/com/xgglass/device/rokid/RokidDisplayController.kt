@@ -2,85 +2,133 @@ package com.xgglass.device.rokid
 
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.rokid.cxr.client.extend.CxrApi
 import com.rokid.cxr.client.utils.ValueUtil
+import com.xgglass.core.GlassesError
 
-/**
- * Rokid "Custom View" text renderer.
- *
- * Mirrors the proven approach in the sample app:
- * - call openCustomView() once
- * - update text via updateCustomView() to reduce flicker
- * - throttle streaming updates to avoid over-refresh
- */
+internal interface RokidDisplayTransport {
+    fun open(layout: String): ValueUtil.CxrStatus
+    fun update(update: String): ValueUtil.CxrStatus
+    fun close()
+}
+
+internal interface RokidDisplayScheduler {
+    fun nowMillis(): Long
+    fun postDelayed(task: Runnable, delayMs: Long)
+    fun cancel(task: Runnable)
+}
+
+private class AndroidDisplayScheduler : RokidDisplayScheduler {
+    private val handler = Handler(Looper.getMainLooper())
+    override fun nowMillis(): Long = SystemClock.uptimeMillis()
+    override fun postDelayed(task: Runnable, delayMs: Long) { handler.postDelayed(task, delayMs) }
+    override fun cancel(task: Runnable) { handler.removeCallbacks(task) }
+}
+
+private class CxrDisplayTransport : RokidDisplayTransport {
+    override fun open(layout: String) = CxrApi.getInstance().openCustomView(layout)
+    override fun update(update: String) = CxrApi.getInstance().updateCustomView(update)
+    override fun close() { CxrApi.getInstance().closeCustomView() }
+}
+
+/** Coalesces display updates while preserving every APPEND accepted by the caller. */
 internal class RokidDisplayController(
     private val minUpdateIntervalMs: Long = 350L,
+    private val transport: RokidDisplayTransport = CxrDisplayTransport(),
+    private val scheduler: RokidDisplayScheduler = AndroidDisplayScheduler(),
+    private val onAsyncFailure: (Exception) -> Unit = {},
+    private val isConnected: () -> Boolean = { true },
 ) {
     private val gson = Gson()
-    private val mainHandler = Handler(Looper.getMainLooper())
-
-    private var isCustomViewOpened: Boolean = false
-    private var lastUpdateAt: Long = 0L
-    private var pendingText: String? = null
+    private var isCustomViewOpened = false
+    private var lastUpdateAt: Long? = null
     private var pendingRunnable: Runnable? = null
+    private var generation = 0L
 
+    // The desired document, including queued updates; not just the last transmitted text.
     var lastText: String = ""
         private set
 
-    fun showText(text: String, force: Boolean) {
-        pendingText = text
-
-        val now = System.currentTimeMillis()
-        val withinWindow = now - lastUpdateAt < minUpdateIntervalMs
-        if (!force && withinWindow) {
-            pendingRunnable?.let { mainHandler.removeCallbacks(it) }
-            val delay = minUpdateIntervalMs - (now - lastUpdateAt)
+    @Synchronized
+    fun showText(text: String, force: Boolean, append: Boolean = false) {
+        val previousText = lastText
+        lastText = if (append) lastText + text else text
+        val now = scheduler.nowMillis()
+        val elapsed = lastUpdateAt?.let { now - it }
+        if (!force && elapsed != null && elapsed < minUpdateIntervalMs) {
+            cancelPending()
+            val queuedGeneration = generation
             pendingRunnable = Runnable {
-                val latest = pendingText ?: return@Runnable
-                pendingRunnable = null
-                sendTextNow(latest)
+                synchronized(this) {
+                    if (generation != queuedGeneration) return@Runnable
+                    pendingRunnable = null
+                    try {
+                        sendTextNow(lastText)
+                    } catch (e: Exception) {
+                        onAsyncFailure(e)
+                    }
+                }
             }
-            mainHandler.postDelayed(pendingRunnable!!, delay)
-            return
+            scheduler.postDelayed(pendingRunnable!!, minUpdateIntervalMs - elapsed)
+        } else {
+            try {
+                sendTextNow(lastText)
+                cancelPending()
+            } catch (e: Exception) {
+                lastText = previousText
+                throw e
+            }
         }
-
-        sendTextNow(text)
     }
 
+    private fun cancelPending() {
+        generation++
+        pendingRunnable?.let(scheduler::cancel)
+        pendingRunnable = null
+    }
+
+    @Synchronized
     fun close() {
+        cancelPending()
+        lastText = ""
+        lastUpdateAt = null
         try {
-            CxrApi.getInstance().closeCustomView()
+            transport.close()
         } finally {
             isCustomViewOpened = false
         }
     }
 
+    private fun requireAccepted(status: ValueUtil.CxrStatus, operation: String) {
+        when (status) {
+            // 1.2.2's request path returns only SUCCEED/FAILED. Keep the
+            // adapter's existing WAITING acceptance for vendor compatibility.
+            ValueUtil.CxrStatus.REQUEST_SUCCEED, ValueUtil.CxrStatus.REQUEST_WAITING -> Unit
+            else -> throw GlassesError.Transport("Rokid $operation failed: $status")
+        }
+    }
+
     private fun sendTextNow(text: String) {
-        lastUpdateAt = System.currentTimeMillis()
-        lastText = text
-
+        if (!isConnected()) throw GlassesError.NotConnected
         if (!isCustomViewOpened) {
-            val layoutJson = createLayoutJson(text)
-            val status = CxrApi.getInstance().openCustomView(layoutJson)
-            val ok = status == ValueUtil.CxrStatus.REQUEST_SUCCEED || status == ValueUtil.CxrStatus.REQUEST_WAITING
-            isCustomViewOpened = ok
-            return
+            requireAccepted(transport.open(createLayoutJson(text)), "openCustomView")
+            isCustomViewOpened = true
+        } else {
+            val status = transport.update(createUpdateJson(text))
+            if (status == ValueUtil.CxrStatus.REQUEST_FAILED) {
+                // The view may have been closed on the glasses. Reopen once.
+                isCustomViewOpened = false
+                requireAccepted(transport.open(createLayoutJson(text)), "openCustomView")
+                isCustomViewOpened = true
+            } else {
+                requireAccepted(status, "updateCustomView")
+            }
         }
-
-        val updateJson = createUpdateJson(text)
-        val status = CxrApi.getInstance().updateCustomView(updateJson)
-        val ok = status == ValueUtil.CxrStatus.REQUEST_SUCCEED || status == ValueUtil.CxrStatus.REQUEST_WAITING
-        if (!ok) {
-            // fallback: reopen once
-            isCustomViewOpened = false
-            val layoutJson = createLayoutJson(text)
-            val openStatus = CxrApi.getInstance().openCustomView(layoutJson)
-            val openOk = openStatus == ValueUtil.CxrStatus.REQUEST_SUCCEED || openStatus == ValueUtil.CxrStatus.REQUEST_WAITING
-            isCustomViewOpened = openOk
-        }
+        lastUpdateAt = scheduler.nowMillis()
     }
 
     private fun createLayoutJson(content: String): String {

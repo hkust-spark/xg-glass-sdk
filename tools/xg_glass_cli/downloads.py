@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import copy
 import json
 import os
 import subprocess
@@ -8,7 +9,7 @@ import sys
 import tarfile
 import urllib.request
 import zipfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from .paths import _is_truthy_env
 
@@ -89,12 +90,50 @@ def _extract_archive(archive: Path, dest: Path) -> None:
             zf.extractall(str(dest))
     elif name.endswith((".tar.gz", ".tgz", ".tar.xz", ".tar")):
         with tarfile.open(str(archive), "r:*") as tf:
-            if sys.version_info >= (3, 12):
+            # Extraction filters were backported to maintained Python 3.9–3.11
+            # releases. Detect the feature instead of assuming a minor version.
+            if hasattr(tarfile, "data_filter"):
                 tf.extractall(str(dest), filter="data")
             else:
-                tf.extractall(str(dest))
+                _extract_legacy_tar(tf, dest)
     else:
         raise RuntimeError(f"Unknown archive format: {archive.name}")
+
+
+def _extract_legacy_tar(tf: tarfile.TarFile, dest: Path) -> None:
+    """Constrain older Python's tar extractor, including link destinations."""
+    root = dest.resolve()
+    root.mkdir(parents=True, exist_ok=True)
+
+    def safe_path(base: Path, name: str) -> Path:
+        if Path(name).is_absolute() or PureWindowsPath(name).drive or "\\" in name:
+            raise RuntimeError(f"Unsafe absolute path in tar archive: {name}")
+        target = (base / name).resolve()
+        if target != root and root not in target.parents:
+            raise RuntimeError(f"Unsafe path in tar archive: {name}")
+        return target
+
+    for original in tf:
+        member = copy.copy(original)
+        safe_path(root, member.name)
+        if member.issym():
+            # A duplicate member may replace an existing symlink. Resolve the
+            # containing directory, not that old symlink's referent, when
+            # checking the replacement link's relative destination.
+            safe_path((root / member.name).parent, member.linkname)
+        elif member.islnk():
+            safe_path(root, member.linkname)
+        elif not (member.isfile() or member.isdir()):
+            raise RuntimeError(f"Unsafe special file in tar archive: {member.name}")
+        # Do not restore archive ownership or privileged permission bits.
+        member.uid = member.gid = -1
+        member.uname = member.gname = ""
+        member.mode &= 0o755
+        # Recheck each member after preceding links have been materialized.
+        if hasattr(tarfile, "fully_trusted_filter"):
+            tf.extract(member, str(root), filter="fully_trusted")
+        else:
+            tf.extract(member, str(root))
 
 
 def _run_quiet(

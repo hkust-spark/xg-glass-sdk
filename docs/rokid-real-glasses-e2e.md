@@ -1,24 +1,26 @@
 # Rokid real-glasses end-to-end (E2E) runbook
 
 How to run a full end-to-end test of the Rokid device path on **real Rokid glasses**
-(Rokid CXR-M v1.0.4 class devices) through a generated `xg.glass` app.
+(Rokid CXR-M v1.2.2 class devices) through a generated `xg.glass` app.
 
 This is a hardware + credentials procedure: it needs physical Rokid glasses, the
 Rokid developer authorization, and a person to observe the glasses. The steps
-below were validated up to the hardware boundary (build → install → launch →
-connect flow) on a phone with no glasses attached; the glasses-side capabilities
+below were previously validated with CXR-M 1.0.4 up to the hardware boundary
+(build → install → launch → connect flow) on a phone with no glasses attached.
+The current adapter uses 1.2.2; that historical run is not hardware validation
+of the upgrade. The glasses-side capabilities
 (capture / display / mic / audio) require the real device.
 
 ## 1. Prerequisites
 
-- **Rokid glasses** (e.g. Rokid Max / Rokid Glasses, CXR-M v1.0.4).
+- **Rokid Glasses** supported by CXR-M v1.2.2 and your developer authorization.
 - **Android phone** (Android 12+ recommended) reachable over `adb` from the Mac
   build host. Confirm: `adb devices` lists your phone's serial.
 - **Rokid developer authorization** (both are secrets — never commit them):
   - an **SN license file** (`.lc`), issued for your specific glasses' serial, and
   - your developer **client secret**.
 - Mac build host with the SDK toolchain (JDK 17/21, Android SDK, `xg-glass` CLI).
-  The Rokid vendor SDK `com.rokid.cxr:client-m:1.0.4` resolves from the configured
+  The Rokid vendor SDK `com.rokid.cxr:client-m:1.2.2` resolves from the configured
   Maven repo (allow-listed in `settings.gradle.kts`).
 
 ## 2. Provide the Rokid authorization

@@ -1,8 +1,8 @@
 # Guard: the main CI's iOS job is skipped on pull requests (macOS-runner cost),
 # which leaves Kotlin/Native klib compatibility untested on dependency PRs --
 # exactly how the coroutines 1.11 bump once landed green on Android-only CI
-# and then broke main. This workflow runs the same Kotlin/Native tasks, but
-# only for PRs that touch dependency versions or the Gradle wrapper.
+# and then broke main. Cover dependency, shared API, and Swift integration
+# changes, and compile the Swift adapters against the freshly built binary.
 name: iOS deps guard
 
 on:
@@ -11,6 +11,16 @@ on:
       - "gradle/libs.versions.toml"
       - "gradle/wrapper/**"
       - "settings.gradle.kts"
+      - "Package.swift"
+      - "Sources/**"
+      - "samples/ios/**"
+      - "scripts/*swift*"
+      - "scripts/tests/**"
+      - "kotlin/core/**"
+      - "kotlin/app-contract/**"
+      - "devices/device-even/**"
+      - "devices/device-omi-ios/**"
+      - "devices/omi-shared/**"
 
 jobs:
   ios-deps:
@@ -45,5 +55,11 @@ jobs:
         run: |
           ./gradlew --console=plain \
             :core:iosSimulatorArm64Test \
+            :device-even:iosSimulatorArm64Test \
             :device-omi-ios:iosSimulatorArm64Test \
             :app-contract:assembleXgGlassKitXCFramework
+
+      - name: Test Swift cancellation and compile the Swift adapters
+        run: |
+          bash scripts/test-swift-operations.sh
+          bash scripts/check-swift-package.sh

@@ -12,7 +12,7 @@ dependencies {
     implementation(project(":core-android"))
 
     // Rokid CXR-M SDK
-    api("com.rokid.cxr:client-m:1.0.4") {
+    api("com.rokid.cxr:client-m:1.2.2") {
         // Avoid pulling the sources artifact transitively; keeps dependency graph smaller.
         exclude(group = "com.rokid.cxr", module = "client-m-sources")
     }
@@ -23,4 +23,8 @@ dependencies {
     // Required because the adapter takes an AppCompatActivity and uses AndroidX APIs.
     api(libs.androidx.appcompat)
     api(libs.androidx.core.ktx)
+
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit")
+    testImplementation(libs.junit4)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

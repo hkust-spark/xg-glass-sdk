@@ -1,7 +1,6 @@
 package com.xgglass.device.omi.ios
 
 import com.xgglass.core.AudioChunk
-import com.xgglass.core.AudioEncoding
 import com.xgglass.core.AudioFormat
 import com.xgglass.core.AudioSource
 import com.xgglass.core.BaseGlassesClient
@@ -16,6 +15,7 @@ import com.xgglass.core.GlassesModel
 import com.xgglass.core.MicrophoneOptions
 import com.xgglass.core.MicrophoneSession
 import com.xgglass.core.PlayAudioOptions
+import com.xgglass.device.omi.protocol.OmiAudioCodec
 import com.xgglass.device.omi.protocol.OmiButtonEvent
 import com.xgglass.device.omi.protocol.OmiButtonEvents
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -23,7 +23,6 @@ import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.readBytes
-import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
@@ -33,12 +32,13 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.CoreFoundation.CFAbsoluteTimeGetCurrent
-import platform.CoreFoundation.CFDataCreate
 import platform.CoreBluetooth.CBCentralManager
 import platform.CoreBluetooth.CBCentralManagerDelegateProtocol
 import platform.CoreBluetooth.CBCentralManagerStatePoweredOff
@@ -54,12 +54,15 @@ import platform.CoreBluetooth.CBUUID
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSNumber
+import platform.Foundation.NSRecursiveLock
+import platform.Foundation.create
 import platform.darwin.NSObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 data class OmiOptions(
     val connectTimeoutMs: Long = 30_000,
+    val gattOperationTimeoutMs: Long = 5_000,
 )
 
 @OptIn(ExperimentalForeignApi::class)
@@ -85,10 +88,13 @@ class OmiIosGlassesClient(
 
     private val bleDelegate = OmiBleDelegate()
     private val photoAssembler = OmiPhotoAssembler()
+    private val connectionLock = NSRecursiveLock()
+    private var connectionReady = false
 
     private var centralManager: CBCentralManager? = null
     private var peripheral: CBPeripheral? = null
     private var audioCharacteristic: CBCharacteristic? = null
+    private var audioCodecCharacteristic: CBCharacteristic? = null
     private var photoControlCharacteristic: CBCharacteristic? = null
     private var photoDataCharacteristic: CBCharacteristic? = null
     private var timeSyncCharacteristic: CBCharacteristic? = null
@@ -98,6 +104,11 @@ class OmiIosGlassesClient(
     private var connectContinuation: CancellableContinuation<Unit>? = null
     private var captureContinuation: CancellableContinuation<Result<CapturedImage>>? = null
     private var audioSession: OmiMicrophoneSession? = null
+    private val microphoneMutex = Mutex()
+    private var audioCodecContinuation: CancellableContinuation<ByteArray>? = null
+    private var audioNotifyContinuation: CancellableContinuation<Unit>? = null
+    private var audioNotifyEnabled = true
+    private var timeSyncWritePending = false
     private var ignoredButtonReleaseEvents = 0
     private var droppedButtonEvents = 0
     private var droppedBatteryEvents = 0
@@ -138,7 +149,7 @@ class OmiIosGlassesClient(
     override suspend fun disconnect() {
         withContext(Dispatchers.Main) {
             failCapture(GlassesError.NotConnected)
-            stopActiveAudioSession()
+            finishAudioSession()
             centralManager?.stopScan()
             peripheral?.let { centralManager?.cancelPeripheralConnection(it) }
             cleanupConnectionObjects()
@@ -192,41 +203,73 @@ class OmiIosGlassesClient(
         }
     }
 
-    override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> {
-        val currentPeripheral = peripheral ?: return Result.failure(GlassesError.NotConnected)
-        val audio = audioCharacteristic
-            ?: return Result.failure(GlassesError.Unsupported("Omi audio characteristic not found"))
-        if (_state.value !is ConnectionState.Connected) {
-            return Result.failure(GlassesError.NotConnected)
+    override suspend fun startMicrophone(options: MicrophoneOptions): Result<MicrophoneSession> =
+        withContext(Dispatchers.Main) {
+            microphoneMutex.withLock {
+                val currentPeripheral = peripheral
+                    ?: return@withLock Result.failure(GlassesError.NotConnected)
+                val audio = audioCharacteristic
+                    ?: return@withLock Result.failure(GlassesError.Unsupported("Omi audio characteristic not found"))
+                val codec = audioCodecCharacteristic
+                    ?: return@withLock Result.failure(GlassesError.Unsupported("Omi audio codec characteristic not found"))
+                if (_state.value !is ConnectionState.Connected) {
+                    return@withLock Result.failure(GlassesError.NotConnected)
+                }
+                if (audioSession != null) return@withLock Result.failure(GlassesError.Busy)
+                try {
+                    val packet = awaitAudioOperation {
+                        suspendCancellableCoroutine<ByteArray> { continuation ->
+                            audioCodecContinuation = continuation
+                            continuation.invokeOnCancellation {
+                                if (audioCodecContinuation === continuation) audioCodecContinuation = null
+                            }
+                            currentPeripheral.readValueForCharacteristic(codec)
+                        }
+                    }
+                    val format = OmiAudioCodec.format(packet)
+                    setAudioNotifications(currentPeripheral, audio, true)
+                    if (peripheral !== currentPeripheral || _state.value !is ConnectionState.Connected) {
+                        throw GlassesError.NotConnected
+                    }
+                    val session = OmiMicrophoneSession(format)
+                    audioSession = session
+                    Result.success(session)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    Result.failure(mapThrowableToGlassesError("startMicrophone", error))
+                }
+            }
         }
 
-        stopActiveAudioSession()
-        val session = OmiMicrophoneSession()
-        audioSession = session
-        return try {
-            withContext(Dispatchers.Main) {
-                currentPeripheral.setNotifyValue(true, audio)
-            }
-            Result.success(session)
+    /** All callers and callbacks run on the CoreBluetooth main queue. */
+    private suspend fun <T> awaitAudioOperation(block: suspend () -> T): T {
+        try {
+            return withTimeout(options.gattOperationTimeoutMs) { block() }
         } catch (error: CancellationException) {
-            audioSession = null
+            // CoreBluetooth cannot withdraw an already queued operation. Invalidate the link so
+            // a delayed callback cannot complete a new microphone request for the same UUID.
+            peripheral?.let { centralManager?.cancelPeripheralConnection(it) }
+            failCapture(GlassesError.NotConnected)
+            finishAudioSession()
+            cleanupConnectionObjects()
+            _state.value = ConnectionState.Disconnected
+            if (error is TimeoutCancellationException) throw GlassesError.Timeout("Omi audio GATT operation")
             throw error
-        } catch (error: Throwable) {
-            audioSession = null
-            Result.failure(mapThrowableToGlassesError("startMicrophone", error))
         }
     }
 
-    /** Best-effort teardown of any active audio session; never swallows cancellation. */
-    private suspend fun stopActiveAudioSession() {
-        val session = audioSession ?: return
-        audioSession = null
-        try {
-            session.stop()
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Throwable) {
-            // Best-effort: the session is being torn down anyway.
+    private suspend fun setAudioNotifications(currentPeripheral: CBPeripheral, audio: CBCharacteristic, enabled: Boolean) {
+        if (audio.isNotifying == enabled) return
+        awaitAudioOperation {
+            suspendCancellableCoroutine<Unit> { continuation ->
+                audioNotifyEnabled = enabled
+                audioNotifyContinuation = continuation
+                continuation.invokeOnCancellation {
+                    if (audioNotifyContinuation === continuation) audioNotifyContinuation = null
+                }
+                currentPeripheral.setNotifyValue(enabled, audio)
+            }
         }
     }
 
@@ -238,6 +281,17 @@ class OmiIosGlassesClient(
 
     override fun mapConnectError(error: Exception): GlassesError =
         (error as? GlassesError) ?: GlassesError.Transport("Omi connect failed: ${error.message}", error)
+
+    override fun publishConnectedState(): Boolean {
+        // Base resumes on the caller's dispatcher after the CoreBluetooth main queue.
+        // Coordinate publication with main-queue teardown so a disconnected link stays down.
+        connectionLock.lock()
+        try {
+            return if (!connectionReady || peripheral == null) false else super.publishConnectedState()
+        } finally {
+            connectionLock.unlock()
+        }
+    }
 
     private fun handleCentralState(manager: CBCentralManager) {
         when (manager.state) {
@@ -264,11 +318,17 @@ class OmiIosGlassesClient(
     }
 
     private fun completeConnect() {
+        val continuation = connectContinuation ?: return
+        if (peripheral == null) return
         centralManager?.stopScan()
         emitLog("Omi iOS: audio service ready")
-        _state.value = ConnectionState.Connected
+        connectionLock.lock()
+        try {
+            connectionReady = true
+        } finally {
+            connectionLock.unlock()
+        }
 
-        val continuation = connectContinuation ?: return
         connectContinuation = null
         if (continuation.isActive) {
             continuation.resume(Unit)
@@ -329,8 +389,22 @@ class OmiIosGlassesClient(
     }
 
     private fun cleanupConnectionObjects() {
-        peripheral = null
+        connectionLock.lock()
+        try {
+            connectionReady = false
+            peripheral = null
+        } finally {
+            connectionLock.unlock()
+        }
+        val codec = audioCodecContinuation
+        audioCodecContinuation = null
+        if (codec?.isActive == true) codec.resumeWithException(GlassesError.NotConnected)
+        val notify = audioNotifyContinuation
+        audioNotifyContinuation = null
+        if (notify?.isActive == true) notify.resumeWithException(GlassesError.NotConnected)
+        timeSyncWritePending = false
         audioCharacteristic = null
+        audioCodecCharacteristic = null
         photoControlCharacteristic = null
         photoDataCharacteristic = null
         timeSyncCharacteristic = null
@@ -356,14 +430,14 @@ class OmiIosGlassesClient(
         val characteristic = timeSyncCharacteristic ?: return
         val epochSeconds = (CFAbsoluteTimeGetCurrent() + COCOA_EPOCH_SECONDS).toInt()
         runCatching {
+            timeSyncWritePending = true
             currentPeripheral.writeValue(
                 OmiTimeSync.epochSecondsLE(epochSeconds).toNSData(),
                 characteristic,
                 CBCharacteristicWriteWithResponse,
             )
-        }.onSuccess {
-            emitLog("Omi iOS: wrote time sync")
         }.onFailure { error ->
+            timeSyncWritePending = false
             emitLog("Omi iOS: time sync failed: ${error.message}")
         }
     }
@@ -428,12 +502,7 @@ class OmiIosGlassesClient(
             else -> GlassesError.Transport("$operation failed: ${error.message ?: error::class.simpleName}")
         }
 
-    private inner class OmiMicrophoneSession : MicrophoneSession {
-        override val format: AudioFormat = AudioFormat(
-            encoding = AudioEncoding.OPUS,
-            sampleRateHz = 16_000,
-            channelCount = 1,
-        )
+    private inner class OmiMicrophoneSession(override val format: AudioFormat) : MicrophoneSession {
 
         private val chunks = MutableSharedFlow<AudioChunk>(extraBufferCapacity = 128)
         private var sequence = 0L
@@ -460,14 +529,26 @@ class OmiIosGlassesClient(
         }
 
         override suspend fun stop() {
-            if (stopped) return
-            stopped = true
             withContext(Dispatchers.Main) {
-                audioCharacteristic?.let { characteristic ->
-                    peripheral?.setNotifyValue(false, characteristic)
+                microphoneMutex.withLock {
+                    if (stopped) return@withLock
+                    stopped = true
+                    if (audioSession === this@OmiMicrophoneSession) {
+                        audioSession = null
+                        try {
+                            val currentPeripheral = peripheral
+                            val audio = audioCharacteristic
+                            if (currentPeripheral != null && audio != null) {
+                                setAudioNotifications(currentPeripheral, audio, false)
+                            }
+                        } finally {
+                            emitEndOfStreamChunk()
+                        }
+                    } else {
+                        emitEndOfStreamChunk()
+                    }
                 }
             }
-            emitEndOfStreamChunk()
         }
 
         private fun emitEndOfStreamChunk() {
@@ -486,6 +567,7 @@ class OmiIosGlassesClient(
 
     private inner class OmiBleDelegate : NSObject(), CBCentralManagerDelegateProtocol, CBPeripheralDelegateProtocol {
         override fun centralManagerDidUpdateState(central: CBCentralManager) {
+            if (central !== centralManager) return
             handleCentralState(central)
         }
 
@@ -495,7 +577,7 @@ class OmiIosGlassesClient(
             advertisementData: Map<Any?, *>,
             RSSI: NSNumber,
         ) {
-            if (connectContinuation == null) return
+            if (central !== centralManager || connectContinuation == null) return
             emitLog("Omi iOS: discovered ${didDiscoverPeripheral.name ?: "Omi peripheral"}")
             peripheral = didDiscoverPeripheral
             didDiscoverPeripheral.delegate = this
@@ -507,6 +589,7 @@ class OmiIosGlassesClient(
             central: CBCentralManager,
             didConnectPeripheral: CBPeripheral,
         ) {
+            if (central !== centralManager || didConnectPeripheral !== peripheral || connectContinuation == null) return
             emitLog("Omi iOS: connected, discovering services")
             peripheral = didConnectPeripheral
             didConnectPeripheral.delegate = this
@@ -526,6 +609,7 @@ class OmiIosGlassesClient(
             didFailToConnectPeripheral: CBPeripheral,
             error: NSError?,
         ) {
+            if (central !== centralManager || didFailToConnectPeripheral !== peripheral || connectContinuation == null) return
             failConnect(error.toTransportError("Omi connect failed"))
         }
 
@@ -535,6 +619,7 @@ class OmiIosGlassesClient(
             didDisconnectPeripheral: CBPeripheral,
             error: NSError?,
         ) {
+            if (didDisconnectPeripheral !== peripheral) return
             if (connectContinuation != null) {
                 failConnect(error.toTransportError("Omi disconnected during connect"))
                 return
@@ -549,6 +634,7 @@ class OmiIosGlassesClient(
         }
 
         override fun peripheral(peripheral: CBPeripheral, didDiscoverServices: NSError?) {
+            if (peripheral !== this@OmiIosGlassesClient.peripheral) return
             if (didDiscoverServices != null) {
                 failConnect(didDiscoverServices.toTransportError("Omi service discovery failed"))
                 return
@@ -558,6 +644,7 @@ class OmiIosGlassesClient(
                     when {
                         service.matches(OmiBleUuids.AUDIO_SERVICE) -> listOf(
                             cbUuid(OmiBleUuids.AUDIO_DATA),
+                            cbUuid(OmiBleUuids.AUDIO_CODEC),
                             cbUuid(OmiBleUuids.PHOTO_CONTROL),
                             cbUuid(OmiBleUuids.PHOTO_DATA),
                         )
@@ -582,6 +669,7 @@ class OmiIosGlassesClient(
             didDiscoverCharacteristicsForService: CBService,
             error: NSError?,
         ) {
+            if (peripheral !== this@OmiIosGlassesClient.peripheral) return
             if (error != null) {
                 failConnect(error.toTransportError("Omi characteristic discovery failed"))
                 return
@@ -590,6 +678,7 @@ class OmiIosGlassesClient(
             didDiscoverCharacteristicsForService.characteristicsList().forEach { characteristic ->
                 when {
                     characteristic.matches(OmiBleUuids.AUDIO_DATA) -> audioCharacteristic = characteristic
+                    characteristic.matches(OmiBleUuids.AUDIO_CODEC) -> audioCodecCharacteristic = characteristic
                     characteristic.matches(OmiBleUuids.PHOTO_DATA) -> photoDataCharacteristic = characteristic
                     characteristic.matches(OmiBleUuids.PHOTO_CONTROL) -> photoControlCharacteristic = characteristic
                     characteristic.matches(OmiBleUuids.TIME_SYNC_WRITE) -> timeSyncCharacteristic = characteristic
@@ -604,7 +693,10 @@ class OmiIosGlassesClient(
 
             if (didDiscoverCharacteristicsForService.matches(OmiBleUuids.AUDIO_SERVICE)) {
                 updateCapabilities {
-                    it.copy(canCapturePhoto = photoControlCharacteristic != null && photoDataCharacteristic != null)
+                    it.copy(
+                        canCapturePhoto = photoControlCharacteristic != null && photoDataCharacteristic != null,
+                        canRecordAudio = audioCharacteristic != null && audioCodecCharacteristic != null,
+                    )
                 }
                 completeConnect()
             }
@@ -637,6 +729,16 @@ class OmiIosGlassesClient(
             didUpdateValueForCharacteristic: CBCharacteristic,
             error: NSError?,
         ) {
+            if (peripheral !== this@OmiIosGlassesClient.peripheral) return
+            if (didUpdateValueForCharacteristic.matches(OmiBleUuids.AUDIO_CODEC)) {
+                val continuation = audioCodecContinuation ?: return
+                audioCodecContinuation = null
+                if (continuation.isActive) {
+                    if (error != null) continuation.resumeWithException(error.toTransportError("Omi audio codec read failed"))
+                    else continuation.resume(didUpdateValueForCharacteristic.value?.toByteArray() ?: ByteArray(0))
+                }
+                return
+            }
             if (error != null) {
                 when {
                     didUpdateValueForCharacteristic.matches(OmiBleUuids.PHOTO_DATA) -> {
@@ -673,16 +775,34 @@ class OmiIosGlassesClient(
         }
 
         @ObjCSignatureOverride
+        override fun peripheral(peripheral: CBPeripheral, didWriteValueForCharacteristic: CBCharacteristic, error: NSError?) {
+            if (peripheral !== this@OmiIosGlassesClient.peripheral) return
+            if (didWriteValueForCharacteristic.matches(OmiBleUuids.TIME_SYNC_WRITE) && timeSyncWritePending) {
+                timeSyncWritePending = false
+                if (error == null) emitLog("Omi iOS: time sync confirmed")
+                else emitWarn("Omi iOS: time sync failed: ${error.localizedDescription}")
+            }
+            if (didWriteValueForCharacteristic.matches(OmiBleUuids.PHOTO_CONTROL) && error != null) {
+                failCapture(error.toTransportError("Omi photo command failed"))
+            }
+        }
+
+        @ObjCSignatureOverride
         override fun peripheral(
             peripheral: CBPeripheral,
             didUpdateNotificationStateForCharacteristic: CBCharacteristic,
             error: NSError?,
         ) {
+            if (peripheral !== this@OmiIosGlassesClient.peripheral) return
             if (didUpdateNotificationStateForCharacteristic.matches(OmiBleUuids.AUDIO_DATA)) {
-                if (error != null) {
-                    emitWarn("Omi audio notification enable failed: ${error.localizedDescription}")
-                    finishAudioSession()
+                val continuation = audioNotifyContinuation
+                audioNotifyContinuation = null
+                val success = error == null && didUpdateNotificationStateForCharacteristic.isNotifying == audioNotifyEnabled
+                if (continuation?.isActive == true) {
+                    if (success) continuation.resume(Unit)
+                    else continuation.resumeWithException(error.toTransportError("Omi audio notification state was not applied"))
                 }
+                if (!success || !didUpdateNotificationStateForCharacteristic.isNotifying) finishAudioSession()
                 return
             }
             if (didUpdateNotificationStateForCharacteristic.matches(OmiBleUuids.BUTTON_TRIGGER)) {
@@ -756,12 +876,12 @@ private fun CBService.characteristicsList(): List<CBCharacteristic> =
 @OptIn(ExperimentalForeignApi::class)
 private fun NSData.toByteArray(): ByteArray = bytes?.readBytes(length.toInt()) ?: ByteArray(0)
 
-@OptIn(ExperimentalForeignApi::class)
-private fun ByteArray.toNSData(): NSData = if (isEmpty()) {
+@OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+internal fun ByteArray.toNSData(): NSData = if (isEmpty()) {
     NSData()
 } else {
     usePinned { pinned ->
-        CFDataCreate(null, pinned.addressOf(0).reinterpret(), size.convert()) as NSData
+        NSData.create(bytes = pinned.addressOf(0), length = size.convert())
     }
 }
 
