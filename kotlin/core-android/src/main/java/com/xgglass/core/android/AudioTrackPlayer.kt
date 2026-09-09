@@ -36,6 +36,7 @@ suspend fun playPcmViaAudioTrack(
         AudioEncoding.OPUS -> return Result.failure(GlassesError.Unsupported(unsupportedOpusMessage))
         AudioEncoding.LC3 -> return Result.failure(GlassesError.Unsupported("playAudio: LC3 not supported"))
     }
+    val playbackData = if (format.encoding == AudioEncoding.PCM_S8) convertPcm8Signedness(data) else data
 
     @Suppress("UNUSED_VARIABLE")
     val shouldInterrupt = interrupt
@@ -64,9 +65,9 @@ suspend fun playPcmViaAudioTrack(
             }
             track.play()
             var written = 0
-            while (written < data.size) {
-                val n = track.write(data, written, minOf(4096, data.size - written))
-                if (n <= 0) break
+            while (written < playbackData.size) {
+                val n = track.write(playbackData, written, minOf(4096, playbackData.size - written))
+                if (n <= 0) throw GlassesError.Transport("AudioTrack.write failed: $n")
                 written += n
             }
             val bytesPerSample = if (encoding == android.media.AudioFormat.ENCODING_PCM_16BIT) 2 else 1
@@ -80,6 +81,8 @@ suspend fun playPcmViaAudioTrack(
         }
 
         Result.success(Unit)
+    } catch (ce: kotlinx.coroutines.CancellationException) {
+        throw ce
     } catch (e: Exception) {
         Result.failure(e)
     }

@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "xg-glass-sdk",
     platforms: [
-        .iOS(.v16)
+        .iOS("17.2")
     ],
     products: [
         .library(name: "XgGlass", targets: ["XgGlass"]),
@@ -13,7 +13,7 @@ let package = Package(
         .library(name: "XgGlassMetaTesting", targets: ["XgGlassMetaTesting"])
     ],
     dependencies: [
-        .package(url: "https://github.com/facebook/meta-wearables-dat-ios", exact: "0.8.0")
+        .package(url: "https://github.com/facebook/meta-wearables-dat-ios", exact: "0.9.0")
     ],
     targets: [
         .binaryTarget(

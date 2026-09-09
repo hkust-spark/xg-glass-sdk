@@ -42,6 +42,7 @@ import com.xgglass.core.VideoStreamOptions
 import com.xgglass.core.VideoStreamSession
 import com.xgglass.core.android.openAndroidMicrophone
 import com.xgglass.core.android.playEncodedViaMediaPlayer
+import com.xgglass.core.android.stopEncodedPlayback
 import com.xgglass.core.android.playPcmViaAudioTrack
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -173,7 +174,7 @@ class SimulatorGlassesClient(
         try { activeVideoSession?.stop() } catch (_: Exception) {}
         try { activeMic?.stop() } catch (_: Exception) {}
         activeMic = null
-        try { activePlayer?.release() } catch (_: Exception) {}
+        stopEncodedPlayback(activePlayer)
         activePlayer = null
         try { tts?.stop() } catch (_: Exception) {}
         try { tts?.shutdown() } catch (_: Exception) {}
@@ -443,7 +444,7 @@ class SimulatorGlassesClient(
 
         return try {
             if (options.interrupt) {
-                try { activePlayer?.release() } catch (_: Exception) {}
+                stopEncodedPlayback(activePlayer)
                 activePlayer = null
             }
 
@@ -455,6 +456,8 @@ class SimulatorGlassesClient(
             }
             emitLog("Simulator: playAudio(RawBytes) => done (${data.size} bytes)")
             Result.success(Unit)
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (e: Exception) {
             Result.failure(
                 (e as? GlassesError) ?: GlassesError.Transport("Simulator playAudio(RawBytes) failed: ${e.message}", e)
@@ -478,7 +481,7 @@ class SimulatorGlassesClient(
             data = data,
             usageAttributes = AudioAttributes.USAGE_MEDIA,
             interrupt = false,
-            tempFileFactory = { File(activity.cacheDir, "sim_audio_${System.currentTimeMillis()}.tmp") },
+            tempFileFactory = { File.createTempFile("sim_audio_", ".tmp", activity.cacheDir) },
             currentPlayer = { activePlayer },
             setCurrentPlayer = { activePlayer = it },
             errorMessage = { what, extra -> "Simulator MediaPlayer error: what=$what extra=$extra" },

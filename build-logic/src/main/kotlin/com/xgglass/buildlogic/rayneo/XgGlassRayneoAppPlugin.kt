@@ -5,6 +5,7 @@ import org.gradle.api.Project
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Copy
+import org.gradle.api.tasks.Sync
 import java.io.File
 import javax.inject.Inject
 
@@ -67,6 +68,10 @@ class XgGlassRayneoAppPlugin : Plugin<Project> {
             val mercuryAars = mercurySrcDir.listFiles()
                 ?.filter { it.isFile && it.extension.equals("aar", ignoreCase = true) }
                 .orEmpty()
+            require(mercuryAars.all { it.extension == "aar" }) {
+                "RayNeo SDK filenames must use the lowercase .aar extension so Gradle includes every validated SDK."
+            }
+            RayneoSdkChecksums.validate(mercurySrcDir, mercuryAars)
             if (mercuryAars.isEmpty()) {
                 project.logger.warn(
                     "RayNeo glasses host skipped: no vendor AARs found in ${mercurySrcDir.absolutePath}. " +
@@ -75,24 +80,36 @@ class XgGlassRayneoAppPlugin : Plugin<Project> {
                 )
                 return@afterEvaluate
             }
+            for (prefix in listOf("MercuryAndroidSDK", "RayNeoIPCSDK")) {
+                val matches = mercuryAars.filter { it.name.startsWith(prefix, ignoreCase = true) }
+                require(matches.size == 1) {
+                    "Expected exactly one $prefix*.aar in $mercuryDir; found ${matches.map { it.name }}. " +
+                        "Keep one version of both the Mercury and IPC SDKs."
+                }
+            }
 
             val variant = ext.variant.get()
             val variantCap = variant.replaceFirstChar { c -> if (c.isLowerCase()) c.titlecase() else c.toString() }
             val hostApk = File(hostProject.projectDir, "build/outputs/apk/$variant/${hostProject.name}-$variant.apk")
 
             val assetsDir = File(project.projectDir, "src/main/assets")
-            val hostLibsDir = File(hostProject.projectDir, "libs")
+            // Own a separate directory so removing stale SDKs never deletes app-owned libraries.
+            val hostLibsDir = File(hostProject.projectDir, "build/xgglass/rayneo-libs")
             val syncMercuryAars = project.tasks.register(
                 "syncRayneoMercuryAars",
-                Copy::class.java,
-                object : org.gradle.api.Action<Copy> {
-                    override fun execute(t: Copy) {
+                Sync::class.java,
+                object : org.gradle.api.Action<Sync> {
+                    override fun execute(t: Sync) {
                         t.from(File(mercurySrcDir, "."))
                         t.include("*.aar")
                         t.into(hostLibsDir)
                     }
                 }
             )
+            // Copying the APK and syncing AARs as sibling dependencies does not order
+            // host compilation. The host must finish syncing before any build work.
+            hostProject.tasks.matching { it.name == "preBuild" || it.name == "pre${variantCap}Build" }
+                .configureEach { dependsOn(syncMercuryAars) }
             val copyTask = project.tasks.register(
                 "copyRayneoHostApk",
                 Copy::class.java,

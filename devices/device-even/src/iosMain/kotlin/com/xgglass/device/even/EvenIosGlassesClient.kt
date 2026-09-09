@@ -21,7 +21,6 @@ import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.readBytes
-import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
@@ -60,6 +59,7 @@ import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSNumber
 import platform.Foundation.NSThread
+import platform.Foundation.create
 import platform.darwin.NSObject
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.resume
@@ -1028,12 +1028,12 @@ private fun List<*>.peripheralsList(): List<CBPeripheral> = this as? List<CBPeri
 @OptIn(ExperimentalForeignApi::class)
 private fun NSData.toByteArray(): ByteArray = bytes?.readBytes(length.toInt()) ?: ByteArray(0)
 
-@OptIn(ExperimentalForeignApi::class)
-private fun ByteArray.toNSData(): NSData = if (isEmpty()) {
+@OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+internal fun ByteArray.toNSData(): NSData = if (isEmpty()) {
     NSData()
 } else {
     usePinned { pinned ->
-        platform.CoreFoundation.CFDataCreate(null, pinned.addressOf(0).reinterpret(), size.convert()) as NSData
+        NSData.create(bytes = pinned.addressOf(0), length = size.convert())
     }
 }
 

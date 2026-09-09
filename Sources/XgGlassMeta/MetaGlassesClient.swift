@@ -70,29 +70,30 @@ public enum MetaBluetoothHfpAudioPolicy {
 
 public final class MetaGlassesClient: BaseGlassesClient {
     private var deviceSession: DeviceSession?
-    private var stream: MWDATCamera.Stream?
+    private var camera: MWDATCamera.Camera?
     private var displayCapability: Display?
     private var activeMic: PushMicrophoneSession?
     private var activeMicCapture: MetaBluetoothHfpMicrophoneCapture?
     private var isStartingMicrophone = false
 
     private var sessionErrorTask: Task<Void, Never>?
-    private var streamStateListenerToken: AnyListenerToken?
-    private var streamErrorListenerToken: AnyListenerToken?
-    private var photoDataListenerToken: AnyListenerToken?
-    private var displayStateListenerToken: AnyListenerToken?
+    private let photoCapture = MetaPhotoCaptureCoordinator()
 
     public init() {
         super.init(
             initialCapabilities: DeviceCapabilities(
                 canCapturePhoto: true,
                 canDisplayText: false,
+                canDisplayImages: false,
                 // Device-class capability; live Bluetooth HFP routing is validated at startMicrophone.
                 canRecordAudio: true,
+                canStreamVideo: false,
+                supportedVideoFormats: [],
                 canPlayTts: false,
                 canPlayAudioBytes: false,
                 supportsTapEvents: false,
                 supportsLongPressEvents: false,
+                supportsBatteryEvents: false,
                 supportsStreamingTextUpdates: false
             ),
             eventBufferOverflow: .dropOldest
@@ -107,7 +108,7 @@ public final class MetaGlassesClient: BaseGlassesClient {
         activeMicCapture = nil
         activeMic = nil
         sessionErrorTask?.cancel()
-        stream?.stop()
+        camera?.stop()
         displayCapability?.stop()
         deviceSession?.stop()
     }
@@ -144,11 +145,18 @@ public final class MetaGlassesClient: BaseGlassesClient {
 
     public override func capturePhoto(options: CaptureOptions, completionHandler: @escaping @Sendable (Any?, Error?) -> Void) {
         Task { @MainActor in
-            do {
-                let image = try await self.capturePhotoAsync(options: options)
-                completionHandler(image, nil)
-            } catch {
-                completionHandler(nil, self.transportError("Meta photo capture failed", error: error))
+            let started = photoCapture.start {
+                try await self.capturePhotoAsync(options: options)
+            } completion: { result in
+                switch result {
+                case .success(let image):
+                    completionHandler(image, nil)
+                case .failure(let error):
+                    completionHandler(nil, self.transportError("Meta photo capture failed", error: error))
+                }
+            }
+            if !started {
+                completionHandler(nil, GlassesError.Busy.shared.asError())
             }
         }
     }
@@ -323,15 +331,14 @@ public final class MetaGlassesClient: BaseGlassesClient {
     }
 
     private func ensureMicrophonePermission() async throws {
-        let session = AVAudioSession.sharedInstance()
-        switch session.recordPermission {
+        switch AVAudioApplication.shared.recordPermission {
         case .granted:
             return
         case .denied:
             throw GlassesError.PermissionDenied.shared.asError()
         case .undetermined:
             let granted = await withCheckedContinuation { continuation in
-                session.requestRecordPermission { granted in
+                AVAudioApplication.requestRecordPermission { granted in
                     continuation.resume(returning: granted)
                 }
             }
@@ -381,6 +388,10 @@ public final class MetaGlassesClient: BaseGlassesClient {
         }
 
         try await ensureCameraPermission()
+        try Task.checkCancellation()
+        guard deviceSession === session, session.state == .started else {
+            throw GlassesError.NotConnected.shared.asError()
+        }
 
         let config = StreamConfiguration(
             videoCodec: VideoCodec.raw,
@@ -388,18 +399,21 @@ public final class MetaGlassesClient: BaseGlassesClient {
             frameRate: 24
         )
 
-        guard let newStream = try session.addStream(config: config) else {
-            throw MetaAdapterFailure("Meta DAT did not create a camera stream")
+        guard let newCamera = try session.addCamera(config: config) else {
+            throw MetaAdapterFailure("Meta DAT did not create a camera")
         }
 
-        stream = newStream
+        camera = newCamera
+        let newStream = newCamera.stream
         defer {
-            newStream.stop()
-            stream = nil
-            clearStreamListeners()
+            // DAT 0.9 Camera owns the hardware and stopping it also stops its child stream.
+            newCamera.stop()
+            if camera === newCamera {
+                camera = nil
+            }
         }
 
-        let jpegData = try await withTimeout(timeoutMs: options.timeoutMs) {
+        let jpegData = try await withMetaTimeout(timeoutMs: options.timeoutMs) {
             try await self.waitForStreamToStart(newStream)
             return try await self.capturePhotoData(from: newStream)
         }
@@ -427,10 +441,9 @@ public final class MetaGlassesClient: BaseGlassesClient {
 
     @MainActor
     private func waitForStreamToStart(_ stream: MWDATCamera.Stream) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let resolver = ContinuationResolver(continuation)
-
-            streamStateListenerToken = stream.statePublisher.listen { state in
+        var listeners: [AnyListenerToken] = []
+        try await awaitMetaCallback { (resolver: MetaCallbackAwaiter<Void>) in
+            listeners.append(stream.statePublisher.listen { state in
                 switch state {
                 case .streaming:
                     resolver.resume(returning: ())
@@ -439,33 +452,38 @@ public final class MetaGlassesClient: BaseGlassesClient {
                 case .waitingForDevice, .starting, .stopping, .paused:
                     break
                 }
-            }
+            })
 
-            streamErrorListenerToken = stream.errorPublisher.listen { error in
+            listeners.append(stream.errorPublisher.listen { error in
                 resolver.resume(throwing: MetaAdapterFailure("Meta camera stream error: \(error.localizedDescription)"))
-            }
+            })
 
             stream.start()
+        } cleanup: {
+            for listener in listeners { await listener.cancel() }
+            listeners.removeAll()
         }
     }
 
     @MainActor
     private func capturePhotoData(from stream: MWDATCamera.Stream) async throws -> Data {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
-            let resolver = ContinuationResolver(continuation)
-
-            photoDataListenerToken = stream.photoDataPublisher.listen { photoData in
+        var listeners: [AnyListenerToken] = []
+        return try await awaitMetaCallback { (resolver: MetaCallbackAwaiter<Data>) in
+            listeners.append(stream.photoDataPublisher.listen { photoData in
                 resolver.resume(returning: photoData.data)
-            }
+            })
 
-            streamErrorListenerToken = stream.errorPublisher.listen { error in
+            listeners.append(stream.errorPublisher.listen { error in
                 resolver.resume(throwing: MetaAdapterFailure("Meta photo capture stream error: \(error.localizedDescription)"))
-            }
+            })
 
             let didStartCapture = stream.capturePhoto(format: .jpeg)
             if !didStartCapture {
                 resolver.resume(throwing: MetaAdapterFailure("Meta DAT rejected the photo capture request"))
             }
+        } cleanup: {
+            for listener in listeners { await listener.cancel() }
+            listeners.removeAll()
         }
     }
 
@@ -502,11 +520,15 @@ public final class MetaGlassesClient: BaseGlassesClient {
             current.doCopy(
                 canCapturePhoto: current.canCapturePhoto,
                 canDisplayText: true,
+                canDisplayImages: current.canDisplayImages,
                 canRecordAudio: current.canRecordAudio,
+                canStreamVideo: current.canStreamVideo,
+                supportedVideoFormats: current.supportedVideoFormats,
                 canPlayTts: current.canPlayTts,
                 canPlayAudioBytes: current.canPlayAudioBytes,
                 supportsTapEvents: current.supportsTapEvents,
                 supportsLongPressEvents: current.supportsLongPressEvents,
+                supportsBatteryEvents: current.supportsBatteryEvents,
                 supportsStreamingTextUpdates: current.supportsStreamingTextUpdates
             )
         }
@@ -515,10 +537,9 @@ public final class MetaGlassesClient: BaseGlassesClient {
 
     @MainActor
     private func waitForDisplayStart(_ display: Display) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let resolver = ContinuationResolver(continuation)
-
-            displayStateListenerToken = display.statePublisher.listen { state in
+        var listeners: [AnyListenerToken] = []
+        try await awaitMetaCallback { (resolver: MetaCallbackAwaiter<Void>) in
+            listeners.append(display.statePublisher.listen { state in
                 switch state {
                 case .started:
                     resolver.resume(returning: ())
@@ -527,9 +548,12 @@ public final class MetaGlassesClient: BaseGlassesClient {
                 case .starting, .stopping:
                     break
                 }
-            }
+            })
 
             display.start()
+        } cleanup: {
+            for listener in listeners { await listener.cancel() }
+            listeners.removeAll()
         }
     }
 
@@ -540,13 +564,12 @@ public final class MetaGlassesClient: BaseGlassesClient {
         sessionErrorTask?.cancel()
         sessionErrorTask = nil
 
-        stream?.stop()
-        stream = nil
-        clearStreamListeners()
+        photoCapture.cancel()
+        camera?.stop()
+        camera = nil
 
         displayCapability?.stop()
         displayCapability = nil
-        displayStateListenerToken = nil
 
         deviceSession?.stop()
         deviceSession = nil
@@ -601,36 +624,6 @@ public final class MetaGlassesClient: BaseGlassesClient {
             try audioSession.setActive(false, options: [.notifyOthersOnDeactivation])
         } catch {
             emitWarn(message: "Meta: failed to deactivate audio session after \(context): \(error.localizedDescription)")
-        }
-    }
-
-    private func clearStreamListeners() {
-        streamStateListenerToken = nil
-        streamErrorListenerToken = nil
-        photoDataListenerToken = nil
-    }
-
-    private func withTimeout<T>(
-        timeoutMs: Int64,
-        operation: @escaping () async throws -> T
-    ) async throws -> T {
-        let safeTimeoutMs = max(timeoutMs, 1)
-        let timeoutNanoseconds = UInt64(safeTimeoutMs) * 1_000_000
-
-        return try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask {
-                try await operation()
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: timeoutNanoseconds)
-                throw MetaAdapterFailure("Meta operation timed out after \(safeTimeoutMs) ms")
-            }
-
-            guard let value = try await group.next() else {
-                throw MetaAdapterFailure("Meta operation did not complete")
-            }
-            group.cancelAll()
-            return value
         }
     }
 
@@ -857,22 +850,18 @@ private final class MetaBluetoothHfpMicrophoneCapture {
             if !emitted {
                 let count = nextDroppedFrameCount()
                 if shouldRateLimitLog(count) {
-                    Task { [weak self] in
-                        await MainActor.run {
-                            self?.owner?.emitMicrophoneWarning(
-                                "Meta: dropped mic frame due to audio backpressure; count=\(count)"
-                            )
-                        }
+                    Task { @MainActor [weak self] in
+                        self?.owner?.emitMicrophoneWarning(
+                            "Meta: dropped mic frame due to audio backpressure; count=\(count)"
+                        )
                     }
                 }
             }
         } catch {
-            Task { [weak self] in
-                await MainActor.run {
-                    self?.owner?.stopMicrophoneAfterSystemRouteChange(
-                        "Meta microphone stopped: PCM conversion failed: \(error.localizedDescription)"
-                    )
-                }
+            Task { @MainActor [weak self] in
+                self?.owner?.stopMicrophoneAfterSystemRouteChange(
+                    "Meta microphone stopped: PCM conversion failed: \(error.localizedDescription)"
+                )
             }
         }
     }
@@ -895,10 +884,8 @@ private final class MetaBluetoothHfpMicrophoneCapture {
                 owner?.emitMicrophoneWarning(message)
             }
         } else {
-            Task { [weak owner] in
-                await MainActor.run {
-                    owner?.emitMicrophoneWarning(message)
-                }
+            Task { @MainActor [weak owner] in
+                owner?.emitMicrophoneWarning(message)
             }
         }
     }
@@ -906,12 +893,10 @@ private final class MetaBluetoothHfpMicrophoneCapture {
     private func logEmptyConversionFrame() {
         let count = nextEmptyConversionFrameCount()
         guard shouldRateLimitLog(count) else { return }
-        Task { [weak self] in
-            await MainActor.run {
-                self?.owner?.emitMicrophoneWarning(
-                    "Meta: PCM converter produced empty mic frame; count=\(count)"
-                )
-            }
+        Task { @MainActor [weak self] in
+            self?.owner?.emitMicrophoneWarning(
+                "Meta: PCM converter produced empty mic frame; count=\(count)"
+            )
         }
     }
 
@@ -998,31 +983,6 @@ private struct MetaAdapterFailure: LocalizedError {
 
     var errorDescription: String? {
         message
-    }
-}
-
-private final class ContinuationResolver<T>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<T, Error>?
-
-    init(_ continuation: CheckedContinuation<T, Error>) {
-        self.continuation = continuation
-    }
-
-    func resume(returning value: T) {
-        take()?.resume(returning: value)
-    }
-
-    func resume(throwing error: Error) {
-        take()?.resume(throwing: error)
-    }
-
-    private func take() -> CheckedContinuation<T, Error>? {
-        lock.lock()
-        defer { lock.unlock() }
-        let current = continuation
-        continuation = nil
-        return current
     }
 }
 

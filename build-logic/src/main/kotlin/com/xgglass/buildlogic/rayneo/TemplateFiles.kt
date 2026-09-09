@@ -7,7 +7,7 @@ internal data class TemplateFile(
 
 internal object RayneoHostTemplate {
     // Bump this if you change any template content so the generator knows when to refresh.
-    const val TEMPLATE_VERSION = 27
+    const val TEMPLATE_VERSION = 28
 
     fun files(): List<TemplateFile> = listOf(
         TemplateFile(
@@ -47,8 +47,8 @@ internal object RayneoHostTemplate {
             }
 
             dependencies {
-                // RayNeo official SDK AARs (copied by the Gradle plugin into libs/)
-                implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
+                // Managed by syncRayneoMercuryAars; obsolete SDK versions are removed.
+                implementation(fileTree(mapOf("dir" to "build/xgglass/rayneo-libs", "include" to listOf("*.aar"))))
 
                 implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
                 implementation("androidx.appcompat:appcompat:1.7.0")

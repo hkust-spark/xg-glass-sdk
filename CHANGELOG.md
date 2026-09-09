@@ -8,9 +8,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Regression coverage for Rokid connection/display/audio sessions, Omi GATT and
+  codec negotiation, encoded-audio interruption, and Swift photo cancellation.
+- Swift adapter compilation against the current Kotlin XCFramework in iOS CI,
+  including pull requests that change Swift sources or the package manifest.
+
 ### Changed
 
+- **Breaking (next minor release):** Meta DAT is now 0.9.0 on Android and iOS.
+  The Swift Package and iOS sample now require iOS 17.2. Camera access uses DAT's
+  camera capability and its lifetime controls; applications must use DAT App Model.
+- Upgraded Rokid CXR-M from 1.0.4 to 1.2.2, including the new audio/callback APIs
+  and 16 KB-aligned vendor native libraries. Real-glasses validation remains required.
+- Updated CameraX to 1.6.2, AppCompat to 1.8.0, Tink Android to 1.23.0, and MockK
+  to 1.14.11. Frame's existing Git dependencies now have explicit commit pins.
+- Made Ruff's version and rule set explicit so CI does not change when upstream
+  defaults change. Meta Android compilation now also runs on PRs with package access.
+
 ### Fixed
+
+- Fixed Swift `DeviceCapabilities` construction/copy calls in the Meta adapter and
+  iOS sample after the video/image/battery capabilities were added in 0.3.0.
+- Fixed Rokid stale connection state after link loss, callbacks from obsolete
+  connection attempts, Wi-Fi cancellation cleanup, dropped APPEND text, queued
+  display work surviving disconnect, and unreported vendor display failures.
+- Fixed Meta iOS photo timeouts and cancellation, concurrent capture ownership,
+  and the sample's missing microphone privacy description.
+- Fixed encoded-audio interruption/disconnect leaving suspended playback calls
+  behind; cleanup now handles preparation errors and ignores late callbacks.
+- Corrected signed 8-bit PCM conversion at Android audio capture/playback boundaries.
+- Serialized Omi GATT reads, writes and subscriptions, awaited their results, and
+  discovered the audio codec instead of labelling every firmware payload as Opus.
+- Fixed Omi/Even iOS BLE writes by copying bytes into Foundation `NSData` rather
+  than casting a native pointer to an Objective-C object.
+- Removed obsolete RayNeo AARs from the managed host dependency directory on
+  upgrade and ordered synchronization before the host build.
+- Rejected escaping tar paths/links and special files on older supported Python
+  versions, including versions without the backported extraction filter.
+- Normalized tar symlink separators on Windows so valid internal links remain
+  readable with older Python tar extractors.
 
 ## [0.3.0] - 2026-07-09
 

@@ -45,9 +45,9 @@ Notes:
 - The token needs at least GitHub `read:packages` scope.
 - When Meta support is enabled, the template host app automatically uses `minSdk 29`.
 
-### Rokid note (CXR-M v1.0.4)
+### Rokid note (CXR-M v1.2.2)
 
-If you are connecting to **Rokid** glasses, CXR-M **v1.0.4** requires an SN authorization file (`.lc`) and your developer `clientSecret`.
+If you are connecting to **Rokid** glasses, CXR-M **v1.2.2** requires an SN authorization file (`.lc`) and your developer `clientSecret`.
 
 #### Option A – In-app UI (recommended for end users)
 

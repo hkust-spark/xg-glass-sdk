@@ -58,6 +58,8 @@
 	<string>Needed for Meta wearable camera capture and mock camera testing.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Needed to find and connect to Meta wearables over Wi-Fi.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Needed to record audio from connected glasses.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Needed to save photos captured from Meta wearables.</string>
 	<key>UIApplicationSceneManifest</key>

@@ -2,6 +2,9 @@ package com.xgglass.device.omi
 
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothProfile
+import com.xgglass.core.AudioEncoding
+import com.xgglass.core.GlassesError
+import com.xgglass.core.MicrophoneOptions
 import com.xgglass.core.CaptureOptions
 import com.xgglass.core.ConnectionState
 import com.xgglass.core.GlassesEvent
@@ -17,6 +20,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -46,6 +50,7 @@ class OmiBleFakeHarnessTest {
 
         fake.ackDescriptorWrite(OmiGlassesClient.BUTTON_TRIGGER_UUID)
         val timeSyncWrite = fake.awaitCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        fake.ackCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
 
         val ops = fake.recordedOps()
         assertTrue(ops.indexOf(buttonWrite) < ops.indexOf(timeSyncWrite))
@@ -62,6 +67,7 @@ class OmiBleFakeHarnessTest {
         assertTrue(result.isSuccess)
         assertEquals(ConnectionState.Connected, client.state.value)
         fake.awaitCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        fake.ackCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
         assertFalse(client.capabilities.supportsTapEvents)
         assertFalse(fake.hasDescriptorWrite(OmiGlassesClient.BUTTON_TRIGGER_UUID))
     }
@@ -75,6 +81,7 @@ class OmiBleFakeHarnessTest {
 
         assertTrue(result.isSuccess)
         fake.awaitCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        fake.ackCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
         assertFalse(client.capabilities.supportsBatteryEvents)
         assertFalse(fake.hasDescriptorWrite(OmiGlassesClient.BATTERY_LEVEL_UUID))
     }
@@ -110,6 +117,8 @@ class OmiBleFakeHarnessTest {
             listOf(GlassesEvent.BatteryLevel(88), GlassesEvent.BatteryLevel(100)),
             events.take(2),
         )
+        fake.awaitCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        fake.ackCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
         collector.cancelAndJoin()
     }
 
@@ -124,6 +133,7 @@ class OmiBleFakeHarnessTest {
         assertTrue(result.isSuccess)
         fake.awaitDescriptorWrite(OmiGlassesClient.BATTERY_LEVEL_UUID)
         fake.awaitCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        fake.ackCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
         assertFalse(client.capabilities.supportsBatteryEvents)
     }
 
@@ -182,9 +192,11 @@ class OmiBleFakeHarnessTest {
 
         fake.ackDescriptorWrite(OmiGlassesClient.BUTTON_TRIGGER_UUID)
         fake.awaitCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        fake.ackCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
         fake.awaitDescriptorWrite(OmiGlassesClient.PHOTO_DATA_UUID)
         fake.ackDescriptorWrite(OmiGlassesClient.PHOTO_DATA_UUID)
         fake.awaitCharacteristicWrite(OmiGlassesClient.PHOTO_CONTROL_UUID)
+        fake.ackCharacteristicWrite(OmiGlassesClient.PHOTO_CONTROL_UUID)
 
         val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
         fake.notifyCharacteristic(
@@ -211,6 +223,7 @@ class OmiBleFakeHarnessTest {
         assertTrue(result.isSuccess)
         fake.awaitDescriptorWrite(OmiGlassesClient.BUTTON_TRIGGER_UUID)
         fake.awaitCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        fake.ackCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
         assertFalse(client.capabilities.supportsTapEvents)
     }
 
@@ -233,6 +246,200 @@ class OmiBleFakeHarnessTest {
         assertFalse(client.capabilities.supportsTapEvents)
     }
 
+    @Test(timeout = 10_000)
+    fun microphoneWaitsForTimeSyncCodecReadAndRemoteCccdAcknowledgment() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+        connectThroughServices(client, fake, withButtonService = false)
+        fake.awaitCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        val microphone = async(start = CoroutineStart.UNDISPATCHED) { client.startMicrophone(MicrophoneOptions()) }
+        assertFalse(microphone.isCompleted)
+        assertFalse(fake.recordedOps().any { it is FakeOmiBlePeripheral.CharacteristicRead })
+        fake.ackCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        fake.awaitCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID)
+        assertFalse(microphone.isCompleted)
+        assertFalse(fake.hasDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID))
+        fake.ackCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID, byteArrayOf(1))
+        fake.awaitDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID)
+        assertFalse(microphone.isCompleted)
+        fake.ackDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID)
+        val session = microphone.await().getOrThrow()
+        assertEquals(AudioEncoding.PCM_S8, session.format.encoding)
+        assertEquals(16_000, session.format.sampleRateHz)
+        val audio = async(start = CoroutineStart.UNDISPATCHED) { session.audio.first() }
+        val payload = byteArrayOf(4, 5, 6)
+        fake.notifyCharacteristic(OmiGlassesClient.AUDIO_DATA_UUID, byteArrayOf(0, 0, 0) + payload)
+        assertContentEquals(payload, audio.await().bytes)
+        assertTrue(client.startMicrophone(MicrophoneOptions()).exceptionOrNull() is GlassesError.Busy)
+        client.disconnect()
+    }
+
+    @Test(timeout = 10_000)
+    fun failedAudioCccdCallbackReturnsFailureInsteadOfLiveSession() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+        connectThroughServices(client, fake, withButtonService = false, withTimeSyncService = false)
+        val microphone = async { client.startMicrophone(MicrophoneOptions()) }
+        fake.awaitCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID)
+        fake.ackCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID, byteArrayOf(21))
+        fake.awaitDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID)
+        fake.ackDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID, BluetoothGatt.GATT_FAILURE)
+        assertTrue(microphone.await().exceptionOrNull() is GlassesError.Transport)
+        client.disconnect()
+    }
+
+    @Test(timeout = 10_000)
+    fun rejectedAudioCccdEnqueueReturnsFailure() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+        connectThroughServices(client, fake, withButtonService = false, withTimeSyncService = false)
+        fake.rejectDescriptorWriteFor(OmiGlassesClient.AUDIO_DATA_UUID)
+        val microphone = async { client.startMicrophone(MicrophoneOptions()) }
+        fake.awaitCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID)
+        fake.ackCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID, byteArrayOf(20))
+        assertTrue(microphone.await().exceptionOrNull() is GlassesError.Transport)
+        client.disconnect()
+    }
+
+    @Test(timeout = 10_000)
+    fun unknownCodecAndMissingCodecDoNotSubscribeOrClaimOpus() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+        connectThroughServices(client, fake, withButtonService = false, withTimeSyncService = false)
+        val microphone = async { client.startMicrophone(MicrophoneOptions()) }
+        fake.awaitCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID)
+        fake.ackCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID, byteArrayOf(99))
+        assertTrue(microphone.await().exceptionOrNull() is GlassesError.Unsupported)
+        assertFalse(fake.hasDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID))
+        client.disconnect()
+        val missingCodecFake = FakeOmiBlePeripheral()
+        val missingCodecClient = OmiGlassesClient(missingCodecFake.context)
+        connectThroughServices(missingCodecClient, missingCodecFake, withButtonService = false, withTimeSyncService = false, withAudioCodec = false)
+        assertTrue(missingCodecClient.startMicrophone(MicrophoneOptions()).exceptionOrNull() is GlassesError.Unsupported)
+        missingCodecClient.disconnect()
+    }
+
+    @Test(timeout = 10_000)
+    fun missingAudioCccdDoesNotReturnSuccess() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+        connectThroughServices(client, fake, withButtonService = false, withTimeSyncService = false, withAudioCccd = false)
+        val microphone = async { client.startMicrophone(MicrophoneOptions()) }
+        fake.awaitCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID)
+        fake.ackCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID, byteArrayOf(0))
+        assertTrue(microphone.await().exceptionOrNull() is GlassesError.Unsupported)
+        client.disconnect()
+    }
+
+    @Test(timeout = 10_000)
+    fun timedOutCodecReadInvalidatesLinkAndLateCallbackCannotStartAudio() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context, OmiGlassesClient.OmiOptions(gattOperationTimeoutMs = 100))
+        connectThroughServices(client, fake, withButtonService = false, withTimeSyncService = false)
+        val microphone = async { client.startMicrophone(MicrophoneOptions()) }
+        fake.awaitCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID)
+        assertTrue(microphone.await().exceptionOrNull() is GlassesError.Timeout)
+        assertEquals(ConnectionState.Disconnected, client.state.value)
+        fake.ackCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID, byteArrayOf(20))
+        assertFalse(fake.hasDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID))
+        assertTrue(client.startMicrophone(MicrophoneOptions()).exceptionOrNull() is GlassesError.NotConnected)
+    }
+
+    @Test(timeout = 10_000)
+    fun disconnectFailsPendingCodecReadPromptly() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+        connectThroughServices(client, fake, withButtonService = false, withTimeSyncService = false)
+        val microphone = async { client.startMicrophone(MicrophoneOptions()) }
+        fake.awaitCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID)
+        fake.connectionStateChange(newState = BluetoothProfile.STATE_DISCONNECTED)
+        assertTrue(withTimeout(500) { microphone.await() }.exceptionOrNull() is GlassesError.NotConnected)
+    }
+
+    @Test(timeout = 10_000)
+    fun codecReadFailureNeverProducesAudioSession() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+        connectThroughServices(client, fake, withButtonService = false, withTimeSyncService = false)
+        val microphone = async { client.startMicrophone(MicrophoneOptions()) }
+        fake.awaitCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID)
+        fake.ackCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID, byteArrayOf(20), BluetoothGatt.GATT_FAILURE)
+        assertTrue(microphone.await().exceptionOrNull() is GlassesError.Transport)
+        assertFalse(fake.hasDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID))
+        client.disconnect()
+    }
+
+    @Test(timeout = 10_000)
+    fun stopWaitsForUnsubscribeBeforeAllowingAnotherMicrophone() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+        connectThroughServices(client, fake, withButtonService = false, withTimeSyncService = false)
+        val first = async { client.startMicrophone(MicrophoneOptions()) }
+        fake.awaitCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID)
+        fake.ackCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID, byteArrayOf(21))
+        fake.awaitDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID)
+        fake.ackDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID)
+        val session = first.await().getOrThrow()
+        assertEquals(AudioEncoding.OPUS, session.format.encoding)
+        val eos = async(start = CoroutineStart.UNDISPATCHED) { session.audio.first { it.endOfStream } }
+        val stopped = async(start = CoroutineStart.UNDISPATCHED) { session.stop() }
+        eventually {
+            fake.recordedOps().filterIsInstance<FakeOmiBlePeripheral.DescriptorWrite>()
+                .takeIf { writes -> writes.size == 2 }
+        }
+        val second = async(start = CoroutineStart.UNDISPATCHED) { client.startMicrophone(MicrophoneOptions()) }
+        assertFalse(stopped.isCompleted)
+        assertFalse(second.isCompleted)
+        assertEquals(1, fake.recordedOps().filterIsInstance<FakeOmiBlePeripheral.CharacteristicRead>().size)
+        fake.ackDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID)
+        stopped.await()
+        assertTrue(eos.await().endOfStream)
+        eventually {
+            fake.recordedOps().filterIsInstance<FakeOmiBlePeripheral.CharacteristicRead>().takeIf { it.size == 2 }
+        }
+        fake.ackCharacteristicRead(OmiGlassesClient.AUDIO_CODEC_UUID, byteArrayOf(0))
+        eventually {
+            fake.recordedOps().filterIsInstance<FakeOmiBlePeripheral.DescriptorWrite>().takeIf { it.size == 3 }
+        }
+        fake.ackDescriptorWrite(OmiGlassesClient.AUDIO_DATA_UUID)
+        assertEquals(AudioEncoding.PCM_S16_LE, second.await().getOrThrow().format.encoding)
+        client.disconnect()
+    }
+
+    @Test(timeout = 10_000)
+    fun lateServiceDiscoveryCannotResurrectDisconnectedClient() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+        connectThroughServices(client, fake, withButtonService = false, withTimeSyncService = false)
+        client.disconnect()
+        fake.servicesDiscovered(withButtonService = true)
+        fake.mtuChanged()
+        assertEquals(ConnectionState.Disconnected, client.state.value)
+        assertFalse(client.capabilities.canCapturePhoto)
+        assertFalse(client.capabilities.supportsTapEvents)
+        assertTrue(client.startMicrophone(MicrophoneOptions()).exceptionOrNull() is GlassesError.NotConnected)
+    }
+
+    @Test(timeout = 10_000)
+    fun disconnectAfterDiscoveryBeforeConnectResumesCannotPublishConnected() = runBlocking {
+        val fake = FakeOmiBlePeripheral()
+        val client = OmiGlassesClient(fake.context)
+        val connected = async { client.connect() }
+        fake.awaitScanStarted()
+        fake.deliverScanResult()
+        fake.awaitGattCallback()
+        fake.connectionStateChange()
+        fake.mtuChanged()
+        fake.servicesDiscovered(withButtonService = false, withTimeSyncService = false)
+
+        // The connect continuation must return to this runBlocking event loop. Disconnect
+        // without yielding first, after discovery succeeded but before final publication.
+        client.disconnect()
+
+        assertTrue(connected.await().exceptionOrNull() is GlassesError.NotConnected)
+        assertEquals(ConnectionState.Disconnected, client.state.value)
+    }
+
     private suspend fun connectAndEnableButtons(
         client: OmiGlassesClient,
         fake: FakeOmiBlePeripheral,
@@ -242,6 +449,7 @@ class OmiBleFakeHarnessTest {
         fake.awaitDescriptorWrite(OmiGlassesClient.BUTTON_TRIGGER_UUID)
         fake.ackDescriptorWrite(OmiGlassesClient.BUTTON_TRIGGER_UUID)
         fake.awaitCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
+        fake.ackCharacteristicWrite(OmiGlassesClient.TIME_SYNC_WRITE_UUID)
         assertTrue(client.capabilities.supportsTapEvents)
     }
 
@@ -250,6 +458,9 @@ class OmiBleFakeHarnessTest {
         fake: FakeOmiBlePeripheral,
         withButtonService: Boolean,
         withBatteryService: Boolean = false,
+        withTimeSyncService: Boolean = true,
+        withAudioCodec: Boolean = true,
+        withAudioCccd: Boolean = true,
     ): Result<Unit> = coroutineScope {
         val connected = async { client.connect() }
         fake.awaitScanStarted()
@@ -257,7 +468,13 @@ class OmiBleFakeHarnessTest {
         fake.awaitGattCallback()
         fake.connectionStateChange()
         fake.mtuChanged()
-        fake.servicesDiscovered(withButtonService = withButtonService, withBatteryService = withBatteryService)
+        fake.servicesDiscovered(
+            withButtonService = withButtonService,
+            withBatteryService = withBatteryService,
+            withTimeSyncService = withTimeSyncService,
+            withAudioCodec = withAudioCodec,
+            withAudioCccd = withAudioCccd,
+        )
         val result = withTimeout(5_000) { connected.await() }
         result
     }

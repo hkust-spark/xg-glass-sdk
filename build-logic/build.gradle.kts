@@ -18,6 +18,8 @@ dependencies {
     compileOnly(libs.kotlin.gradle.plugin)
     implementation(libs.maven.publish.plugin)
     implementation("org.jetbrains.dokka:dokka-gradle-plugin:${libs.versions.dokka.get()}")
+    testImplementation(gradleTestKit())
+    testImplementation(libs.junit4)
 }
 
 gradlePlugin {

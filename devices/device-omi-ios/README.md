@@ -14,6 +14,17 @@ This module integrates Omi over CoreBluetooth into the unified `xg-glass` API su
 
 ### Notes
 
+- `startMicrophone` reads the device's audio-codec characteristic and waits for the
+  notification subscription to be confirmed before returning a session. Codec IDs
+  `0` / `1` report PCM16 / PCM8; `20` / `21` report Opus, without transcoding or
+  assuming a fixed Opus frame duration. Missing or unknown codec IDs return
+  `GlassesError.Unsupported`; failed reads or subscriptions return an error.
+- GATT audio operations use `OmiOptions.gattOperationTimeoutMs` (5 seconds by
+  default). A timed-out or cancelled in-flight audio operation closes the BLE
+  connection so a delayed callback cannot complete a later request. Reconnect
+  before retrying after such a timeout. Starting a second active microphone
+  returns `GlassesError.Busy`.
+
 - Button events are gated on service discovery, not model/name matching. `supportsTapEvents`
   flips to `true` only when the connected peripheral exposes service
   `23BA7924-0000-1000-7450-346EAC492E92` and characteristic

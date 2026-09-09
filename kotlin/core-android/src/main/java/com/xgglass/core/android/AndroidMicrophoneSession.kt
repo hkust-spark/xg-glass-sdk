@@ -125,9 +125,10 @@ fun openAndroidMicrophone(
                     break
                 }
                 if (read > 0) {
+                    val bytes = buffer.copyOfRange(0, read)
                     shared.tryEmit(
                         AudioChunk(
-                            bytes = buffer.copyOfRange(0, read),
+                            bytes = if (encoding == AudioEncoding.PCM_S8) convertPcm8Signedness(bytes) else bytes,
                             format = format,
                             sequence = seq.incrementAndGet(),
                         )

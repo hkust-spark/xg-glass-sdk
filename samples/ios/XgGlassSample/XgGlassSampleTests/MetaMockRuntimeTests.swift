@@ -62,6 +62,42 @@ final class MetaMockRuntimeTests: XCTestCase {
         }
     }
 
+    func testMetaMockRejectsConcurrentCaptureAndAllowsRetry() async throws {
+        let client = MetaGlassesClient()
+        self.client = client
+        _ = try seedRayBanMetaMockDevice(client: client)
+        // MockDeviceKit publishes the newly enabled link asynchronously, as in the smoke test.
+        try await Task.sleep(nanoseconds: 1_000_000_000)
+        try await connect(client)
+        guard client.state.value is ConnectionState.Connected else {
+            throw TestFailure("Mock client did not connect: \(String(describing: client.state.value))")
+        }
+
+        let first = Task { @MainActor in await self.capturePhotoResult(client) }
+        let second = Task { @MainActor in await self.capturePhotoResult(client) }
+        let results = await [first.value, second.value]
+        let images = results.compactMap { try? $0.get() }
+        let errors = results.compactMap { result -> Error? in
+            if case .failure(let error) = result { return error }
+            return nil
+        }
+        XCTAssertEqual(images.count, 1, "Only one capture may own the camera")
+        XCTAssertEqual(errors.count, 1)
+        XCTAssertTrue(errors.contains { ($0 as NSError).kotlinException is GlassesError.Busy })
+
+        // Completion must release the Camera capability and listeners before allowing a retry.
+        let retry = try await capturePhoto(client)
+        XCTAssertGreaterThan(retry.jpegBytes.size, 0)
+    }
+
+    private func capturePhotoResult(_ client: MetaGlassesClient) async -> Result<CapturedImage, Error> {
+        do {
+            return .success(try await capturePhoto(client))
+        } catch {
+            return .failure(error)
+        }
+    }
+
     private func seedRayBanMetaMockDevice(client: MetaGlassesClient) throws -> (identifier: String, imageURL: URL) {
         let feedURL = try writeMockCameraFeedVideo()
         let imageURL = try writeMockCaptureImage()

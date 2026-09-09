@@ -1,4 +1,4 @@
-platform :ios, '16.0'
+platform :ios, '17.2'
 
 flutter_application_path = '../../../third_party/frame/frame_module'
 load File.join(flutter_application_path, '.ios', 'Flutter', 'podhelper.rb')

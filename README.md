@@ -10,7 +10,7 @@ Easy, fast, glasses application development for everyone
 <a href="https://github.com/hkust-spark/xg-glass-sdk/actions/workflows/ci.yml"><img src="https://github.com/hkust-spark/xg-glass-sdk/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <a href="https://central.sonatype.com/artifact/io.github.hkust-spark/xgglass-universal"><img src="https://img.shields.io/maven-central/v/io.github.hkust-spark/xgglass-universal" alt="Maven Central"></a>
 <a href="https://pypi.org/project/xg-glass/"><img src="https://img.shields.io/pypi/v/xg-glass" alt="PyPI"></a>
-<a href="./docs/swift-package.md"><img src="https://img.shields.io/badge/Swift_Package-iOS_16%2B-F05138?logo=swift" alt="Swift Package"></a>
+<a href="./docs/swift-package.md"><img src="https://img.shields.io/badge/Swift_Package-iOS_17.2%2B-F05138?logo=swift" alt="Swift Package"></a>
 <a href="./LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
 </p>
 
@@ -60,7 +60,7 @@ Choose one installation channel depending on the platform you are targeting.
 
 #### Android (Maven Central)
 
-Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.2.1`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`. Note that the Maven group is only the distribution namespace — Kotlin packages in code are `com.xgglass.*` (for example `import com.xgglass.core.GlassesClient`).
+Use Maven Central for normal Android apps. SDK artifacts use group `io.github.hkust-spark`, version `0.3.0`, and prefixed artifact IDs such as `xgglass-universal`, `xgglass-core`, and `xgglass-device-meta`. Note that the Maven group is only the distribution namespace — Kotlin packages in code are `com.xgglass.*` (for example `import com.xgglass.core.GlassesClient`).
 
 New to the SDK? Follow [Your First App (Android)](./docs/getting-started-android.md).
 
@@ -132,9 +132,15 @@ dependencies {
 }
 ```
 
+The published `0.3.0` adapter uses DAT `0.8.0`. The DAT `0.9.0` migration is in
+the unreleased source branch; see the [migration notes](./docs/sdk-maintenance-2026-09.md)
+before testing it from a local checkout.
+
 #### iOS (Swift Package)
 
-The Swift Package is hosted from this repository and requires iOS 16+. It publishes `XgGlass` for the core API plus Simulator/Omi adapters, and `XgGlassMeta` for the Meta adapter with Meta DAT 0.8.0.
+The Swift Package is hosted from this repository and requires iOS 17.2+. It publishes `XgGlass` for the core API plus Simulator/Omi adapters, and `XgGlassMeta` for the Meta adapter with Meta DAT 0.9.0.
+
+These requirements describe the unreleased source branch. Release `0.3.0` uses Meta DAT `0.8.0` and iOS 16; the DAT `0.9.0` migration and iOS 17.2 minimum will ship in the next minor release. See the [migration and validation notes](./docs/sdk-maintenance-2026-09.md).
 
 ```swift
 // Package.swift
@@ -152,7 +158,10 @@ targets: [
 ]
 ```
 
-The `XgGlassKit` binary is downloaded automatically from the GitHub Release for the version you depend on — no local build step is needed. See [Swift Package setup](./docs/swift-package.md) and [iOS device support](./docs/ios-device-support.md).
+The version-based dependency above consumes published releases and does not yet
+include the source fixes. The current source manifest also retains the `0.3.0`
+`XgGlassKit` binary URL; testing Kotlin changes requires a local XCFramework.
+See [Swift Package setup](./docs/swift-package.md) and [iOS device support](./docs/ios-device-support.md).
 Start with the [Swift Package quick start](./docs/swift-package.md#quick-start).
 
 #### CLI (PyPI)
@@ -241,7 +250,7 @@ Supported toolchains:
 - Android compileSdk 36.
 - JDK 17+.
 - Building from source needs Kotlin 2.4+ and Android Gradle Plugin 9.x.
-- iOS 16+ with Xcode 15.4+.
+- iOS 17.2+ with Xcode 26.4+.
 - CLI Python 3.9+ on macOS/Linux.
 
 Per-device hardware-validation status is listed in the device table above.
