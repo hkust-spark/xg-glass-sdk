@@ -16,7 +16,7 @@ androidxTestCoreKtx = "1.7.0"
 androidxTestRunner = "1.7.0"
 mwdat = "0.9.0"
 mavenPublish = "0.37.0"
-dokka = "2.2.0"
+dokka = "2.3.0"
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "agp" }
